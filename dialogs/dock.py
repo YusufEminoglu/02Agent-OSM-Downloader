@@ -86,19 +86,33 @@ class AgentOsmDock(QDockWidget):
         layout.addWidget(title)
         layout.addWidget(subtitle)
 
+        agent_group = QGroupBox("AI Agent connection")
+        agent_layout = QVBoxLayout(agent_group)
         self.agent_endpoint = QLabel(
             "Agent Protocol v1 · zero2agentosm endpoint ready"
         )
         self.agent_endpoint.setWordWrap(True)
-        self.agent_endpoint.setToolTip(
-            "SmartModeler and compatible agents discover the two bounded "
-            "download endpoints through the live QGIS Processing registry."
-        )
         self.agent_endpoint.setStyleSheet(
-            "background:#E8F5F2;color:#12645A;padding:6px;"
-            "border:1px solid #A8D8CF;border-radius:4px;font-weight:600;"
+            "color:#12645A;font-weight:600;"
         )
-        layout.addWidget(self.agent_endpoint)
+        self.agent_connection = QLabel()
+        self.agent_connection.setWordWrap(True)
+        self.agent_connection.setStyleSheet("color:#506070;")
+        agent_buttons = QHBoxLayout()
+        self.ai_connections_button = QPushButton("AI Connections...")
+        self.ai_connections_button.clicked.connect(
+            self._open_ai_connections
+        )
+        self.agent_workspace_button = QPushButton("Agent Workspace")
+        self.agent_workspace_button.clicked.connect(
+            self._open_agent_workspace
+        )
+        agent_buttons.addWidget(self.ai_connections_button)
+        agent_buttons.addWidget(self.agent_workspace_button)
+        agent_layout.addWidget(self.agent_endpoint)
+        agent_layout.addWidget(self.agent_connection)
+        agent_layout.addLayout(agent_buttons)
+        layout.addWidget(agent_group)
 
         prompt_group = QGroupBox("Agent command")
         prompt_layout = QVBoxLayout(prompt_group)
@@ -183,6 +197,67 @@ class AgentOsmDock(QDockWidget):
         scroll.setWidget(root)
         self.setWidget(scroll)
         self.setMinimumWidth(360)
+        self._refresh_agent_connection()
+
+    @staticmethod
+    def _smartmodeler_plugin():
+        from qgis.utils import plugins
+
+        plugin = plugins.get("planx_smartmodeler")
+        if plugin is None:
+            return None
+        required = (
+            "agent_connection_info",
+            "open_ai_connections",
+            "open_agent_workspace",
+        )
+        return plugin if all(hasattr(plugin, name) for name in required) else None
+
+    def _refresh_agent_connection(self) -> None:
+        plugin = self._smartmodeler_plugin()
+        ready = plugin is not None
+        self.ai_connections_button.setEnabled(ready)
+        self.agent_workspace_button.setEnabled(ready)
+        if not ready:
+            self.agent_connection.setText(
+                "SmartModeler GIS is not loaded. The offline command router "
+                "still works without an API key."
+            )
+            return
+        info = plugin.agent_connection_info()
+        profile = str(info.get("profile_name") or "Unnamed")
+        provider = str(info.get("provider_name") or "Unknown provider")
+        model = str(info.get("model") or "").strip()
+        detail = f"SmartModeler profile: {profile} · {provider}"
+        if model:
+            detail = f"{detail} · {model}"
+        if not info.get("agent_chat_enabled"):
+            detail = f"{detail} · connected chat is currently Offline"
+        self.agent_connection.setText(detail)
+
+    def _open_ai_connections(self) -> None:
+        plugin = self._smartmodeler_plugin()
+        if plugin is None:
+            QMessageBox.information(
+                self,
+                "AI Connections",
+                "Enable SmartModeler GIS to configure OpenAI, Gemini, "
+                "DeepSeek, Anthropic, Ollama or compatible endpoints.",
+            )
+            return
+        plugin.open_ai_connections()
+        self._refresh_agent_connection()
+
+    def _open_agent_workspace(self) -> None:
+        plugin = self._smartmodeler_plugin()
+        if plugin is None:
+            QMessageBox.information(
+                self,
+                "Agent Workspace",
+                "Enable SmartModeler GIS to use connected Agent Chat.",
+            )
+            return
+        plugin.open_agent_workspace()
 
     def _populate_groups(self) -> None:
         self.group_combo.blockSignals(True)
@@ -317,7 +392,7 @@ class AgentOsmDock(QDockWidget):
         context.setProject(QgsProject.instance())
         context.setTransformContext(QgsProject.instance().transformContext())
         feedback = QgsProcessingFeedback()
-        feedback.progressChanged.connect(self.progress.setValue)
+        feedback.progressChanged.connect(self._set_progress)
         task = QgsProcessingAlgRunnerTask(
             algorithm, parameters, context, feedback
         )
@@ -333,6 +408,10 @@ class AgentOsmDock(QDockWidget):
         self.cancel_button.setEnabled(True)
         self.status.setText(f"Downloading {self._current_label} ...")
         QgsApplication.taskManager().addTask(task)
+
+    def _set_progress(self, value: float) -> None:
+        """QGIS 4 emits float progress while QProgressBar accepts only int."""
+        self.progress.setValue(max(0, min(100, int(round(value)))))
 
     def _finished(self, successful: bool, results: dict, group_id: str) -> None:
         context = self._context

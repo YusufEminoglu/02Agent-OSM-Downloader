@@ -65,6 +65,13 @@ The formal contract and safety boundary are documented in
 [`AGENT_PROTOCOL.md`](AGENT_PROTOCOL.md) and
 [`agent_protocol.json`](agent_protocol.json).
 
+The downloader dock also shows the active SmartModeler provider/profile and
+provides **AI Connections** and **Agent Workspace** buttons. Connection profiles
+and API secrets remain owned by SmartModeler: keys are kept in process memory
+or the encrypted QGIS authentication vault and are never copied to this plugin.
+The local command router remains usable when SmartModeler is disabled or its
+active profile is Offline.
+
 Example Agent request:
 
 > Download the Green & Blue — Green-blue system preset for the active layer

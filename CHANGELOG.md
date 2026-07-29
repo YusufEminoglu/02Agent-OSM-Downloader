@@ -2,6 +2,21 @@
 
 All notable changes to 02Agent OSM Downloader are documented here.
 
+## [0.1.2] - 2026-07-29
+
+### Fixed
+
+- Convert QGIS 4 floating-point task progress to the integer value required by
+  `QProgressBar`, preventing repeated `setValue(float)` Python errors while a
+  successful download continues.
+
+### Added
+
+- Visible SmartModeler AI profile/provider status in the downloader dock.
+- Direct buttons for the shared AI Connections dialog and Agent Workspace.
+- A secret-safe public bridge that reuses SmartModeler's QGIS vault profiles
+  instead of duplicating API keys in the downloader.
+
 ## [0.1.1] - 2026-07-29
 
 ### Added

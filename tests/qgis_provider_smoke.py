@@ -1,10 +1,23 @@
-"""Real-QGIS deterministic smoke test for the mixed-geometry preset."""
+"""Real-QGIS deterministic smoke test for the mixed-geometry preset.
+
+Run from the directory that *contains* the plugin folder:
+
+    python-qgis-ltr.bat -m zero2agent_osm_downloader.tests.qgis_provider_smoke
+    python-qgis.bat     -m zero2agent_osm_downloader.tests.qgis_provider_smoke
+
+The check itself is a QgsProcessingAlgorithm so it can also be run from inside a
+live QGIS session, but the module must still execute something when launched
+directly — otherwise it exits 0 having asserted nothing, and every wrapper
+reports a green test that never ran.
+"""
 from __future__ import annotations
 
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 from qgis.core import (
     QgsApplication,
@@ -46,7 +59,58 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
 
         from zero2agent_osm_downloader.core.catalog import get_preset
         from zero2agent_osm_downloader.core.query import build_query
+        from zero2agent_osm_downloader.dialogs.dock import AgentOsmDock
         from zero2agent_osm_downloader.processing.osm_algorithms import _CACHE
+        from qgis.PyQt.QtWidgets import QProgressBar
+
+        progress = QProgressBar()
+        AgentOsmDock._set_progress(
+            SimpleNamespace(progress=progress),
+            42.6,
+        )
+        if progress.value() != 43:
+            raise RuntimeError("Floating-point progress was not converted to int.")
+
+        from qgis.utils import plugins
+
+        class _SmartModelerBridgeStub:
+            connections_opened = 0
+            workspace_opened = 0
+
+            @staticmethod
+            def agent_connection_info():
+                return {
+                    "profile_name": "Research",
+                    "provider_id": "deepseek",
+                    "provider_name": "DeepSeek API",
+                    "model": "deepseek-chat",
+                    "agent_chat_enabled": True,
+                }
+
+            def open_ai_connections(self):
+                self.connections_opened += 1
+                return True
+
+            def open_agent_workspace(self):
+                self.workspace_opened += 1
+
+        bridge = _SmartModelerBridgeStub()
+        previous_bridge = plugins.get("planx_smartmodeler")
+        plugins["planx_smartmodeler"] = bridge
+        try:
+            dock = AgentOsmDock(None)
+            if "DeepSeek API" not in dock.agent_connection.text():
+                raise RuntimeError("SmartModeler profile is not visible in the dock.")
+            dock._open_ai_connections()
+            dock._open_agent_workspace()
+            if (bridge.connections_opened, bridge.workspace_opened) != (1, 1):
+                raise RuntimeError("SmartModeler public bridge buttons did not run.")
+            dock.deleteLater()
+        finally:
+            if previous_bridge is None:
+                plugins.pop("planx_smartmodeler", None)
+            else:
+                plugins["planx_smartmodeler"] = previous_bridge
 
         bbox = (38.4100, 27.1200, 38.4160, 27.1260)
         query = build_query(get_preset("urban_form").tags, bbox)
@@ -129,3 +193,65 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         return {
             "RESULT": "Urban form preset produced 1 point, 1 line and 1 polygon."
         }
+
+
+def main() -> bool:
+    """Bootstrap headless QGIS, register the provider, run the check."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    plugin_dir = Path(__file__).resolve().parent.parent
+    os.environ.setdefault("ZERO2AGENT_OSM_SOURCE_ROOT", str(plugin_dir))
+    if str(plugin_dir.parent) not in sys.path:
+        sys.path.insert(0, str(plugin_dir.parent))
+
+    app = QgsApplication.instance()
+    owns_app = app is None
+    profile = None
+    if owns_app:
+        profile = tempfile.TemporaryDirectory(prefix="zero2agent-smoke-")
+        app = QgsApplication([], False, profile.name, "external")
+        app.initQgis()
+
+    # Processing ships under the QGIS plugins directory, which is not on
+    # sys.path outside the application.
+    plugins_path = os.path.join(QgsApplication.prefixPath(), "python", "plugins")
+    if plugins_path not in sys.path:
+        sys.path.append(plugins_path)
+    from processing.core.Processing import Processing
+    from qgis.analysis import QgsNativeAlgorithms
+
+    QgsApplication.processingRegistry().addProvider(QgsNativeAlgorithms())
+    Processing.initialize()
+
+    from zero2agent_osm_downloader.processing.provider import AgentOsmProvider
+
+    provider = AgentOsmProvider()
+    QgsApplication.processingRegistry().addProvider(provider)
+
+    print("=" * 62)
+    print(" 02Agent OSM Downloader - provider smoke")
+    print("=" * 62)
+    ok = False
+    try:
+        from qgis.core import QgsProcessingFeedback
+
+        result = AgentOsmProviderSmoke().processAlgorithm(
+            {}, QgsProcessingContext(), QgsProcessingFeedback()
+        )
+        print(f"  [PASS] {result['RESULT']}")
+        ok = True
+    except Exception as error:  # a failed assertion is a failed test, not a crash
+        print(f"  [FAIL] {type(error).__name__}: {error}")
+    finally:
+        print("-" * 62)
+        print(f"  {1 if ok else 0}/1 passed")
+        QgsProject.instance().clear()
+        if owns_app:
+            app.exitQgis()
+            profile.cleanup()
+    return ok
+
+
+if __name__ == "__main__":
+    sys.exit(0 if main() else 1)
+else:
+    main()
