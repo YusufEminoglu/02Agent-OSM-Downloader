@@ -5,6 +5,10 @@ OpenStreetMap data acquisition. It works independently through its dock and
 Processing provider, and SmartModeler GIS can use the same Processing
 algorithms from Agent Workspace.
 
+The plugin publishes a versioned, machine-readable
+[Agent Protocol v1](AGENT_PROTOCOL.md). Its stable transport is the live QGIS
+Processing registry rather than plugin UI automation.
+
 ## What it provides
 
 - One-click curated thematic presets for:
@@ -48,6 +52,18 @@ When both plugins are enabled, SmartModeler can discover and run the curated
 preset algorithm under the same explicit approval model as its own bounded OSM
 downloader. SmartModeler remains usable without this plugin, and this plugin
 remains usable without SmartModeler.
+
+The connection handshake is:
+
+1. `plugin.capabilities` confirms package and provider ownership.
+2. `processing.search` discovers the stable algorithm ID.
+3. `processing.describe` returns the live signature and a fresh context token.
+4. SmartModeler submits a validated `processing_run` proposal.
+5. The download starts only after the user clicks **Run**.
+
+The formal contract and safety boundary are documented in
+[`AGENT_PROTOCOL.md`](AGENT_PROTOCOL.md) and
+[`agent_protocol.json`](agent_protocol.json).
 
 Example Agent request:
 

@@ -285,6 +285,24 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
     def groupId(self) -> str:
         return "osm_acquisition"
 
+    def tags(self) -> List[str]:
+        return [
+            "osm",
+            "openstreetmap",
+            "overpass",
+            "agent",
+            "smartmodeler",
+            "download",
+            "urban analysis",
+            "temporary layers",
+        ]
+
+    def helpUrl(self) -> str:
+        return (
+            "https://github.com/YusufEminoglu/02Agent-OSM-Downloader/"
+            "blob/main/AGENT_PROTOCOL.md"
+        )
+
     def createInstance(self):
         return type(self)()
 

@@ -2,6 +2,19 @@
 
 All notable changes to 02Agent OSM Downloader are documented here.
 
+## [0.1.1] - 2026-07-29
+
+### Added
+
+- Versioned, machine-readable Agent Protocol v1 contract.
+- Visible agent endpoint status in the dock and detailed integration About text.
+- Processing search tags and direct protocol help link.
+- Regression tests for protocol safety and Hub discovery metadata.
+
+### Changed
+
+- Expanded the QGIS Hub description, About content and discovery tags.
+
 ## [0.1.0] - 2026-07-29
 
 ### Added

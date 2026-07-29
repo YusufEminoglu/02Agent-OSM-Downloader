@@ -86,6 +86,20 @@ class AgentOsmDock(QDockWidget):
         layout.addWidget(title)
         layout.addWidget(subtitle)
 
+        self.agent_endpoint = QLabel(
+            "Agent Protocol v1 · zero2agentosm endpoint ready"
+        )
+        self.agent_endpoint.setWordWrap(True)
+        self.agent_endpoint.setToolTip(
+            "SmartModeler and compatible agents discover the two bounded "
+            "download endpoints through the live QGIS Processing registry."
+        )
+        self.agent_endpoint.setStyleSheet(
+            "background:#E8F5F2;color:#12645A;padding:6px;"
+            "border:1px solid #A8D8CF;border-radius:4px;font-weight:600;"
+        )
+        layout.addWidget(self.agent_endpoint)
+
         prompt_group = QGroupBox("Agent command")
         prompt_layout = QVBoxLayout(prompt_group)
         self.prompt = QPlainTextEdit()

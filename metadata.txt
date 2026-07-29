@@ -2,19 +2,19 @@
 name=02Agent OSM Downloader
 qgisMinimumVersion=4.0
 qgisMaximumVersion=4.99
-description=Prompt-assisted curated OpenStreetMap acquisition for urban analysis.
-version=0.1.0
+description=AI-agent-ready OpenStreetMap downloader with 26 curated urban-analysis presets, custom tags and bounded temporary outputs.
+version=0.1.1
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
-about=02Agent OSM Downloader is a focused QGIS 4 data-acquisition studio for OpenStreetMap. It offers curated thematic presets for networks, morphology, green-blue systems, public transport, religious sites, tourism, sport, cycling, cars, traffic, healthcare, education and emergency services; a custom key/value downloader; an offline natural-language intent router; and Processing algorithms that SmartModeler GIS Agent can inspect and run. Requests use the current map or active-layer extent, three pinned Overpass mirrors, strict area/response/feature limits, cancellation, a session cache and temporary QGIS outputs. Raw Overpass queries, arbitrary URLs, user paths, API keys and pip dependencies are not accepted.
+about=02Agent OSM Downloader is an AI-agent-ready QGIS 4 acquisition studio for OpenStreetMap. Its 13 thematic groups and 26 curated presets cover street and rail networks, morphology, buildings, land use, green-blue systems, public transport, religion, tourism, heritage, sport, cycling, cars, traffic, healthcare, education and emergency services. Users can also request a bounded custom OSM key/value tag or type a Turkish/English command into the offline intent router. Agent Protocol v1 exposes two stable QGIS Processing endpoints that SmartModeler GIS discovers, inspects and runs only after a validated proposal and explicit Run approval. Downloads use the current map or active-layer extent, three pinned Overpass mirrors, strict area/response/feature limits, cancellation, session caching and temporary point/line/polygon outputs. The plugin accepts no raw Overpass query, arbitrary URL, user path, API key or pip dependency.
 
 tracker=https://github.com/YusufEminoglu/02Agent-OSM-Downloader/issues
 repository=https://github.com/YusufEminoglu/02Agent-OSM-Downloader
 homepage=https://github.com/YusufEminoglu/02Agent-OSM-Downloader
 
 category=Vector
-tags=osm,openstreetmap,agent,urban,network,morphology,transport,processing
+tags=qgis,osm,openstreetmap,overpass,ai,agent,smartmodeler,urban-analysis,urban-planning,network,morphology,buildings,land-use,green-blue,public-transport,cycling,traffic,tourism,processing,data-downloader
 icon=icons/icon.png
 
 experimental=False
@@ -23,4 +23,5 @@ hasProcessingProvider=yes
 license=GPL-3
 
 changelog=
+    0.1.1 - Added the versioned Agent Protocol v1 manifest, visible agent endpoint status, richer Hub metadata and expanded discovery tags.
     0.1.0 - Initial release with curated thematic presets, custom tags, offline command routing, bounded Overpass fallback and SmartModeler-ready Processing algorithms.

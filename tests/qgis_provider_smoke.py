@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from qgis.core import (
+    QgsApplication,
     QgsCoordinateReferenceSystem,
     QgsProcessingAlgorithm,
     QgsProcessingContext,
@@ -86,6 +87,16 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         )
 
         import processing
+
+        algorithm = QgsApplication.processingRegistry().algorithmById(
+            "zero2agentosm:download_preset"
+        )
+        if algorithm is None:
+            raise RuntimeError("Agent protocol endpoint is not registered.")
+        if not {"agent", "openstreetmap"} <= set(algorithm.tags()):
+            raise RuntimeError("Agent protocol endpoint search tags are missing.")
+        if not algorithm.helpUrl().endswith("AGENT_PROTOCOL.md"):
+            raise RuntimeError("Agent protocol help URL is missing.")
 
         context = QgsProcessingContext()
         context.setProject(QgsProject.instance())

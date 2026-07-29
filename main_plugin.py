@@ -85,8 +85,17 @@ class AgentOsmDownloaderPlugin:
             "02Agent OSM Downloader",
             (
                 "<h3>02Agent OSM Downloader</h3>"
-                "<p>Curated, bounded OpenStreetMap acquisition for QGIS 4. "
-                "Use thematic presets, a custom tag, the offline command "
-                "router, or SmartModeler GIS Agent.</p>"
+                "<p><b>AI-agent-ready OpenStreetMap acquisition for QGIS 4.</b></p>"
+                "<p>Choose from 13 thematic groups and 26 curated urban-analysis "
+                "presets, request a custom OSM tag, or use the Turkish/English "
+                "offline command router.</p>"
+                "<p><b>Agent Protocol v1</b><br>"
+                "Provider: <code>zero2agentosm</code><br>"
+                "Endpoints: <code>download_preset</code> and "
+                "<code>download_custom_tag</code></p>"
+                "<p>SmartModeler GIS discovers these endpoints through the live "
+                "QGIS Processing registry, validates their signatures, and runs "
+                "them only after an explicit approval card.</p>"
+                "<p>GPL-3.0-or-later · Yusuf Eminoğlu</p>"
             ),
         )
