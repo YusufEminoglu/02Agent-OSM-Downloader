@@ -118,6 +118,26 @@ class AgentProtocolTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(opened, [True])
 
+    def test_missing_smartmodeler_message_explains_installation(self) -> None:
+        module_name = "planx_smartmodeler.gui.ai_settings_dialog"
+        previous = sys.modules.get(module_name)
+        original_loader = smartmodeler_bridge.loaded_plugin
+        try:
+            sys.modules[module_name] = None
+            smartmodeler_bridge.loaded_plugin = lambda: None
+            result = smartmodeler_bridge.open_connections()
+        finally:
+            smartmodeler_bridge.loaded_plugin = original_loader
+            if previous is None:
+                sys.modules.pop(module_name, None)
+            else:
+                sys.modules[module_name] = previous
+        self.assertFalse(result.ok)
+        self.assertIn("Manage and Install Plugins", result.message)
+        self.assertIn("search for “SmartModeler GIS”", result.message)
+        self.assertIn("install it", result.message)
+        self.assertIn("enable it", result.message)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -374,9 +374,10 @@ class AgentOsmDock(QDockWidget):
             self.agent_connection.setText(
                 error
                 or (
-                    "SmartModeler GIS is not loaded. AI Connections can still "
-                    "open when its package is installed; the offline command "
-                    "router remains available either way."
+                    "SmartModeler GIS is not loaded. Open Plugins > Manage and "
+                    "Install Plugins, search for “SmartModeler GIS”, install "
+                    "and enable it, then reopen this tab. The offline command "
+                    "router remains available without it."
                 )
             )
             return

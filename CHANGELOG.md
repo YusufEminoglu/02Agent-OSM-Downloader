@@ -2,6 +2,14 @@
 
 All notable changes to 02Agent OSM Downloader are documented here.
 
+## [0.2.1] - 2026-07-30
+
+### Changed
+
+- Make the missing-SmartModeler warning explicitly direct users to QGIS
+  **Plugins > Manage and Install Plugins**, search for SmartModeler GIS, install
+  it, enable it, and reopen the Connections tab.
+
 ## [0.2.0] - 2026-07-30
 
 ### Fixed

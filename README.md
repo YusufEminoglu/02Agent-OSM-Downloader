@@ -78,7 +78,10 @@ or the encrypted QGIS authentication vault and are never copied to this plugin.
 The local command router remains usable when SmartModeler is disabled or its
 active profile is Offline. If the SmartModeler package is installed but its
 plugin dock has not initialized, **AI Connections** opens the shared settings
-dialog directly instead of becoming a disabled or silent action.
+dialog directly instead of becoming a disabled or silent action. If it is not
+installed, the Connections tab directs the user to **Plugins > Manage and
+Install Plugins**, where they can search for, install and enable SmartModeler
+GIS.
 
 Example Agent request:
 

@@ -94,8 +94,9 @@ def open_connections(parent=None) -> BridgeResult:
     except Exception:  # noqa: BLE001 - optional plugin boundary
         return BridgeResult(
             False,
-            "SmartModeler GIS is not available. Install or enable it to "
-            "configure AI connections.",
+            "SmartModeler GIS is required for AI connections. Open Plugins > "
+            "Manage and Install Plugins, search for “SmartModeler GIS”, "
+            "install it, then enable it and reopen this tab.",
         )
     try:
         dialog = AiSettingsDialog(parent)
