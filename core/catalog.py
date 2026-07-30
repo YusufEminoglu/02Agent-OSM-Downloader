@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Iterable, Tuple
 
 GEOMETRY_KINDS = ("point", "line", "polygon")
 
@@ -323,18 +323,36 @@ def get_preset(preset_id: str) -> Preset:
 
 def _normalized(text: str) -> str:
     folded = unicodedata.normalize("NFKD", text.casefold())
-    return " ".join(
-        "".join(char for char in folded if not unicodedata.combining(char)).split()
+    without_marks = "".join(
+        char for char in folded if not unicodedata.combining(char)
+    )
+    return " ".join(re.sub(r"[^a-z0-9_:.~]+", " ", without_marks).split())
+
+
+def _contains_phrase(text: str, phrase: str) -> bool:
+    normalized_phrase = _normalized(phrase)
+    return bool(
+        normalized_phrase
+        and f" {normalized_phrase} " in f" {text} "
     )
 
 
 def _geometry_hint(text: str, key: str) -> str:
     words = _normalized(text)
-    if any(item in words for item in ("point", "nokta", "poi", "durak")):
+    if any(
+        _contains_phrase(words, item)
+        for item in ("point", "nokta", "poi", "durak")
+    ):
         return "point"
-    if any(item in words for item in ("line", "çizgi", "hat", "yol", "network")):
+    if any(
+        _contains_phrase(words, item)
+        for item in ("line", "çizgi", "hat", "yol", "network")
+    ):
         return "line"
-    if any(item in words for item in ("polygon", "poligon", "alan", "bina")):
+    if any(
+        _contains_phrase(words, item)
+        for item in ("polygon", "poligon", "alan", "bina")
+    ):
         return "polygon"
     if key in {"building", "landuse", "leisure"}:
         return "polygon"
@@ -363,7 +381,7 @@ def interpret_prompt(text: object) -> PromptIntent:
         score = sum(
             max(1, len(_normalized(term).split()))
             for term in terms
-            if _normalized(term) in normalized
+            if _contains_phrase(normalized, term)
         )
         if score:
             scored.append((score, preset.preset_id))

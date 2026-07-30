@@ -11,6 +11,12 @@ Processing registry rather than plugin UI automation.
 
 ## What it provides
 
+- A compact three-tab dock:
+  - **Download** for curated presets and safe custom tags.
+  - **Command** for the offline Turkish/English intent router.
+  - **Connections** for the SmartModeler bridge and Agent Protocol status.
+- Palette-derived styling that follows QGIS light, dark, high-contrast and
+  custom themes without forcing a fixed foreground/background pair.
 - One-click curated thematic presets for:
   - Network
   - Morphology
@@ -70,7 +76,9 @@ provides **AI Connections** and **Agent Workspace** buttons. Connection profiles
 and API secrets remain owned by SmartModeler: keys are kept in process memory
 or the encrypted QGIS authentication vault and are never copied to this plugin.
 The local command router remains usable when SmartModeler is disabled or its
-active profile is Offline.
+active profile is Offline. If the SmartModeler package is installed but its
+plugin dock has not initialized, **AI Connections** opens the shared settings
+dialog directly instead of becoming a disabled or silent action.
 
 Example Agent request:
 

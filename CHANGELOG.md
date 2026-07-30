@@ -2,6 +2,26 @@
 
 All notable changes to 02Agent OSM Downloader are documented here.
 
+## [0.2.0] - 2026-07-30
+
+### Fixed
+
+- Keep AI Connections actionable when SmartModeler is installed but not fully
+  initialized, and show an explicit error instead of a silent no-op.
+- Assemble fragmented outer and inner ways in OSM multipolygon relations.
+- Prevent substring-only command matches such as `car` inside unrelated words.
+- Reset asynchronous task controls even when result-layer handling fails.
+- Use the current `QMetaType` string field API instead of the deprecated
+  `QVariant` field-constructor path.
+
+### Changed
+
+- Rebuilt the dock as compact Download, Command and Connections tabs.
+- Derive surfaces, text, borders and focus states from the active QGIS palette
+  for light, dark, high-contrast and custom theme compatibility.
+- Disable inactive preset/custom controls and add clearer privacy, extent and
+  execution guidance.
+
 ## [0.1.2] - 2026-07-29
 
 ### Fixed

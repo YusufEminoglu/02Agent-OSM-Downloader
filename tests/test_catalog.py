@@ -50,6 +50,15 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual((intent.key, intent.value), ("building", "*"))
         self.assertEqual(intent.geometry, "polygon")
 
+    def test_router_uses_phrase_boundaries_and_normalizes_punctuation(
+        self,
+    ) -> None:
+        self.assertEqual(interpret_prompt("scarcity analysis").mode, "none")
+        self.assertEqual(
+            interpret_prompt("green-blue infrastructure").preset_id,
+            "green_blue_all",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

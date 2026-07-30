@@ -3,7 +3,7 @@ name=02Agent OSM Downloader
 qgisMinimumVersion=4.0
 qgisMaximumVersion=4.99
 description=AI-agent-ready OpenStreetMap downloader with 26 curated urban-analysis presets, custom tags and bounded temporary outputs.
-version=0.1.2
+version=0.2.0
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -23,6 +23,7 @@ hasProcessingProvider=yes
 license=GPL-3
 
 changelog=
+    0.2.0 - Rebuild the dock with palette-aware tabs, repair AI Connections, assemble fragmented multipolygons, and harden command and task workflows.
     0.1.2 - Fix QGIS 4 float progress errors and add a visible, secret-safe bridge to SmartModeler AI Connections and Agent Workspace.
     0.1.1 - Added the versioned Agent Protocol v1 manifest, visible agent endpoint status, richer Hub metadata and expanded discovery tags.
     0.1.0 - Initial release with curated thematic presets, custom tags, offline command routing, bounded Overpass fallback and SmartModeler-ready Processing algorithms.

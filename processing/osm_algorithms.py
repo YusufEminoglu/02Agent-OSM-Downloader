@@ -5,7 +5,7 @@ import json
 import time
 from typing import Dict, List, Optional, Tuple
 
-from qgis.PyQt.QtCore import QByteArray, QUrl, QUrlQuery, QVariant
+from qgis.PyQt.QtCore import QByteArray, QMetaType, QUrl, QUrlQuery
 from qgis.PyQt.QtNetwork import QNetworkRequest
 from qgis.core import (
     QgsBlockingNetworkRequest,
@@ -158,25 +158,82 @@ def _closed_ring(coordinates: object) -> List[QgsPointXY]:
     return ring if len(ring) >= 4 else []
 
 
+def _member_rings(members: object, role: str) -> List[List[QgsPointXY]]:
+    """Join fragmented Overpass relation members into closed rings.
+
+    Multipolygon relations commonly split one boundary across several open
+    member ways. Treating every member as a standalone polygon silently drops
+    those buildings and land-use areas, so assemble matching endpoints first.
+    """
+    if not isinstance(members, list):
+        return []
+    segments = []
+    for member in members:
+        if (
+            not isinstance(member, dict)
+            or member.get("type") != "way"
+            or str(member.get("role") or "outer") != role
+        ):
+            continue
+        points = _points(member.get("geometry"))
+        if len(points) >= 2:
+            segments.append(points)
+
+    endpoints: Dict[Tuple[float, float], List[int]] = {}
+    for index, segment in enumerate(segments):
+        for point in (segment[0], segment[-1]):
+            key = (point.x(), point.y())
+            endpoints.setdefault(key, []).append(index)
+    unused = set(range(len(segments)))
+
+    def take_segment(point: QgsPointXY) -> Optional[int]:
+        candidates = endpoints.get((point.x(), point.y()), [])
+        while candidates:
+            candidate = candidates.pop()
+            if candidate in unused:
+                unused.remove(candidate)
+                return candidate
+        return None
+
+    rings: List[List[QgsPointXY]] = []
+    while unused:
+        first = unused.pop()
+        chain = list(segments[first])
+        while chain[0] != chain[-1]:
+            index = take_segment(chain[-1])
+            attach_to_end = index is not None
+            if index is None:
+                index = take_segment(chain[0])
+            if index is None:
+                break
+            segment = segments[index]
+            if attach_to_end and chain[-1] == segment[0]:
+                chain.extend(segment[1:])
+            elif attach_to_end:
+                chain.extend(reversed(segment[:-1]))
+            elif chain[0] == segment[-1]:
+                chain = segment[:-1] + chain
+            else:
+                chain = list(reversed(segment[1:])) + chain
+        if len(chain) >= 4 and chain[0] == chain[-1]:
+            rings.append(chain)
+    return rings
+
+
 def _relation_polygon(element: Dict) -> Optional[QgsGeometry]:
     members = element.get("members")
     if not isinstance(members, list):
         return None
-    outers: List[QgsGeometry] = []
-    inners: List[QgsGeometry] = []
-    for member in members:
-        if not isinstance(member, dict) or member.get("type") != "way":
-            continue
-        ring = _closed_ring(member.get("geometry"))
-        if not ring:
-            continue
-        polygon = QgsGeometry.fromPolygonXY([ring])
-        if polygon.isEmpty():
-            continue
-        if member.get("role") == "inner":
-            inners.append(polygon)
-        else:
-            outers.append(polygon)
+    outers = [
+        QgsGeometry.fromPolygonXY([ring])
+        for ring in _member_rings(members, "outer")
+    ]
+    inners = [
+        QgsGeometry.fromPolygonXY([ring])
+        for ring in _member_rings(members, "inner")
+    ]
+    outers = [geometry for geometry in outers if not geometry.isEmpty()]
+    inners = [geometry for geometry in inners if not geometry.isEmpty()]
     if not outers:
         return None
     geometry = QgsGeometry.unaryUnion(outers)
@@ -241,7 +298,7 @@ def _fields() -> QgsFields:
         "landuse", "leisure", "natural", "railway", "public_transport",
         "tourism", "sport", "height", "building_levels", "tags_json",
     ):
-        fields.append(QgsField(name, QVariant.String))
+        fields.append(QgsField(name, QMetaType.Type.QString))
     return fields
 
 

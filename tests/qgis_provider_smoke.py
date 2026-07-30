@@ -60,7 +60,12 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         from zero2agent_osm_downloader.core.catalog import get_preset
         from zero2agent_osm_downloader.core.query import build_query
         from zero2agent_osm_downloader.dialogs.dock import AgentOsmDock
-        from zero2agent_osm_downloader.processing.osm_algorithms import _CACHE
+        from zero2agent_osm_downloader.dialogs.theme import dock_stylesheet
+        from zero2agent_osm_downloader.processing.osm_algorithms import (
+            _CACHE,
+            _relation_polygon,
+        )
+        from qgis.PyQt.QtGui import QColor, QPalette
         from qgis.PyQt.QtWidgets import QProgressBar
 
         progress = QProgressBar()
@@ -69,7 +74,55 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             42.6,
         )
         if progress.value() != 43:
-            raise RuntimeError("Floating-point progress was not converted to int.")
+            raise RuntimeError(
+                "Floating-point progress was not converted to int."
+            )
+
+        relation_geometry = _relation_polygon(
+            {
+                "members": [
+                    {
+                        "type": "way",
+                        "role": "outer",
+                        "geometry": [
+                            {"lat": 38.410, "lon": 27.120},
+                            {"lat": 38.410, "lon": 27.121},
+                            {"lat": 38.411, "lon": 27.121},
+                        ],
+                    },
+                    {
+                        "type": "way",
+                        "role": "outer",
+                        "geometry": [
+                            {"lat": 38.411, "lon": 27.121},
+                            {"lat": 38.411, "lon": 27.120},
+                            {"lat": 38.410, "lon": 27.120},
+                        ],
+                    },
+                ]
+            }
+        )
+        if relation_geometry is None or relation_geometry.isEmpty():
+            raise RuntimeError(
+                "Fragmented multipolygon members were not assembled."
+            )
+
+        light = QPalette()
+        light.setColor(QPalette.ColorRole.Window, QColor("#F4F4F4"))
+        light.setColor(QPalette.ColorRole.WindowText, QColor("#202020"))
+        light.setColor(QPalette.ColorRole.Base, QColor("#FFFFFF"))
+        dark = QPalette()
+        dark.setColor(QPalette.ColorRole.Window, QColor("#20242A"))
+        dark.setColor(QPalette.ColorRole.WindowText, QColor("#F2F4F6"))
+        dark.setColor(QPalette.ColorRole.Base, QColor("#15181D"))
+        light_style = dock_stylesheet(light)
+        dark_style = dock_stylesheet(dark)
+        if (
+            light_style == dark_style
+            or "#f4f4f4" not in light_style
+            or "#20242a" not in dark_style
+        ):
+            raise RuntimeError("Dock styling did not follow light/dark palettes.")
 
         from qgis.utils import plugins
 
@@ -99,8 +152,19 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         plugins["planx_smartmodeler"] = bridge
         try:
             dock = AgentOsmDock(None)
+            if dock.tabs.count() != 3:
+                raise RuntimeError(
+                    "The compact Download/Command/Connections UI is incomplete."
+                )
+            if not dock.ai_connections_button.isEnabled():
+                raise RuntimeError("AI Connections is a silent disabled action.")
+            dock.custom_check.setChecked(True)
+            if dock.group_combo.isEnabled() or not dock.key_edit.isEnabled():
+                raise RuntimeError("Custom-tag controls did not switch modes.")
             if "DeepSeek API" not in dock.agent_connection.text():
-                raise RuntimeError("SmartModeler profile is not visible in the dock.")
+                raise RuntimeError(
+                    "SmartModeler profile is not visible in the dock."
+                )
             dock._open_ai_connections()
             dock._open_agent_workspace()
             if (bridge.connections_opened, bridge.workspace_opened) != (1, 1):

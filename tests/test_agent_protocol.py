@@ -4,7 +4,11 @@ from __future__ import annotations
 import configparser
 import json
 from pathlib import Path
+import sys
+import types
 import unittest
+
+from zero2agent_osm_downloader.core import smartmodeler_bridge
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -59,6 +63,60 @@ class AgentProtocolTests(unittest.TestCase):
             <= tags
         )
         self.assertEqual(metadata["hasprocessingprovider"], "yes")
+
+    def test_connections_falls_back_to_installed_smartmodeler_dialog(
+        self,
+    ) -> None:
+        module_names = (
+            "planx_smartmodeler",
+            "planx_smartmodeler.gui",
+            "planx_smartmodeler.gui.ai_settings_dialog",
+            "planx_smartmodeler.gui.theme",
+        )
+        previous = {
+            name: sys.modules.get(name)
+            for name in module_names
+        }
+        opened = []
+
+        class FakeDialog:
+            def __init__(self, parent=None) -> None:
+                self.parent = parent
+
+            def setStyleSheet(self, _style: str) -> None:
+                return None
+
+            def exec(self) -> None:
+                opened.append(True)
+
+        package = types.ModuleType("planx_smartmodeler")
+        package.__path__ = []
+        gui = types.ModuleType("planx_smartmodeler.gui")
+        gui.__path__ = []
+        dialog_module = types.ModuleType(
+            "planx_smartmodeler.gui.ai_settings_dialog"
+        )
+        dialog_module.AiSettingsDialog = FakeDialog
+        theme_module = types.ModuleType("planx_smartmodeler.gui.theme")
+        theme_module.STUDIO_STYLE = ""
+
+        original_loader = smartmodeler_bridge.loaded_plugin
+        try:
+            sys.modules[module_names[0]] = package
+            sys.modules[module_names[1]] = gui
+            sys.modules[module_names[2]] = dialog_module
+            sys.modules[module_names[3]] = theme_module
+            smartmodeler_bridge.loaded_plugin = lambda: None
+            result = smartmodeler_bridge.open_connections()
+        finally:
+            smartmodeler_bridge.loaded_plugin = original_loader
+            for name, module in previous.items():
+                if module is None:
+                    sys.modules.pop(name, None)
+                else:
+                    sys.modules[name] = module
+        self.assertTrue(result.ok)
+        self.assertEqual(opened, [True])
 
 
 if __name__ == "__main__":

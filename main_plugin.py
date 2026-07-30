@@ -37,6 +37,7 @@ class AgentOsmDownloaderPlugin:
             return
         icon = QIcon(os.path.join(self.plugin_dir, "icons", "icon.png"))
         self.action = QAction(icon, "Open 02Agent OSM Downloader", self.iface.mainWindow())
+        self.action.setCheckable(True)
         self.action.triggered.connect(self._toggle_dock)
         self.iface.addPluginToMenu(self.MENU_NAME, self.action)
         self.iface.addToolBarIcon(self.action)
@@ -64,19 +65,21 @@ class AgentOsmDownloaderPlugin:
             QgsApplication.processingRegistry().removeProvider(self.provider)
             self.provider = None
 
-    def _toggle_dock(self) -> None:
+    def _toggle_dock(self, visible: bool) -> None:
         if self.dock is None:
             from .dialogs.dock import AgentOsmDock
 
             self.dock = AgentOsmDock(self.iface, self.iface.mainWindow())
+            self.dock.visibilityChanged.connect(self.action.setChecked)
             self.iface.addDockWidget(
                 Qt.DockWidgetArea.LeftDockWidgetArea,
                 self.dock,
             )
+            self.dock.setVisible(True)
             self.dock.raise_()
             return
-        self.dock.setVisible(not self.dock.isVisible())
-        if self.dock.isVisible():
+        self.dock.setVisible(bool(visible))
+        if visible:
             self.dock.raise_()
 
     def _show_about(self) -> None:
