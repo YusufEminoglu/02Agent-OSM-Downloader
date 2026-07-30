@@ -89,7 +89,7 @@ class AgentOsmDownloaderPlugin:
             (
                 "<h3>02Agent OSM Downloader</h3>"
                 "<p><b>AI-agent-ready OpenStreetMap acquisition for QGIS 4.</b></p>"
-                "<p>Choose from 13 thematic groups and 26 curated urban-analysis "
+                "<p>Choose from 14 thematic groups and 27 curated urban-analysis "
                 "presets, request a custom OSM tag, or use the Turkish/English "
                 "offline command router.</p>"
                 "<p><b>Agent Protocol v1</b><br>"

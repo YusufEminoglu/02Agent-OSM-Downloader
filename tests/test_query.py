@@ -29,6 +29,15 @@ class QueryTests(unittest.TestCase):
         self.assertIn('way["waterway"]', query)
         self.assertNotIn("http", query)
 
+    def test_urban_context_query_contains_every_requested_theme(self) -> None:
+        query = build_query(get_preset("urban_context").tags, SMALL_BBOX)
+        self.assertIn('way["highway"]', query)
+        self.assertIn('way["building"]', query)
+        self.assertIn('node["natural"="tree"]', query)
+        self.assertIn('way["natural"="tree_row"]', query)
+        self.assertEqual(query.count("[out:json]"), 1)
+        self.assertNotIn("http", query)
+
     def test_duplicate_selectors_are_deduplicated(self) -> None:
         spec = TagSpec("building", "", "polygon")
         query = build_query((spec, spec), SMALL_BBOX)

@@ -55,7 +55,7 @@ class AgentProtocolTests(unittest.TestCase):
         metadata = parser["general"]
         self.assertGreaterEqual(len(metadata["description"]), 100)
         self.assertIn("Agent Protocol v1", metadata["about"])
-        self.assertIn("26 curated presets", metadata["about"])
+        self.assertIn("27 curated presets", metadata["about"])
         tags = {item.strip() for item in metadata["tags"].split(",")}
         self.assertGreaterEqual(len(tags), 15)
         self.assertTrue(

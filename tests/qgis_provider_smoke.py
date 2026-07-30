@@ -57,7 +57,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         if parent not in sys.path:
             sys.path.insert(0, parent)
 
-        from zero2agent_osm_downloader.core.catalog import get_preset
+        from zero2agent_osm_downloader.core.catalog import PRESETS, get_preset
         from zero2agent_osm_downloader.core.query import build_query
         from zero2agent_osm_downloader.dialogs.dock import AgentOsmDock
         from zero2agent_osm_downloader.dialogs.theme import dock_stylesheet
@@ -231,7 +231,11 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         results = processing.run(
             "zero2agentosm:download_preset",
             {
-                "PRESET": 5,
+                "PRESET": next(
+                    index
+                    for index, preset in enumerate(PRESETS)
+                    if preset.preset_id == "urban_form"
+                ),
                 "EXTENT": QgsReferencedRectangle(
                     QgsRectangle(27.1200, 38.4100, 27.1260, 38.4160),
                     QgsCoordinateReferenceSystem.fromEpsgId(4326),

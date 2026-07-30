@@ -2,12 +2,12 @@
 name=02Agent OSM Downloader
 qgisMinimumVersion=4.0
 qgisMaximumVersion=4.99
-description=AI-agent-ready OpenStreetMap downloader with 26 curated urban-analysis presets, custom tags and bounded temporary outputs.
-version=0.2.1
+description=AI-agent-ready OpenStreetMap downloader with 27 curated urban-analysis presets, custom tags and bounded temporary outputs.
+version=0.3.0
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
-about=02Agent OSM Downloader is an AI-agent-ready QGIS 4 acquisition studio for OpenStreetMap. Its 13 thematic groups and 26 curated presets cover street and rail networks, morphology, buildings, land use, green-blue systems, public transport, religion, tourism, heritage, sport, cycling, cars, traffic, healthcare, education and emergency services. Users can also request a bounded custom OSM key/value tag or type a Turkish/English command into the offline intent router. Agent Protocol v1 exposes two stable QGIS Processing endpoints that SmartModeler GIS discovers, inspects and runs only after a validated proposal and explicit Run approval. The dock shows the active SmartModeler AI provider/profile and opens its shared AI Connections and Agent Workspace interfaces; API keys remain in SmartModeler's process memory or encrypted QGIS vault and are never copied into this plugin. Downloads use the current map or active-layer extent, three pinned Overpass mirrors, strict area/response/feature limits, cancellation, session caching and temporary point/line/polygon outputs. The plugin accepts no raw Overpass query, arbitrary URL, user path, API key or pip dependency.
+about=02Agent OSM Downloader is an AI-agent-ready QGIS 4 acquisition studio for OpenStreetMap. Its 14 thematic groups and 27 curated presets cover urban context, street and rail networks, morphology, buildings, land use, green-blue systems, public transport, religion, tourism, heritage, sport, cycling, cars, traffic, healthcare, education and emergency services. The Urban Context preset retrieves roads, building footprints, individual trees and tree rows in one bounded request. Users can also request a bounded custom OSM key/value tag or type a Turkish/English command into the offline intent router. Agent Protocol v1 exposes two stable QGIS Processing endpoints that SmartModeler GIS discovers, inspects and runs only after a validated proposal and explicit Run approval. The dock shows the active SmartModeler AI provider/profile and opens its shared AI Connections and Agent Workspace interfaces; API keys remain in SmartModeler's process memory or encrypted QGIS vault and are never copied into this plugin. Downloads use the current map or active-layer extent, three pinned Overpass mirrors, strict area/response/feature limits, cancellation, session caching and temporary point/line/polygon outputs. The plugin accepts no raw Overpass query, arbitrary URL, user path, API key or pip dependency.
 
 tracker=https://github.com/YusufEminoglu/02Agent-OSM-Downloader/issues
 repository=https://github.com/YusufEminoglu/02Agent-OSM-Downloader
@@ -23,6 +23,7 @@ hasProcessingProvider=yes
 license=GPL-3
 
 changelog=
+    0.3.0 - Add one bounded Urban Context preset and router path for roads, building footprints, individual trees and tree rows in one request.
     0.2.1 - Explain how to find, install and enable SmartModeler GIS from the QGIS Plugin Manager when AI Connections is unavailable.
     0.2.0 - Rebuild the dock with palette-aware tabs, repair AI Connections, assemble fragmented multipolygons, and harden command and task workflows.
     0.1.2 - Fix QGIS 4 float progress errors and add a visible, secret-safe bridge to SmartModeler AI Connections and Agent Workspace.

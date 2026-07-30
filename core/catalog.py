@@ -37,6 +37,27 @@ def _tags(*rows: Tuple[str, str, str]) -> Tuple[TagSpec, ...]:
 
 PRESETS: Tuple[Preset, ...] = (
     Preset(
+        "urban_context",
+        "urban_context",
+        "Urban Context",
+        "Roads, buildings & trees",
+        "Road network, building footprints, individual trees and tree rows.",
+        _tags(
+            ("highway", "", "line"),
+            ("building", "", "polygon"),
+            ("natural", "tree", "point"),
+            ("natural", "tree_row", "line"),
+        ),
+        (
+            "urban context",
+            "base map",
+            "roads buildings trees",
+            "road building tree",
+            "yollar binalar agaclar",
+            "kent baglami",
+        ),
+    ),
+    Preset(
         "road_network", "network", "Network", "Road network",
         "All OSM highway ways for network analysis.",
         _tags(("highway", "", "line")),
@@ -375,6 +396,20 @@ def interpret_prompt(text: object) -> PromptIntent:
         )
 
     normalized = _normalized(raw)
+    words = tuple(normalized.split())
+    has_road = any(
+        word.startswith(("road", "street", "yol")) for word in words
+    )
+    has_building = any(
+        word.startswith(("building", "bina")) for word in words
+    )
+    has_tree = any(
+        word.startswith(("tree", "agac")) for word in words
+    )
+    if has_road and has_building and has_tree:
+        return PromptIntent(
+            "preset", preset_id="urban_context", confidence=1.0
+        )
     scored = []
     for preset in PRESETS:
         terms: Iterable[str] = preset.keywords + (preset.title, preset.group_title)

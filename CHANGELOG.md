@@ -2,6 +2,20 @@
 
 All notable changes to 02Agent OSM Downloader are documented here.
 
+## [0.3.0] - 2026-07-30
+
+### Added
+
+- Add the **Urban Context — Roads, buildings & trees** preset: all highway
+  ways, building footprints, individual trees and tree rows in one bounded
+  compound Overpass request with temporary point, line and polygon outputs.
+- Route Turkish and English multi-theme requests containing roads, buildings
+  and trees directly to the combined preset instead of selecting only the first
+  requested theme.
+- Add catalog, router and exact-query regression tests for the combined preset,
+  plus SmartModeler dual-runtime validation of its three-output approval
+  contract.
+
 ## [0.2.1] - 2026-07-30
 
 ### Changed

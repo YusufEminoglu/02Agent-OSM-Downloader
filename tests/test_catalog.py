@@ -15,8 +15,8 @@ from zero2agent_osm_downloader.core.catalog import (
 class CatalogTests(unittest.TestCase):
     def test_catalog_ids_are_unique_and_every_group_is_populated(self) -> None:
         self.assertEqual(len(PRESETS), len(PRESETS_BY_ID))
-        self.assertGreaterEqual(len(GROUPS), 13)
-        self.assertGreaterEqual(len(PRESETS), 26)
+        self.assertGreaterEqual(len(GROUPS), 14)
+        self.assertGreaterEqual(len(PRESETS), 27)
         for group_id, _title in GROUPS:
             self.assertTrue(presets_for_group(group_id))
 
@@ -40,6 +40,24 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(
             interpret_prompt("bina morfolojisi").preset_id,
             "buildings",
+        )
+        self.assertEqual(
+            interpret_prompt(
+                "Ekrandaki map extent'e göre tüm yolları, binaları ve ağaçları indir"
+            ).preset_id,
+            "urban_context",
+        )
+
+    def test_urban_context_is_one_compound_cross_geometry_preset(self) -> None:
+        preset = get_preset("urban_context")
+        self.assertEqual(
+            {(tag.key, tag.value, tag.geometry) for tag in preset.tags},
+            {
+                ("highway", "", "line"),
+                ("building", "", "polygon"),
+                ("natural", "tree", "point"),
+                ("natural", "tree_row", "line"),
+            },
         )
 
     def test_explicit_tag_becomes_custom_intent(self) -> None:

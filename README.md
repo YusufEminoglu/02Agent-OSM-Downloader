@@ -18,6 +18,7 @@ Processing registry rather than plugin UI automation.
 - Palette-derived styling that follows QGIS light, dark, high-contrast and
   custom themes without forcing a fixed foreground/background pair.
 - One-click curated thematic presets for:
+  - Urban Context (roads, building footprints, trees and tree rows in one run)
   - Network
   - Morphology
   - Green & Blue
