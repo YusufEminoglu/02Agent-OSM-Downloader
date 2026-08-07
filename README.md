@@ -10,6 +10,11 @@ The plugin publishes a versioned, machine-readable
 [Agent Protocol v1](AGENT_PROTOCOL.md). Its stable transport is the live QGIS
 Processing registry rather than plugin UI automation.
 
+## 📖 Documentation
+
+**[Comprehensive Academic Reference Manual](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/)** — complete documentation of every feature, parameter, and workflow. Hosted on GitHub Pages.
+
+
 ## What it provides
 
 - A compact four-tab dock:
