@@ -35,6 +35,7 @@ class AgentProtocolTests(unittest.TestCase):
             {
                 "zero2agentosm:download_preset",
                 "zero2agentosm:download_custom_tag",
+                "zero2agentosm:download_advanced",
             },
         )
 
@@ -44,6 +45,8 @@ class AgentProtocolTests(unittest.TestCase):
         )
         safety = manifest["safety"]
         self.assertEqual(safety["maximum_extent_area_km2"], 100)
+        self.assertEqual(safety["maximum_advanced_tag_filters"], 4)
+        self.assertEqual(safety["advanced_match_modes"], ["any", "all"])
         self.assertFalse(safety["raw_query_input"])
         self.assertFalse(safety["arbitrary_url_input"])
         self.assertFalse(safety["file_path_input"])
@@ -63,6 +66,7 @@ class AgentProtocolTests(unittest.TestCase):
             <= tags
         )
         self.assertEqual(metadata["hasprocessingprovider"], "yes")
+        self.assertEqual(metadata["experimental"].casefold(), "true")
 
     def test_connections_falls_back_to_installed_smartmodeler_dialog(
         self,

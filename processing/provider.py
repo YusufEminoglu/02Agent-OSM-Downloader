@@ -7,6 +7,7 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.core import QgsProcessingProvider
 
 from .osm_algorithms import (
+    DownloadAdvancedQueryAlgorithm,
     DownloadCustomTagAlgorithm,
     DownloadPresetAlgorithm,
 )
@@ -22,7 +23,7 @@ class AgentOsmProvider(QgsProcessingProvider):
         return "02Agent OSM Downloader"
 
     def longName(self) -> str:
-        return "02Agent OSM Downloader — Curated OSM Acquisition"
+        return "02Agent OSM Downloader — Structured OSM Acquisition"
 
     def icon(self) -> QIcon:
         root = os.path.dirname(os.path.dirname(__file__))
@@ -31,3 +32,4 @@ class AgentOsmProvider(QgsProcessingProvider):
     def loadAlgorithms(self) -> None:
         self.addAlgorithm(DownloadPresetAlgorithm())
         self.addAlgorithm(DownloadCustomTagAlgorithm())
+        self.addAlgorithm(DownloadAdvancedQueryAlgorithm())

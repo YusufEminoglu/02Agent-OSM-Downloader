@@ -50,11 +50,33 @@
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
       }
+    },
+    {
+      "id": "zero2agentosm:download_advanced",
+      "operation": "download_structured_advanced_osm_tags",
+      "parameters": {
+        "MATCH_MODE": "enum_from_live_algorithm",
+        "GEOMETRY": "enum_from_live_algorithm",
+        "KEY_1..KEY_4": "validated_osm_tag_or_blank",
+        "VALUE_1..VALUE_4": "validated_osm_tag_or_blank",
+        "EXTENT": [
+          "map_extent",
+          "layer_extent"
+        ],
+        "OUTPUT_POINTS": "temporary_output",
+        "OUTPUT_LINES": "temporary_output",
+        "OUTPUT_POLYGONS": "temporary_output"
+      }
     }
   ],
   "safety": {
     "network_access": "pinned_overpass_mirrors_only",
     "maximum_extent_area_km2": 100,
+    "maximum_advanced_tag_filters": 4,
+    "advanced_match_modes": [
+      "any",
+      "all"
+    ],
     "raw_query_input": false,
     "arbitrary_url_input": false,
     "file_path_input": false,

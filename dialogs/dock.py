@@ -2,16 +2,16 @@
 from __future__ import annotations
 
 import contextlib
-from typing import Dict, Optional
+from typing import Optional
 
 from qgis.PyQt.QtCore import QEvent, Qt
-from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDockWidget,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -32,8 +32,8 @@ from qgis.core import (
     QgsProcessingFeedback,
     QgsProject,
     QgsReferencedRectangle,
+    QgsSettings,
     QgsVectorLayer,
-    QgsWkbTypes,
 )
 
 from ..core.catalog import (
@@ -43,6 +43,20 @@ from ..core.catalog import (
     interpret_prompt,
     presets_for_group,
 )
+from ..core.query import (
+    MAX_ADVANCED_FILTERS,
+    QueryError,
+    advanced_specs,
+    normalize_tag,
+    preview_query,
+)
+from ..core.map_styling import apply_map_theme
+from ..core.map_themes import (
+    DEFAULT_MAP_THEME,
+    map_theme,
+    map_theme_items,
+    map_theme_swatches,
+)
 from ..core.smartmodeler_bridge import (
     connection_info,
     open_connections,
@@ -50,21 +64,34 @@ from ..core.smartmodeler_bridge import (
 )
 from .theme import apply_adaptive_theme
 
-_GROUP_COLORS: Dict[str, str] = {
-    "network": "#D95F02",
-    "morphology": "#6A3D9A",
-    "green_blue": "#1B9E77",
-    "public_transport": "#1F78B4",
-    "religious": "#8C510A",
-    "tourism": "#E7298A",
-    "sport": "#33A02C",
-    "bike": "#00A6A6",
-    "car": "#666666",
-    "traffic": "#E31A1C",
-    "health": "#D73027",
-    "education": "#4575B4",
-    "emergency": "#B2182B",
-}
+_MAP_THEME_SETTING = "zero2agent_osm_downloader/map_theme"
+
+_ADVANCED_EXAMPLES = (
+    (
+        "Schools with wheelchair access",
+        "all",
+        "polygon",
+        (("amenity", "school"), ("wheelchair", "yes")),
+    ),
+    (
+        "Protected or dedicated cycleways",
+        "any",
+        "line",
+        (("highway", "cycleway"), ("cycleway", "track")),
+    ),
+    (
+        "Public green spaces",
+        "any",
+        "polygon",
+        (("leisure", "park"), ("leisure", "garden"), ("landuse", "grass")),
+    ),
+    (
+        "Named public transport stops",
+        "all",
+        "point",
+        (("public_transport", "platform"), ("name", "")),
+    ),
+)
 
 
 class AgentOsmDock(QDockWidget):
@@ -78,7 +105,6 @@ class AgentOsmDock(QDockWidget):
         self._feedback = None
         self._context = None
         self._current_label = ""
-        self._current_group_id = ""
         self._theme_refreshing = False
         self._build_ui()
         self._populate_groups()
@@ -87,14 +113,14 @@ class AgentOsmDock(QDockWidget):
         root = QWidget(self)
         root.setObjectName("agentOsmRoot")
         layout = QVBoxLayout(root)
-        layout.setContentsMargins(9, 9, 9, 9)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 10, 10, 9)
+        layout.setSpacing(7)
 
         hero = QFrame()
         hero.setObjectName("heroPanel")
         hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(12, 10, 12, 10)
-        hero_layout.setSpacing(2)
+        hero_layout.setContentsMargins(12, 7, 12, 7)
+        hero_layout.setSpacing(0)
         eyebrow = QLabel("OPENSTREETMAP ACQUISITION")
         eyebrow.setObjectName("heroEyebrow")
         title = QLabel("02Agent")
@@ -110,17 +136,23 @@ class AgentOsmDock(QDockWidget):
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         self.download_tab = self._build_download_tab()
+        self.query_tab = self._build_query_tab()
         self.command_tab = self._build_command_tab()
         self.connections_tab = self._build_connections_tab()
-        self.tabs.addTab(self.download_tab, "Download")
+        self.tabs.addTab(self.download_tab, "Presets")
+        self.tabs.addTab(self.query_tab, "Query")
         self.tabs.addTab(self.command_tab, "Command")
-        self.tabs.addTab(self.connections_tab, "Connections")
+        self.tabs.addTab(self.connections_tab, "Agent")
         self.tabs.currentChanged.connect(self._tab_changed)
         layout.addWidget(self.tabs, 1)
 
-        run_group = QGroupBox("Download")
-        run_form = QFormLayout(run_group)
+        self.run_group = QGroupBox("Run download")
+        run_form = QFormLayout(self.run_group)
         run_form.setContentsMargins(9, 8, 9, 9)
+        self.run_summary = QLabel()
+        self.run_summary.setObjectName("runSummary")
+        self.run_summary.setWordWrap(True)
+        run_form.addRow(self.run_summary)
         self.extent_combo = QComboBox()
         self.extent_combo.addItem("Current map view", "map")
         self.extent_combo.addItem("Active layer extent", "active")
@@ -128,6 +160,49 @@ class AgentOsmDock(QDockWidget):
             "Requests are transformed to WGS84 and limited to 100 km²."
         )
         run_form.addRow("Extent", self.extent_combo)
+
+        self.map_theme_combo = QComboBox()
+        self.map_theme_combo.setAccessibleName("Downloaded layer map style")
+        for theme_id, label in map_theme_items():
+            self.map_theme_combo.addItem(label, theme_id)
+        stored_theme = str(
+            QgsSettings().value(_MAP_THEME_SETTING, DEFAULT_MAP_THEME)
+            or DEFAULT_MAP_THEME
+        )
+        stored_index = self.map_theme_combo.findData(stored_theme)
+        self.map_theme_combo.setCurrentIndex(max(0, stored_index))
+        self.map_theme_combo.currentIndexChanged.connect(
+            self._map_theme_changed
+        )
+        run_form.addRow("Map style", self.map_theme_combo)
+
+        map_theme_preview = QWidget()
+        map_theme_preview.setObjectName("mapThemePreview")
+        preview_layout = QHBoxLayout(map_theme_preview)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.setSpacing(3)
+        self.map_theme_swatches = []
+        for _index in range(6):
+            swatch = QFrame()
+            swatch.setFixedHeight(13)
+            swatch.setMinimumWidth(22)
+            preview_layout.addWidget(swatch, 1)
+            self.map_theme_swatches.append(swatch)
+        self.map_theme_caption = QLabel()
+        self.map_theme_caption.setObjectName("mutedText")
+        self.map_theme_caption.setWordWrap(True)
+        theme_preview_column = QVBoxLayout()
+        theme_preview_column.setContentsMargins(0, 0, 0, 0)
+        theme_preview_column.setSpacing(3)
+        theme_preview_column.addWidget(map_theme_preview)
+        theme_preview_column.addWidget(self.map_theme_caption)
+        run_form.addRow(theme_preview_column)
+        self._map_theme_changed()
+
+        limits = QLabel("Temporary layers  •  maximum request area: 100 km²")
+        limits.setObjectName("mutedText")
+        limits.setWordWrap(True)
+        run_form.addRow(limits)
 
         buttons = QHBoxLayout()
         self.download_button = QPushButton("Download")
@@ -148,7 +223,7 @@ class AgentOsmDock(QDockWidget):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         run_form.addRow(self.progress)
-        layout.addWidget(run_group)
+        layout.addWidget(self.run_group)
 
         self.status = QLabel("Ready.")
         self.status.setObjectName("statusCard")
@@ -162,6 +237,7 @@ class AgentOsmDock(QDockWidget):
         self.setMinimumWidth(350)
         self._apply_theme()
         self._refresh_agent_connection()
+        self._tab_changed(self.tabs.currentIndex())
 
     def _build_download_tab(self) -> QWidget:
         content = QWidget()
@@ -193,9 +269,11 @@ class AgentOsmDock(QDockWidget):
         self.key_edit = QLineEdit()
         self.key_edit.setPlaceholderText("building")
         self.key_edit.setClearButtonEnabled(True)
+        self.key_edit.textChanged.connect(self._refresh_run_summary)
         self.value_edit = QLineEdit()
         self.value_edit.setPlaceholderText("*  (any value)")
         self.value_edit.setClearButtonEnabled(True)
+        self.value_edit.textChanged.connect(self._refresh_run_summary)
         self.geometry_combo = QComboBox()
         self.geometry_combo.addItems(["Point", "Line", "Polygon"])
         custom_form.addRow(self.custom_check)
@@ -210,6 +288,112 @@ class AgentOsmDock(QDockWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         scroll.setWidget(content)
+        return scroll
+
+    def _build_query_tab(self) -> QWidget:
+        content = QWidget()
+        outer = QVBoxLayout(content)
+        outer.setContentsMargins(9, 9, 9, 9)
+        outer.setSpacing(8)
+
+        heading = QLabel("STRUCTURED ADVANCED QUERY")
+        heading.setObjectName("heroEyebrow")
+        outer.addWidget(heading)
+        hint = QLabel(
+            "Combine up to four validated OSM tags. The generated Overpass "
+            "query is read-only; the selected map or layer extent is inserted "
+            "only when the download starts."
+        )
+        hint.setObjectName("mutedText")
+        hint.setWordWrap(True)
+        outer.addWidget(hint)
+
+        example_row = QHBoxLayout()
+        self.query_example_combo = QComboBox()
+        for title, mode, geometry, filters in _ADVANCED_EXAMPLES:
+            self.query_example_combo.addItem(
+                title,
+                {"mode": mode, "geometry": geometry, "filters": filters},
+            )
+        self.query_example_button = QPushButton("Load example")
+        self.query_example_button.clicked.connect(self._load_query_example)
+        example_row.addWidget(self.query_example_combo, 1)
+        example_row.addWidget(self.query_example_button)
+        outer.addLayout(example_row)
+
+        options = QFormLayout()
+        self.query_match_combo = QComboBox()
+        self.query_match_combo.addItem("Match any tag (OR)", "any")
+        self.query_match_combo.addItem("Match all tags (AND)", "all")
+        self.query_geometry_combo = QComboBox()
+        self.query_geometry_combo.addItem("All geometries", "all")
+        self.query_geometry_combo.addItem("Points", "point")
+        self.query_geometry_combo.addItem("Lines", "line")
+        self.query_geometry_combo.addItem("Polygons", "polygon")
+        options.addRow("Match", self.query_match_combo)
+        options.addRow("Geometry", self.query_geometry_combo)
+        outer.addLayout(options)
+
+        tag_group = QGroupBox("Tag filters")
+        tag_grid = QGridLayout(tag_group)
+        tag_grid.addWidget(QLabel("OSM key"), 0, 0)
+        tag_grid.addWidget(QLabel("Value (* = any)"), 0, 1)
+        self.query_key_edits = []
+        self.query_value_edits = []
+        for row in range(MAX_ADVANCED_FILTERS):
+            key_edit = QLineEdit()
+            key_edit.setPlaceholderText("amenity" if row == 0 else "optional")
+            key_edit.setClearButtonEnabled(True)
+            value_edit = QLineEdit()
+            value_edit.setPlaceholderText("school or *")
+            value_edit.setClearButtonEnabled(True)
+            key_edit.textChanged.connect(self._update_query_preview)
+            value_edit.textChanged.connect(self._update_query_preview)
+            tag_grid.addWidget(key_edit, row + 1, 0)
+            tag_grid.addWidget(value_edit, row + 1, 1)
+            self.query_key_edits.append(key_edit)
+            self.query_value_edits.append(value_edit)
+        outer.addWidget(tag_group)
+
+        self.query_match_combo.currentIndexChanged.connect(
+            self._update_query_preview
+        )
+        self.query_geometry_combo.currentIndexChanged.connect(
+            self._update_query_preview
+        )
+        preview_row = QHBoxLayout()
+        self.query_preview_label = QLabel("Generated query")
+        self.query_preview_button = QPushButton("Show preview")
+        self.query_preview_button.setObjectName("quietButton")
+        self.query_preview_button.setCheckable(True)
+        self.query_preview_button.toggled.connect(self._toggle_query_preview)
+        preview_row.addWidget(self.query_preview_label)
+        preview_row.addStretch(1)
+        preview_row.addWidget(self.query_preview_button)
+        outer.addLayout(preview_row)
+        self.query_preview = QPlainTextEdit()
+        self.query_preview.setObjectName("queryPreview")
+        self.query_preview.setReadOnly(True)
+        self.query_preview.setMaximumHeight(145)
+        self.query_preview.setPlaceholderText(
+            "Add a tag filter to preview the bounded Overpass query."
+        )
+        self.query_preview.setAccessibleName("Generated Overpass query preview")
+        outer.addWidget(self.query_preview)
+        self.query_preview.setVisible(False)
+        safety = QLabel(
+            "Raw query editing, arbitrary endpoints and file outputs are disabled."
+        )
+        safety.setObjectName("mutedText")
+        safety.setWordWrap(True)
+        outer.addWidget(safety)
+        outer.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setWidget(content)
+        self._load_query_example()
         return scroll
 
     def _build_command_tab(self) -> QWidget:
@@ -323,8 +507,10 @@ class AgentOsmDock(QDockWidget):
         preset_id = str(self.preset_combo.currentData() or "")
         if not preset_id:
             self.description.clear()
+            self._refresh_run_summary()
             return
         self.description.setText(get_preset(preset_id).description)
+        self._refresh_run_summary()
 
     def _select_preset(self, preset_id: str) -> None:
         preset = get_preset(preset_id)
@@ -334,6 +520,69 @@ class AgentOsmDock(QDockWidget):
         preset_index = self.preset_combo.findData(preset_id)
         if preset_index >= 0:
             self.preset_combo.setCurrentIndex(preset_index)
+
+    def _query_filters(self) -> list[tuple[str, str]]:
+        return [
+            (key_edit.text().strip(), value_edit.text().strip())
+            for key_edit, value_edit in zip(
+                self.query_key_edits, self.query_value_edits
+            )
+            if key_edit.text().strip() or value_edit.text().strip()
+        ]
+
+    def _query_geometries(self) -> tuple[str, ...]:
+        geometry = str(self.query_geometry_combo.currentData() or "all")
+        return (
+            ("point", "line", "polygon")
+            if geometry == "all"
+            else (geometry,)
+        )
+
+    def _load_query_example(self) -> None:
+        data = self.query_example_combo.currentData()
+        if not isinstance(data, dict):
+            return
+        for edit in (*self.query_key_edits, *self.query_value_edits):
+            edit.blockSignals(True)
+            edit.clear()
+        filters = tuple(data.get("filters") or ())[:MAX_ADVANCED_FILTERS]
+        for index, (key, value) in enumerate(filters):
+            self.query_key_edits[index].setText(str(key))
+            self.query_value_edits[index].setText(str(value or "*"))
+        for edit in (*self.query_key_edits, *self.query_value_edits):
+            edit.blockSignals(False)
+        mode_index = self.query_match_combo.findData(data.get("mode"))
+        geometry_index = self.query_geometry_combo.findData(data.get("geometry"))
+        if mode_index >= 0:
+            self.query_match_combo.setCurrentIndex(mode_index)
+        if geometry_index >= 0:
+            self.query_geometry_combo.setCurrentIndex(geometry_index)
+        self._update_query_preview()
+
+    def _update_query_preview(self, *_args) -> None:
+        filters = self._query_filters()
+        if not filters:
+            self.query_preview.clear()
+            self._refresh_run_summary()
+            return
+        mode = str(self.query_match_combo.currentData() or "any")
+        try:
+            specs = advanced_specs(filters, self._query_geometries(), mode)
+            self.query_preview.setPlainText(preview_query(specs, mode))
+        except QueryError as error:
+            self.query_preview.setPlainText(f"Invalid structured query: {error}")
+        self._refresh_run_summary()
+
+    def _toggle_query_preview(self, visible: bool) -> None:
+        self.query_preview.setVisible(bool(visible))
+        self.query_preview_button.setText(
+            "Hide preview" if visible else "Show preview"
+        )
+
+    @staticmethod
+    def _display_label(text: object, limit: int = 120) -> str:
+        clean = " ".join(str(text or "").split())
+        return clean if len(clean) <= limit else f"{clean[:limit - 1]}…"
 
     def _interpret(self) -> None:
         intent = interpret_prompt(self.prompt.toPlainText())
@@ -405,6 +654,11 @@ class AgentOsmDock(QDockWidget):
     def _tab_changed(self, index: int) -> None:
         if self.tabs.widget(index) is self.connections_tab:
             self._refresh_agent_connection()
+        if hasattr(self, "run_group"):
+            self.run_group.setVisible(
+                self.tabs.widget(index) in (self.download_tab, self.query_tab)
+            )
+        self._refresh_run_summary()
 
     def _sync_custom_fields(self, checked: bool) -> None:
         self.group_combo.setEnabled(not checked)
@@ -412,6 +666,35 @@ class AgentOsmDock(QDockWidget):
         self.key_edit.setEnabled(checked)
         self.value_edit.setEnabled(checked)
         self.geometry_combo.setEnabled(checked)
+        self._refresh_run_summary()
+
+    def _refresh_run_summary(self, *_args) -> None:
+        if not hasattr(self, "run_summary"):
+            return
+        current = self.tabs.currentWidget()
+        if current is self.query_tab:
+            filters = self._query_filters()
+            mode = str(self.query_match_combo.currentData() or "any")
+            operator = " OR " if mode == "any" else " AND "
+            summary = operator.join(
+                f"{key or '?'}={value or '*'}" for key, value in filters
+            )
+            self.run_summary.setText(
+                self._display_label(summary or "Add at least one query filter.")
+            )
+            self.download_button.setText("Run advanced query")
+            return
+        if current is self.download_tab:
+            if self.custom_check.isChecked():
+                key = self.key_edit.text().strip() or "OSM key"
+                value = self.value_edit.text().strip() or "*"
+                self.run_summary.setText(f"Custom tag  •  {key}={value}")
+                self.download_button.setText("Download custom tag")
+            else:
+                preset_id = str(self.preset_combo.currentData() or "")
+                title = get_preset(preset_id).processing_label if preset_id else "Preset"
+                self.run_summary.setText(f"Preset  •  {title}")
+                self.download_button.setText("Download preset")
 
     def _extent(self) -> Optional[QgsReferencedRectangle]:
         if self.iface is None:
@@ -430,6 +713,8 @@ class AgentOsmDock(QDockWidget):
     def _download(self) -> None:
         if self._task is not None:
             return
+        if self.tabs.currentWidget() not in (self.download_tab, self.query_tab):
+            return
         extent = self._extent()
         if extent is None:
             QMessageBox.warning(
@@ -438,7 +723,34 @@ class AgentOsmDock(QDockWidget):
                 "Select an active layer or use the current map view.",
             )
             return
-        if self.custom_check.isChecked():
+        if self.tabs.currentWidget() is self.query_tab:
+            algorithm_id = "zero2agentosm:download_advanced"
+            filters = self._query_filters()
+            mode = str(self.query_match_combo.currentData() or "any")
+            try:
+                advanced_specs(filters, self._query_geometries(), mode)
+            except QueryError as error:
+                QMessageBox.warning(
+                    self,
+                    "02Agent OSM Downloader",
+                    str(error),
+                )
+                return
+            parameters = {
+                "MATCH_MODE": 0 if mode == "any" else 1,
+                "GEOMETRY": self.query_geometry_combo.currentIndex(),
+            }
+            for index in range(MAX_ADVANCED_FILTERS):
+                key, value = filters[index] if index < len(filters) else ("", "")
+                parameters[f"KEY_{index + 1}"] = key
+                parameters[f"VALUE_{index + 1}"] = value
+            operator = " OR " if mode == "any" else " AND "
+            self._current_label = self._display_label(
+                operator.join(
+                    f"{key}={value or '*'}" for key, value in filters
+                )
+            )
+        elif self.custom_check.isChecked():
             algorithm_id = "zero2agentosm:download_custom_tag"
             key = self.key_edit.text().strip()
             if not key:
@@ -449,13 +761,26 @@ class AgentOsmDock(QDockWidget):
                 )
                 self.key_edit.setFocus()
                 return
+            try:
+                key, value = normalize_tag(
+                    key,
+                    self.value_edit.text().strip(),
+                )
+            except QueryError as error:
+                QMessageBox.warning(
+                    self,
+                    "02Agent OSM Downloader",
+                    str(error),
+                )
+                return
             parameters = {
                 "KEY": key,
-                "VALUE": self.value_edit.text().strip(),
+                "VALUE": value,
                 "GEOMETRY": self.geometry_combo.currentIndex(),
             }
-            self._current_label = f"{key}={parameters['VALUE'] or '*'}"
-            self._current_group_id = "custom"
+            self._current_label = self._display_label(
+                f"{key}={parameters['VALUE'] or '*'}"
+            )
         else:
             algorithm_id = "zero2agentosm:download_preset"
             preset_id = str(self.preset_combo.currentData() or "")
@@ -473,7 +798,6 @@ class AgentOsmDock(QDockWidget):
             preset = PRESETS[preset_index]
             parameters = {"PRESET": preset_index}
             self._current_label = preset.title
-            self._current_group_id = preset.group_id
         parameters.update(
             {
                 "EXTENT": extent,
@@ -574,7 +898,7 @@ class AgentOsmDock(QDockWidget):
                 layer.deleteLater()
                 continue
             layer.setName(f"{self._current_label} — {suffix}")
-            self._style_layer(layer, self._current_group_id)
+            self._style_layer(layer, self.current_map_theme())
             project.addMapLayer(layer, False)
             group.addLayer(layer)
             added.append(f"{suffix}: {layer.featureCount():,}")
@@ -582,21 +906,34 @@ class AgentOsmDock(QDockWidget):
             project.layerTreeRoot().removeChildNode(group)
         return added
 
-    @staticmethod
-    def _style_layer(layer: QgsVectorLayer, group_id: str) -> None:
-        color = QColor(_GROUP_COLORS.get(group_id, "#2F7D5B"))
-        renderer = layer.renderer()
-        symbol = renderer.symbol() if renderer is not None else None
-        if symbol is None:
+    def current_map_theme(self) -> str:
+        """Return the selected persistent cartographic theme identifier."""
+        return str(self.map_theme_combo.currentData() or DEFAULT_MAP_THEME)
+
+    def _map_theme_changed(self, *_args) -> None:
+        """Refresh the palette preview and persist the user's selection."""
+        if not hasattr(self, "map_theme_combo"):
             return
-        symbol.setColor(color)
-        geometry_type = layer.geometryType()
-        if geometry_type == QgsWkbTypes.GeometryType.PolygonGeometry:
-            symbol.setOpacity(0.58)
-        elif geometry_type == QgsWkbTypes.GeometryType.LineGeometry:
-            with contextlib.suppress(AttributeError):
-                symbol.setWidth(0.8)
-        layer.triggerRepaint()
+        theme_id = self.current_map_theme()
+        values = map_theme(theme_id)
+        for swatch, color in zip(
+            self.map_theme_swatches,
+            map_theme_swatches(theme_id),
+        ):
+            swatch.setStyleSheet(
+                f"background-color: {color}; border: 1px solid #707070; "
+                "border-radius: 3px;"
+            )
+            swatch.setToolTip(color)
+        self.map_theme_caption.setText(values["description"])
+        self.map_theme_combo.setToolTip(
+            f"{values['label']} — {values['description']}"
+        )
+        QgsSettings().setValue(_MAP_THEME_SETTING, theme_id)
+
+    @staticmethod
+    def _style_layer(layer: QgsVectorLayer, theme_id: str) -> None:
+        apply_map_theme(layer, theme_id)
 
     def _reset_task_state(self) -> None:
         self._task = None

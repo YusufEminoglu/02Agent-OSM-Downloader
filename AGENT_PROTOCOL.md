@@ -23,10 +23,11 @@ stable public endpoints are:
 
 - `zero2agentosm:download_preset`
 - `zero2agentosm:download_custom_tag`
+- `zero2agentosm:download_advanced`
 
 ## Output contract
 
-Both endpoints expose fixed point, line and polygon sinks. Agent execution binds
+All endpoints expose fixed point, line and polygon sinks. Agent execution binds
 all three to temporary QGIS outputs. Empty geometry outputs may be discarded by
 the dock, while Processing callers receive the declared sinks.
 
@@ -36,6 +37,8 @@ the dock, while Processing callers receive the declared sinks.
 - Download area is limited to 100 square kilometres.
 - Network requests use pinned Overpass mirrors.
 - Raw query text, arbitrary URLs, file paths and API keys are not parameters.
+- Advanced requests expose at most four validated key/value rows, a fixed
+  ANY/ALL enum and a fixed geometry-scope enum.
 - Live algorithm signatures are checked against SmartModeler's reviewed policy.
 - A proposal never executes without explicit user approval.
 

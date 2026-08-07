@@ -58,9 +58,18 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             sys.path.insert(0, parent)
 
         from zero2agent_osm_downloader.core.catalog import PRESETS, get_preset
-        from zero2agent_osm_downloader.core.query import build_query
+        from zero2agent_osm_downloader.core.query import (
+            advanced_specs,
+            build_query,
+        )
+        from zero2agent_osm_downloader.core.map_styling import apply_map_theme
+        from zero2agent_osm_downloader.core.map_themes import MAP_THEMES
         from zero2agent_osm_downloader.dialogs.dock import AgentOsmDock
-        from zero2agent_osm_downloader.dialogs.theme import dock_stylesheet
+        from zero2agent_osm_downloader.dialogs.theme import (
+            contrast_ratio,
+            dock_color_tokens,
+            dock_stylesheet,
+        )
         from zero2agent_osm_downloader.processing.osm_algorithms import (
             _CACHE,
             _relation_polygon,
@@ -117,12 +126,28 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         dark.setColor(QPalette.ColorRole.Base, QColor("#15181D"))
         light_style = dock_stylesheet(light)
         dark_style = dock_stylesheet(dark)
-        if (
-            light_style == dark_style
-            or "#f4f4f4" not in light_style
-            or "#20242a" not in dark_style
-        ):
+        light_tokens = dock_color_tokens(light)
+        dark_tokens = dock_color_tokens(dark)
+        if light_style == dark_style:
             raise RuntimeError("Dock styling did not follow light/dark palettes.")
+        for name, tokens in (("light", light_tokens), ("dark", dark_tokens)):
+            if tokens["surface"] not in (
+                light_style if name == "light" else dark_style
+            ):
+                raise RuntimeError(f"The {name} workspace color was not applied.")
+            for foreground, background in (
+                ("text", "surface"),
+                ("input_text", "input_surface"),
+                ("subtle", "surface"),
+                ("accent_text", "accent"),
+            ):
+                ratio = contrast_ratio(
+                    QColor(tokens[foreground]), QColor(tokens[background])
+                )
+                if ratio < 4.5:
+                    raise RuntimeError(
+                        f"The {name} {foreground}/{background} contrast is {ratio:.2f}."
+                    )
 
         from qgis.utils import plugins
 
@@ -152,15 +177,42 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         plugins["planx_smartmodeler"] = bridge
         try:
             dock = AgentOsmDock(None)
-            if dock.tabs.count() != 3:
+            initial_map_theme = dock.current_map_theme()
+            if dock.tabs.count() != 4:
                 raise RuntimeError(
-                    "The compact Download/Command/Connections UI is incomplete."
+                    "The Download/Query/Command/Connections UI is incomplete."
                 )
+            if dock.map_theme_combo.count() != len(MAP_THEMES):
+                raise RuntimeError("The complete map-theme catalog is not visible.")
+            cyber_index = dock.map_theme_combo.findData("cyber")
+            dock.map_theme_combo.setCurrentIndex(cyber_index)
+            if dock.current_map_theme() != "cyber":
+                raise RuntimeError("The selected map theme was not retained.")
+            if len(dock.map_theme_swatches) != 6 or not all(
+                swatch.styleSheet() for swatch in dock.map_theme_swatches
+            ):
+                raise RuntimeError("The map-theme swatch preview is incomplete.")
             if not dock.ai_connections_button.isEnabled():
                 raise RuntimeError("AI Connections is a silent disabled action.")
             dock.custom_check.setChecked(True)
             if dock.group_combo.isEnabled() or not dock.key_edit.isEnabled():
                 raise RuntimeError("Custom-tag controls did not switch modes.")
+            if "wheelchair" not in dock.query_preview.toPlainText():
+                raise RuntimeError("The advanced query preview was not generated.")
+            dock.tabs.setCurrentWidget(dock.query_tab)
+            if dock.run_group.isHidden() or "advanced" not in (
+                dock.download_button.text().casefold()
+            ):
+                raise RuntimeError("The query run action is not contextual.")
+            dock.query_preview_button.setChecked(True)
+            if dock.query_preview.isHidden():
+                raise RuntimeError("The generated query preview did not expand.")
+            dock.query_preview_button.setChecked(False)
+            if not dock.query_preview.isHidden():
+                raise RuntimeError("The generated query preview did not collapse.")
+            dock.tabs.setCurrentWidget(dock.command_tab)
+            if not dock.run_group.isHidden():
+                raise RuntimeError("Command tab exposes an unrelated download action.")
             if "DeepSeek API" not in dock.agent_connection.text():
                 raise RuntimeError(
                     "SmartModeler profile is not visible in the dock."
@@ -169,6 +221,8 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             dock._open_agent_workspace()
             if (bridge.connections_opened, bridge.workspace_opened) != (1, 1):
                 raise RuntimeError("SmartModeler public bridge buttons did not run.")
+            initial_index = dock.map_theme_combo.findData(initial_map_theme)
+            dock.map_theme_combo.setCurrentIndex(max(0, initial_index))
             dock.deleteLater()
         finally:
             if previous_bridge is None:
@@ -249,6 +303,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             is_child_algorithm=True,
         )
         counts = {}
+        output_layers = {}
         for name in ("OUTPUT_POINTS", "OUTPUT_LINES", "OUTPUT_POLYGONS"):
             layer = QgsProcessingUtils.mapLayerFromString(
                 results[name], context, True
@@ -256,17 +311,153 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             if layer is None:
                 raise RuntimeError(f"{name} is not a layer.")
             counts[name] = layer.featureCount()
+            output_layers[name] = layer
         if tuple(counts.values()) != (1, 1, 1):
             raise RuntimeError(f"Unexpected mixed output counts: {counts}")
+
+        from qgis.core import QgsCategorizedSymbolRenderer, QgsExpression
+
+        expected_categories = {
+            "OUTPUT_POINTS": 9,
+            "OUTPUT_LINES": 10,
+            "OUTPUT_POLYGONS": 12,
+        }
+        for name, layer in output_layers.items():
+            resolved = apply_map_theme(layer, "aegean")
+            renderer = layer.renderer()
+            if resolved != "aegean" or not isinstance(
+                renderer, QgsCategorizedSymbolRenderer
+            ):
+                raise RuntimeError(f"{name} did not receive a semantic renderer.")
+            if len(renderer.categories()) != expected_categories[name]:
+                raise RuntimeError(f"{name} has incomplete style categories.")
+            if layer.customProperty("zero2agent/map_theme") != "aegean":
+                raise RuntimeError(f"{name} did not record its map theme.")
+            expression = QgsExpression(renderer.classAttribute())
+            if expression.hasParserError():
+                raise RuntimeError(
+                    f"{name} has an invalid style expression: "
+                    f"{expression.parserErrorString()}"
+                )
+        expected_colors = {
+            "OUTPUT_POINTS": ("tree", "#476a4c"),
+            "OUTPUT_LINES": ("major", "#e76f51"),
+            "OUTPUT_POLYGONS": ("building_residential", "#eadcc8"),
+        }
+        for name, (category_value, expected_color) in expected_colors.items():
+            categories = {
+                str(category.value()): category
+                for category in output_layers[name].renderer().categories()
+            }
+            actual = categories[category_value].symbol().color().name().lower()
+            if actual != expected_color:
+                raise RuntimeError(
+                    f"{name} {category_value} is {actual}, expected {expected_color}."
+                )
+
+        advanced = QgsApplication.processingRegistry().algorithmById(
+            "zero2agentosm:download_advanced"
+        )
+        if advanced is None:
+            raise RuntimeError("The structured advanced endpoint is not registered.")
+        advanced_query = build_query(
+            advanced_specs(
+                (("amenity", "school"), ("wheelchair", "yes")),
+                ("polygon",),
+                "all",
+            ),
+            bbox,
+            "all",
+        )
+        _CACHE[advanced_query] = (
+            time.monotonic(),
+            {
+                "elements": [
+                    {
+                        "type": "way",
+                        "id": 10,
+                        "tags": {
+                            "amenity": "school",
+                            "wheelchair": "yes",
+                            "name": "Accessible School",
+                        },
+                        "geometry": [
+                            {"lat": 38.4130, "lon": 27.1230},
+                            {"lat": 38.4130, "lon": 27.1240},
+                            {"lat": 38.4140, "lon": 27.1240},
+                            {"lat": 38.4140, "lon": 27.1230},
+                            {"lat": 38.4130, "lon": 27.1230},
+                        ],
+                    },
+                    {
+                        "type": "way",
+                        "id": 11,
+                        "tags": {"amenity": "school"},
+                        "geometry": [
+                            {"lat": 38.4110, "lon": 27.1210},
+                            {"lat": 38.4110, "lon": 27.1220},
+                            {"lat": 38.4120, "lon": 27.1220},
+                            {"lat": 38.4120, "lon": 27.1210},
+                            {"lat": 38.4110, "lon": 27.1210},
+                        ],
+                    },
+                ]
+            },
+        )
+        advanced_results = processing.run(
+            "zero2agentosm:download_advanced",
+            {
+                "MATCH_MODE": 1,
+                "GEOMETRY": 3,
+                "KEY_1": "amenity",
+                "VALUE_1": "school",
+                "KEY_2": "wheelchair",
+                "VALUE_2": "yes",
+                "KEY_3": "",
+                "VALUE_3": "",
+                "KEY_4": "",
+                "VALUE_4": "",
+                "EXTENT": QgsReferencedRectangle(
+                    QgsRectangle(27.1200, 38.4100, 27.1260, 38.4160),
+                    QgsCoordinateReferenceSystem.fromEpsgId(4326),
+                ),
+                "OUTPUT_POINTS": "TEMPORARY_OUTPUT",
+                "OUTPUT_LINES": "TEMPORARY_OUTPUT",
+                "OUTPUT_POLYGONS": "TEMPORARY_OUTPUT",
+            },
+            context=context,
+            feedback=feedback,
+            is_child_algorithm=True,
+        )
+        advanced_counts = []
+        for name in ("OUTPUT_POINTS", "OUTPUT_LINES", "OUTPUT_POLYGONS"):
+            layer = QgsProcessingUtils.mapLayerFromString(
+                advanced_results[name], context, True
+            )
+            if layer is None:
+                raise RuntimeError(f"Advanced {name} is not a layer.")
+            advanced_counts.append(layer.featureCount())
+        if tuple(advanced_counts) != (0, 0, 1):
+            raise RuntimeError(
+                f"Unexpected advanced output counts: {advanced_counts}"
+            )
         return {
-            "RESULT": "Urban form preset produced 1 point, 1 line and 1 polygon."
+            "RESULT": (
+                "Urban form produced 1/1/1 and advanced ALL filtering "
+                "produced 0/0/1."
+            )
         }
 
 
 def main() -> bool:
     """Bootstrap headless QGIS, register the provider, run the check."""
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    plugin_dir = Path(__file__).resolve().parent.parent
+    plugin_dir = Path(
+        os.environ.get(
+            "ZERO2AGENT_OSM_SOURCE_ROOT",
+            str(Path(__file__).resolve().parent.parent),
+        )
+    ).resolve()
     os.environ.setdefault("ZERO2AGENT_OSM_SOURCE_ROOT", str(plugin_dir))
     if str(plugin_dir.parent) not in sys.path:
         sys.path.insert(0, str(plugin_dir.parent))

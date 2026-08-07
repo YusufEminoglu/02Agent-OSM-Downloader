@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Dict, Iterable, Sequence, Tuple
 
 from .catalog import GEOMETRY_KINDS, TagSpec
 
@@ -18,6 +18,8 @@ MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 MAX_FEATURES = 150_000
 MAX_BBOX_AREA_KM2 = 100.0
 MAX_SELECTORS = 32
+MAX_ADVANCED_FILTERS = 4
+MATCH_MODES = ("any", "all")
 
 _KEY_RE = re.compile(r"^[A-Za-z0-9_:.~-]{1,80}$")
 _UNSAFE_VALUE_RE = re.compile(r"[\x00-\x1f\x7f\"\\;\[\]\(\){}]")
@@ -89,32 +91,122 @@ def normalized_specs(specs: Iterable[TagSpec]) -> Tuple[TagSpec, ...]:
     return tuple(unique)
 
 
-def build_query(
-    specs: Iterable[TagSpec],
-    bbox: Tuple[object, object, object, object],
-) -> str:
-    safe_specs = normalized_specs(specs)
-    south, west, north, east = validate_bbox(*bbox)
-    box = f"{south:.7f},{west:.7f},{north:.7f},{east:.7f}"
-    selectors = []
-    for spec in safe_specs:
-        tag = (
-            f'["{spec.key}"="{spec.value}"]'
-            if spec.value
-            else f'["{spec.key}"]'
+def advanced_specs(
+    filters: Iterable[Tuple[object, object]],
+    geometries: Sequence[str],
+    match_mode: str = "any",
+) -> Tuple[TagSpec, ...]:
+    """Create bounded selectors for the structured advanced-query endpoint.
+
+    Advanced requests deliberately accept tag fields rather than raw Overpass
+    text.  Keeping this normalization in the shared core makes the dock,
+    Processing provider and agent manifest use the same authority boundary.
+    """
+    mode = str(match_mode or "").strip().casefold()
+    if mode not in MATCH_MODES:
+        raise QueryError("The advanced match mode is not valid.")
+
+    safe_filters = []
+    seen_filters = set()
+    for key, value in filters:
+        normalized = normalize_tag(key, value)
+        if normalized not in seen_filters:
+            seen_filters.add(normalized)
+            safe_filters.append(normalized)
+    if not safe_filters:
+        raise QueryError("At least one advanced OSM tag is required.")
+    if len(safe_filters) > MAX_ADVANCED_FILTERS:
+        raise QueryError(
+            f"Advanced queries accept at most {MAX_ADVANCED_FILTERS} tag filters."
         )
-        if spec.geometry == "point":
-            selectors.append(f"  node{tag}({box});")
-        elif spec.geometry == "line":
-            selectors.append(f"  way{tag}({box});")
-        else:
-            selectors.append(f"  way{tag}({box});")
-            selectors.append(f"  relation{tag}({box});")
+    if mode == "all":
+        keys = [key for key, _value in safe_filters]
+        if len(keys) != len(set(keys)):
+            raise QueryError(
+                "ALL matching cannot use the same OSM key more than once."
+            )
+
+    safe_geometries = tuple(dict.fromkeys(str(item) for item in geometries))
+    if not safe_geometries or any(
+        item not in GEOMETRY_KINDS for item in safe_geometries
+    ):
+        raise QueryError("Choose at least one supported geometry type.")
+    return normalized_specs(
+        TagSpec(key, value, geometry)
+        for geometry in safe_geometries
+        for key, value in safe_filters
+    )
+
+
+def _render_query(
+    safe_specs: Tuple[TagSpec, ...],
+    box: str,
+    match_mode: str,
+) -> str:
+    mode = str(match_mode or "").strip().casefold()
+    if mode not in MATCH_MODES:
+        raise QueryError("The query match mode is not valid.")
+
+    selectors = []
+    if mode == "any":
+        for spec in safe_specs:
+            tag = (
+                f'["{spec.key}"="{spec.value}"]'
+                if spec.value
+                else f'["{spec.key}"]'
+            )
+            if spec.geometry == "point":
+                selectors.append(f"  node{tag}({box});")
+            elif spec.geometry == "line":
+                selectors.append(f"  way{tag}({box});")
+            else:
+                selectors.append(f"  way{tag}({box});")
+                selectors.append(f"  relation{tag}({box});")
+    else:
+        for geometry in GEOMETRY_KINDS:
+            geometry_specs = tuple(
+                spec for spec in safe_specs if spec.geometry == geometry
+            )
+            if not geometry_specs:
+                continue
+            tags = "".join(
+                f'["{spec.key}"="{spec.value}"]'
+                if spec.value
+                else f'["{spec.key}"]'
+                for spec in geometry_specs
+            )
+            if geometry == "point":
+                selectors.append(f"  node{tags}({box});")
+            elif geometry == "line":
+                selectors.append(f"  way{tags}({box});")
+            else:
+                selectors.append(f"  way{tags}({box});")
+                selectors.append(f"  relation{tags}({box});")
+
     return (
         f"[out:json][timeout:{OVERPASS_TIMEOUT_SECONDS}];\n(\n"
         + "\n".join(dict.fromkeys(selectors))
         + "\n);\nout body geom;"
     )
+
+
+def build_query(
+    specs: Iterable[TagSpec],
+    bbox: Tuple[object, object, object, object],
+    match_mode: str = "any",
+) -> str:
+    safe_specs = normalized_specs(specs)
+    south, west, north, east = validate_bbox(*bbox)
+    box = f"{south:.7f},{west:.7f},{north:.7f},{east:.7f}"
+    return _render_query(safe_specs, box, match_mode)
+
+
+def preview_query(
+    specs: Iterable[TagSpec],
+    match_mode: str = "any",
+) -> str:
+    """Return a display-only query with a non-executable extent placeholder."""
+    return _render_query(normalized_specs(specs), "<selected extent>", match_mode)
 
 
 def validate_payload(payload: Any) -> Dict[str, Any]:
@@ -157,13 +249,22 @@ def compact_tags(tags: object) -> str:
 
 
 def matching_specs(
-    tags: object, specs: Iterable[TagSpec], geometry: str
+    tags: object,
+    specs: Iterable[TagSpec],
+    geometry: str,
+    match_mode: str = "any",
 ) -> Tuple[TagSpec, ...]:
     data = tags if isinstance(tags, dict) else {}
-    return tuple(
+    candidates = tuple(spec for spec in specs if spec.geometry == geometry)
+    matches = tuple(
         spec
-        for spec in specs
-        if spec.geometry == geometry
-        and spec.key in data
+        for spec in candidates
+        if spec.key in data
         and (not spec.value or str(data.get(spec.key)) == spec.value)
     )
+    mode = str(match_mode or "").strip().casefold()
+    if mode not in MATCH_MODES:
+        raise QueryError("The query match mode is not valid.")
+    if mode == "all" and len(matches) != len(candidates):
+        return ()
+    return matches

@@ -5,9 +5,11 @@ import unittest
 
 from zero2agent_osm_downloader.core.catalog import TagSpec, get_preset
 from zero2agent_osm_downloader.core.query import (
+    MAX_ADVANCED_FILTERS,
     MAX_FEATURES,
     OVERPASS_ENDPOINTS,
     QueryError,
+    advanced_specs,
     build_query,
     compact_tags,
     matching_specs,
@@ -44,6 +46,42 @@ class QueryTests(unittest.TestCase):
         self.assertEqual(query.count('way["building"]'), 1)
         self.assertEqual(query.count('relation["building"]'), 1)
 
+    def test_advanced_any_query_builds_separate_safe_selectors(self) -> None:
+        specs = advanced_specs(
+            (("amenity", "school"), ("amenity", "kindergarten")),
+            ("point", "polygon"),
+            "any",
+        )
+        query = build_query(specs, SMALL_BBOX, "any")
+        self.assertIn('node["amenity"="school"]', query)
+        self.assertIn('relation["amenity"="kindergarten"]', query)
+        self.assertNotIn("<selected extent>", query)
+
+    def test_advanced_all_query_combines_tags_per_geometry(self) -> None:
+        specs = advanced_specs(
+            (("amenity", "school"), ("wheelchair", "yes")),
+            ("polygon",),
+            "all",
+        )
+        query = build_query(specs, SMALL_BBOX, "all")
+        combined = '["amenity"="school"]["wheelchair"="yes"]'
+        self.assertIn(f"way{combined}", query)
+        self.assertIn(f"relation{combined}", query)
+        self.assertEqual(query.count("(38.4100000,27.1200000"), 2)
+
+    def test_advanced_filters_are_bounded_and_reject_conflicting_all_keys(self) -> None:
+        with self.assertRaises(QueryError):
+            advanced_specs(
+                tuple((f"key_{index}", "") for index in range(MAX_ADVANCED_FILTERS + 1)),
+                ("point",),
+            )
+        with self.assertRaises(QueryError):
+            advanced_specs(
+                (("amenity", "school"), ("amenity", "hospital")),
+                ("polygon",),
+                "all",
+            )
+
     def test_tag_and_extent_injection_are_blocked(self) -> None:
         self.assertEqual(normalize_tag("building", "*"), ("building", ""))
         with self.assertRaises(QueryError):
@@ -71,6 +109,30 @@ class QueryTests(unittest.TestCase):
             {"amenity": "school"}, specs, "point"
         )
         self.assertEqual(matches, (specs[0],))
+
+    def test_all_matching_requires_every_filter(self) -> None:
+        specs = advanced_specs(
+            (("amenity", "school"), ("wheelchair", "yes")),
+            ("point",),
+            "all",
+        )
+        self.assertEqual(
+            matching_specs(
+                {"amenity": "school"}, specs, "point", "all"
+            ),
+            (),
+        )
+        self.assertEqual(
+            len(
+                matching_specs(
+                    {"amenity": "school", "wheelchair": "yes"},
+                    specs,
+                    "point",
+                    "all",
+                )
+            ),
+            2,
+        )
 
     def test_mirrors_are_fixed_https_hosts(self) -> None:
         self.assertEqual(len(OVERPASS_ENDPOINTS), 3)

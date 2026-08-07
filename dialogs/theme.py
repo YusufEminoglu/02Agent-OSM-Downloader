@@ -32,8 +32,28 @@ def _contrast_text(background: QColor) -> QColor:
     return QColor("#102019") if luminance >= 150 else QColor("#FFFFFF")
 
 
-def dock_stylesheet(palette: QPalette | None = None) -> str:
-    """Build a compact stylesheet from the current application palette."""
+def _relative_luminance(color: QColor) -> float:
+    channels = []
+    for value in (color.redF(), color.greenF(), color.blueF()):
+        channels.append(
+            value / 12.92
+            if value <= 0.04045
+            else ((value + 0.055) / 1.055) ** 2.4
+        )
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def contrast_ratio(first: QColor, second: QColor) -> float:
+    """Return the WCAG relative-luminance contrast ratio."""
+    lighter, darker = sorted(
+        (_relative_luminance(first), _relative_luminance(second)),
+        reverse=True,
+    )
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def dock_color_tokens(palette: QPalette | None = None) -> dict[str, str]:
+    """Return the palette-derived colors used by the dock stylesheet."""
     active = palette or QApplication.palette()
     window = active.color(QPalette.ColorRole.Window)
     base = active.color(QPalette.ColorRole.Base)
@@ -48,19 +68,36 @@ def dock_stylesheet(palette: QPalette | None = None) -> str:
     )
     dark = window.lightness() < 128
 
-    accent = QColor("#55B98A" if dark else "#2F7D5B")
-    accent_hover = QColor("#68C99C" if dark else "#256849")
+    white = QColor("#FFFFFF")
+    accent = QColor("#62CFA0" if dark else "#2F7D5B")
+    accent_hover = QColor("#76D9AF" if dark else "#256849")
     accent_text = _contrast_text(accent)
-    border = _mix(text, window, 0.76 if dark else 0.82)
-    panel = _mix(base, window, 0.34)
-    subtle = _mix(text, window, 0.43 if dark else 0.50)
-    status = _mix(accent, window, 0.84 if dark else 0.90)
+    surface = (
+        _mix(window, white, 0.07)
+        if dark
+        else _mix(window, base, 0.72)
+    )
+    card = _mix(window, white, 0.12) if dark else base
+    input_surface = _mix(base, white, 0.04) if dark else base
+    hero = _mix(surface, accent, 0.13 if dark else 0.09)
+    tab_active = _mix(surface, accent, 0.20 if dark else 0.12)
+    border = _mix(text, surface, 0.76 if dark else 0.84)
+    subtle = _mix(text, surface, 0.40 if dark else 0.37)
+    status = _mix(accent, surface, 0.76 if dark else 0.86)
+    code_surface = _mix(input_surface, surface, 0.16 if dark else 0.08)
+    if contrast_ratio(input_text, input_surface) < 4.5:
+        input_text = QColor(text)
+    if contrast_ratio(button_text, button) < 4.5:
+        button_text = QColor(text)
     selection = highlight if highlight.isValid() else accent
 
-    values = {
-        "window": _hex(window),
-        "base": _hex(base),
-        "panel": _hex(panel),
+    return {
+        "surface": _hex(surface),
+        "card": _hex(card),
+        "input_surface": _hex(input_surface),
+        "hero": _hex(hero),
+        "tab_active": _hex(tab_active),
+        "code_surface": _hex(code_surface),
         "text": _hex(text),
         "input_text": _hex(input_text),
         "button": _hex(button),
@@ -74,15 +111,20 @@ def dock_stylesheet(palette: QPalette | None = None) -> str:
         "status": _hex(status),
         "selection": _hex(selection),
     }
+
+
+def dock_stylesheet(palette: QPalette | None = None) -> str:
+    """Build an airy stylesheet from the current application palette."""
+    values = dock_color_tokens(palette)
     return """
 QWidget#agentOsmRoot {
-    background: %(window)s;
+    background: %(surface)s;
     color: %(text)s;
 }
 QFrame#heroPanel {
-    background: %(panel)s;
+    background: %(hero)s;
     border: 1px solid %(border)s;
-    border-radius: 10px;
+    border-radius: 9px;
 }
 QLabel#heroEyebrow {
     color: %(accent)s;
@@ -91,7 +133,7 @@ QLabel#heroEyebrow {
 }
 QLabel#heroTitle {
     color: %(text)s;
-    font-size: 17pt;
+    font-size: 15pt;
     font-weight: 650;
 }
 QLabel#mutedText, QLabel#descriptionText, QLabel#connectionDetail {
@@ -109,28 +151,32 @@ QTabWidget::pane {
     border: 1px solid %(border)s;
     border-radius: 8px;
     top: -1px;
-    background: %(window)s;
+    background: %(surface)s;
 }
 QTabBar::tab {
     background: transparent;
     color: %(subtle)s;
     border: none;
     border-bottom: 2px solid transparent;
-    padding: 8px 12px;
-    min-width: 68px;
+    border-radius: 6px;
+    padding: 7px 10px;
+    margin: 2px 2px 3px 2px;
+    min-width: 64px;
 }
 QTabBar::tab:selected {
     color: %(text)s;
+    background: %(tab_active)s;
     border-bottom-color: %(accent)s;
     font-weight: 600;
 }
 QTabBar::tab:hover { color: %(accent)s; }
 QGroupBox {
+    background: %(card)s;
     color: %(text)s;
     border: 1px solid %(border)s;
     border-radius: 8px;
     margin-top: 10px;
-    padding-top: 8px;
+    padding-top: 9px;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
@@ -139,7 +185,7 @@ QGroupBox::title {
     font-weight: 600;
 }
 QLineEdit, QPlainTextEdit, QComboBox {
-    background: %(base)s;
+    background: %(input_surface)s;
     color: %(input_text)s;
     border: 1px solid %(border)s;
     border-radius: 6px;
@@ -169,6 +215,23 @@ QPushButton#primaryButton:hover {
     background: %(accent_hover)s;
     color: %(accent_text)s;
 }
+QPushButton#quietButton {
+    background: transparent;
+    color: %(accent)s;
+    border-color: %(border)s;
+    padding: 4px 9px;
+}
+QPushButton#quietButton:hover {
+    background: %(tab_active)s;
+    border-color: %(accent)s;
+}
+QLabel#runSummary {
+    color: %(text)s;
+    background: %(tab_active)s;
+    border-radius: 5px;
+    padding: 6px 8px;
+    font-weight: 600;
+}
 QLabel#statusCard {
     background: %(status)s;
     color: %(text)s;
@@ -178,13 +241,41 @@ QLabel#statusCard {
 }
 QProgressBar {
     border: none;
-    background: %(panel)s;
+    background: %(tab_active)s;
     border-radius: 3px;
     min-height: 6px;
     max-height: 6px;
 }
 QProgressBar::chunk { background: %(accent)s; border-radius: 3px; }
-QScrollArea { border: none; background: transparent; }
+QPlainTextEdit#queryPreview {
+    background: %(code_surface)s;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 9pt;
+}
+QScrollArea, QScrollArea > QWidget > QWidget {
+    border: none;
+    background: transparent;
+}
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 2px;
+}
+QScrollBar::handle:vertical {
+    background: %(border)s;
+    border-radius: 4px;
+    min-height: 28px;
+}
+QScrollBar::handle:vertical:hover { background: %(accent)s; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0;
+}
+QToolTip {
+    background: %(card)s;
+    color: %(text)s;
+    border: 1px solid %(border)s;
+    padding: 4px;
+}
 """ % values
 
 

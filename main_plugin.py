@@ -1,6 +1,7 @@
 """QGIS lifecycle for 02Agent OSM Downloader."""
 from __future__ import annotations
 
+import contextlib
 import os
 
 from qgis.PyQt.QtCore import Qt
@@ -50,15 +51,22 @@ class AgentOsmDownloaderPlugin:
         if self.dock is not None:
             self.dock.cancel()
             self.iface.removeDockWidget(self.dock)
+            self.dock.setParent(None)
             self.dock.deleteLater()
             self.dock = None
         if self.action is not None:
             self.iface.removePluginMenu(self.MENU_NAME, self.action)
             self.iface.removeToolBarIcon(self.action)
+            with contextlib.suppress(TypeError):
+                self.action.triggered.disconnect(self._toggle_dock)
+            self.action.setParent(None)
             self.action.deleteLater()
             self.action = None
         if self.about_action is not None:
             self.iface.removePluginMenu(self.MENU_NAME, self.about_action)
+            with contextlib.suppress(TypeError):
+                self.about_action.triggered.disconnect(self._show_about)
+            self.about_action.setParent(None)
             self.about_action.deleteLater()
             self.about_action = None
         if self.provider is not None:
@@ -90,12 +98,14 @@ class AgentOsmDownloaderPlugin:
                 "<h3>02Agent OSM Downloader</h3>"
                 "<p><b>AI-agent-ready OpenStreetMap acquisition for QGIS 4.</b></p>"
                 "<p>Choose from 14 thematic groups and 27 curated urban-analysis "
-                "presets, request a custom OSM tag, or use the Turkish/English "
-                "offline command router.</p>"
+                "presets, build a structured four-filter ANY/ALL query, request "
+                "a custom OSM tag, or use the Turkish/English offline command "
+                "router.</p>"
                 "<p><b>Agent Protocol v1</b><br>"
                 "Provider: <code>zero2agentosm</code><br>"
                 "Endpoints: <code>download_preset</code> and "
-                "<code>download_custom_tag</code></p>"
+                "<code>download_custom_tag</code> and "
+                "<code>download_advanced</code></p>"
                 "<p>SmartModeler GIS discovers these endpoints through the live "
                 "QGIS Processing registry, validates their signatures, and runs "
                 "them only after an explicit approval card.</p>"

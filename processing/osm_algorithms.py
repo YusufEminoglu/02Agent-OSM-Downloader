@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from typing import Dict, List, Optional, Tuple
 
@@ -29,10 +30,12 @@ from qgis.core import (
 
 from ..core.catalog import GEOMETRY_KINDS, PRESETS, TagSpec
 from ..core.query import (
+    MAX_ADVANCED_FILTERS,
     MAX_RESPONSE_BYTES,
     OVERPASS_ENDPOINTS,
     OVERPASS_TIMEOUT_SECONDS,
     QueryError,
+    advanced_specs,
     build_query,
     compact_tags,
     matching_specs,
@@ -42,10 +45,11 @@ from ..core.query import (
 )
 
 USER_AGENT = (
-    "02Agent-OSM-Downloader-QGIS/0.1 "
+    "02Agent-OSM-Downloader-QGIS/0.4.0 "
     "(https://github.com/YusufEminoglu/02Agent-OSM-Downloader)"
 )
 _CACHE: Dict[str, Tuple[float, Dict]] = {}
+_CACHE_LOCK = threading.RLock()
 _CACHE_TTL_SECONDS = 15 * 60
 _CACHE_LIMIT = 8
 
@@ -65,11 +69,16 @@ def _status_attribute():
 
 
 def _fetch_json(query: str, feedback) -> Dict:
-    cached = _CACHE.get(query)
-    if cached is not None and time.monotonic() - cached[0] <= _CACHE_TTL_SECONDS:
+    with _CACHE_LOCK:
+        cached = _CACHE.get(query)
+        if cached is not None and (
+            time.monotonic() - cached[0] > _CACHE_TTL_SECONDS
+        ):
+            _CACHE.pop(query, None)
+            cached = None
+    if cached is not None:
         feedback.pushInfo("Using the in-session OSM cache.")
         return cached[1]
-    _CACHE.pop(query, None)
 
     encoded = QUrlQuery()
     encoded.addQueryItem("data", query)
@@ -119,10 +128,11 @@ def _fetch_json(query: str, feedback) -> Dict:
         except (UnicodeDecodeError, json.JSONDecodeError, QueryError) as exc:
             failures.append(str(exc))
             continue
-        if len(_CACHE) >= _CACHE_LIMIT:
-            oldest = min(_CACHE, key=lambda item: _CACHE[item][0])
-            _CACHE.pop(oldest, None)
-        _CACHE[query] = (time.monotonic(), payload)
+        with _CACHE_LOCK:
+            if len(_CACHE) >= _CACHE_LIMIT:
+                oldest = min(_CACHE, key=lambda item: _CACHE[item][0])
+                _CACHE.pop(oldest, None)
+            _CACHE[query] = (time.monotonic(), payload)
         return payload
     detail = failures[-1] if failures else "no server answered"
     raise QgsProcessingException(
@@ -246,20 +256,22 @@ def _relation_polygon(element: Dict) -> Optional[QgsGeometry]:
 
 
 def _kind_for_element(
-    element: Dict, specs: Tuple[TagSpec, ...]
+    element: Dict,
+    specs: Tuple[TagSpec, ...],
+    match_mode: str = "any",
 ) -> Tuple[str, Tuple[TagSpec, ...]]:
     element_type = element.get("type")
     tags = element.get("tags")
     if element_type == "node":
-        matches = matching_specs(tags, specs, "point")
+        matches = matching_specs(tags, specs, "point", match_mode)
         return ("point", matches) if matches else ("", ())
     if element_type == "relation":
-        matches = matching_specs(tags, specs, "polygon")
+        matches = matching_specs(tags, specs, "polygon", match_mode)
         return ("polygon", matches) if matches else ("", ())
     if element_type != "way":
         return "", ()
-    line_matches = matching_specs(tags, specs, "line")
-    polygon_matches = matching_specs(tags, specs, "polygon")
+    line_matches = matching_specs(tags, specs, "line", match_mode)
+    polygon_matches = matching_specs(tags, specs, "polygon", match_mode)
     if polygon_matches and not line_matches:
         return "polygon", polygon_matches
     if line_matches and not polygon_matches:
@@ -297,6 +309,7 @@ def _fields() -> QgsFields:
         "query_key", "query_value", "building", "highway", "amenity",
         "landuse", "leisure", "natural", "railway", "public_transport",
         "tourism", "sport", "height", "building_levels", "tags_json",
+        "matched_tags",
     ):
         fields.append(QgsField(name, QMetaType.Type.QString))
     return fields
@@ -306,19 +319,25 @@ def _attributes(
     element: Dict,
     preset_id: str,
     theme: str,
-    match: TagSpec,
+    matches: Tuple[TagSpec, ...],
 ) -> List[str]:
     tags = element.get("tags") if isinstance(element.get("tags"), dict) else {}
+    first_match = matches[0]
+    matched_tags = {
+        match.key: str(tags.get(match.key, match.value))
+        for match in matches
+    }
     return [
         str(element.get("id", "")), str(element.get("type", "")),
-        str(tags.get("name", "")), preset_id, theme, match.key,
-        str(tags.get(match.key, match.value)), str(tags.get("building", "")),
+        str(tags.get("name", "")), preset_id, theme, first_match.key,
+        str(tags.get(first_match.key, first_match.value)), str(tags.get("building", "")),
         str(tags.get("highway", "")), str(tags.get("amenity", "")),
         str(tags.get("landuse", "")), str(tags.get("leisure", "")),
         str(tags.get("natural", "")), str(tags.get("railway", "")),
         str(tags.get("public_transport", "")), str(tags.get("tourism", "")),
         str(tags.get("sport", "")), str(tags.get("height", "")),
         str(tags.get("building:levels", "")), compact_tags(tags),
+        json.dumps(matched_tags, ensure_ascii=False, sort_keys=True),
     ]
 
 
@@ -392,11 +411,11 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
 
     def _request(
         self, parameters, context
-    ) -> Tuple[str, str, Tuple[TagSpec, ...]]:
+    ) -> Tuple[str, str, Tuple[TagSpec, ...], str]:
         raise NotImplementedError
 
     def processAlgorithm(self, parameters, context, feedback):
-        preset_id, theme, specs = self._request(parameters, context)
+        preset_id, theme, specs, match_mode = self._request(parameters, context)
         extent = self.parameterAsExtent(parameters, self.EXTENT, context)
         extent_crs = self.parameterAsExtentCrs(
             parameters, self.EXTENT, context
@@ -419,7 +438,7 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
                 wgs_extent.yMinimum(), wgs_extent.xMinimum(),
                 wgs_extent.yMaximum(), wgs_extent.xMaximum(),
             )
-            query = build_query(specs, bbox)
+            query = build_query(specs, bbox, match_mode)
         except QueryError as exc:
             raise QgsProcessingException(str(exc)) from exc
 
@@ -462,7 +481,7 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
         for index, element in enumerate(elements):
             if feedback.isCanceled():
                 raise QgsProcessingException("The OSM download was canceled.")
-            kind, matches = _kind_for_element(element, specs)
+            kind, matches = _kind_for_element(element, specs, match_mode)
             if not kind or not matches:
                 continue
             geometry = _geometry(element, kind)
@@ -473,7 +492,7 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
             feature = QgsFeature(fields)
             feature.setGeometry(geometry)
             feature.setAttributes(
-                _attributes(element, preset_id, theme, matches[0])
+                _attributes(element, preset_id, theme, matches)
             )
             if not sinks[kind].addFeature(
                 feature, QgsFeatureSink.Flag.FastInsert
@@ -514,7 +533,7 @@ class DownloadPresetAlgorithm(_BaseDownloadAlgorithm):
         if index < 0 or index >= len(PRESETS):
             raise QgsProcessingException("The selected preset is not valid.")
         preset = PRESETS[index]
-        return preset.preset_id, preset.group_title, preset.tags
+        return preset.preset_id, preset.group_title, preset.tags, "any"
 
 
 class DownloadCustomTagAlgorithm(_BaseDownloadAlgorithm):
@@ -556,4 +575,93 @@ class DownloadCustomTagAlgorithm(_BaseDownloadAlgorithm):
         if index < 0 or index >= len(GEOMETRY_KINDS):
             raise QgsProcessingException("The geometry type is not valid.")
         spec = TagSpec(key, value, GEOMETRY_KINDS[index])
-        return "custom", "Custom tag", normalized_specs((spec,))
+        return "custom", "Custom tag", normalized_specs((spec,)), "any"
+
+
+class DownloadAdvancedQueryAlgorithm(_BaseDownloadAlgorithm):
+    MATCH_MODE = "MATCH_MODE"
+    GEOMETRY = "GEOMETRY"
+    ALGORITHM_NAME = "download_advanced"
+    DISPLAY_NAME = "Download structured advanced OSM query"
+    GEOMETRY_OPTIONS = (
+        "All geometries",
+        "Points",
+        "Lines",
+        "Polygons",
+    )
+
+    def initAlgorithm(self, _configuration=None) -> None:
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                self.MATCH_MODE,
+                "Tag match mode",
+                options=["Match any tag (OR)", "Match all tags (AND)"],
+                defaultValue=0,
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                self.GEOMETRY,
+                "Geometry scope",
+                options=list(self.GEOMETRY_OPTIONS),
+                defaultValue=0,
+            )
+        )
+        for index in range(1, MAX_ADVANCED_FILTERS + 1):
+            self.addParameter(
+                QgsProcessingParameterString(
+                    f"KEY_{index}",
+                    f"OSM tag key {index}",
+                    optional=index > 1,
+                )
+            )
+            self.addParameter(
+                QgsProcessingParameterString(
+                    f"VALUE_{index}",
+                    f"OSM tag value {index} (blank or * means any value)",
+                    defaultValue="",
+                    optional=True,
+                )
+            )
+        self._add_common_parameters()
+
+    def _request(self, parameters, context):
+        mode_index = self.parameterAsEnum(parameters, self.MATCH_MODE, context)
+        if mode_index not in (0, 1):
+            raise QgsProcessingException("The tag match mode is not valid.")
+        match_mode = ("any", "all")[mode_index]
+
+        geometry_index = self.parameterAsEnum(parameters, self.GEOMETRY, context)
+        geometry_options = (
+            GEOMETRY_KINDS,
+            ("point",),
+            ("line",),
+            ("polygon",),
+        )
+        if geometry_index < 0 or geometry_index >= len(geometry_options):
+            raise QgsProcessingException("The geometry scope is not valid.")
+
+        filters = []
+        for index in range(1, MAX_ADVANCED_FILTERS + 1):
+            key = self.parameterAsString(
+                parameters, f"KEY_{index}", context
+            ).strip()
+            value = self.parameterAsString(
+                parameters, f"VALUE_{index}", context
+            ).strip()
+            if not key:
+                if value:
+                    raise QgsProcessingException(
+                        f"OSM tag value {index} has no corresponding key."
+                    )
+                continue
+            filters.append((key, value))
+        try:
+            specs = advanced_specs(
+                filters,
+                geometry_options[geometry_index],
+                match_mode,
+            )
+        except QueryError as exc:
+            raise QgsProcessingException(str(exc)) from exc
+        return "advanced", "Advanced query", specs, match_mode
