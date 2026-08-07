@@ -1,0 +1,2096 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02Agent OSM Downloader — Academic Reference Manual</title>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+/* ── CSS Variables (Light / Dark) ─────────────────────────────── */
+:root {
+  --bg-primary: #fafbfc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0f2f5;
+  --bg-sidebar: #1a1d23;
+  --text-primary: #1a1a2e;
+  --text-secondary: #4a4a5a;
+  --text-muted: #6b7280;
+  --text-sidebar: #c9cdd4;
+  --text-sidebar-heading: #e5e7eb;
+  --border: #d1d5db;
+  --border-light: #e5e7eb;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-light: #dbeafe;
+  --code-bg: #f1f5f9;
+  --code-text: #0f172a;
+  --table-stripe: #f8fafc;
+  --table-header-bg: #eef2ff;
+  --table-header-text: #1e3a5f;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --radius: 6px;
+  --radius-lg: 10px;
+  --search-bg: #f1f5f9;
+  --search-border: #cbd5e1;
+  --search-focus-bg: #ffffff;
+  --highlight-bg: #fef3c7;
+  --highlight-text: #92400e;
+  --toc-active-bg: #334155;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #0f1117;
+  --bg-secondary: #161822;
+  --bg-tertiary: #1e2030;
+  --bg-sidebar: #0d0f15;
+  --text-primary: #e2e4e9;
+  --text-secondary: #b0b3bd;
+  --text-muted: #6f7380;
+  --text-sidebar: #9ca3af;
+  --text-sidebar-heading: #d1d5db;
+  --border: #2d3040;
+  --border-light: #252838;
+  --accent: #60a5fa;
+  --accent-hover: #93bbfd;
+  --accent-light: #1e293b;
+  --code-bg: #1e2235;
+  --code-text: #e2e8f0;
+  --table-stripe: #1a1d2b;
+  --table-header-bg: #1e2440;
+  --table-header-text: #bfd9fe;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --search-bg: #1e2235;
+  --search-border: #3d405b;
+  --search-focus-bg: #252840;
+  --highlight-bg: #423d0d;
+  --highlight-text: #fde68a;
+  --toc-active-bg: #1e293b;
+}
+
+/* ── Base ────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; font-size: 16px; }
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.7;
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────── */
+.sidebar {
+  width: 280px;
+  min-width: 280px;
+  background: var(--bg-sidebar);
+  color: var(--text-sidebar);
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  overflow-y: auto;
+  padding: 24px 20px 40px 20px;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 100;
+  font-size: 0.875rem;
+}
+
+.sidebar h1 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-sidebar-heading);
+  margin-bottom: 6px;
+  line-height: 1.35;
+}
+
+.sidebar .version {
+  font-size: 0.72rem;
+  color: #6b7280;
+  margin-bottom: 16px;
+}
+
+.sidebar .toc-section {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6b7280;
+  margin: 14px 0 4px 0;
+}
+
+.sidebar a {
+  color: var(--text-sidebar);
+  text-decoration: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  display: block;
+  transition: background 0.15s, color 0.15s;
+  border-left: 2px solid transparent;
+}
+
+.sidebar a:hover,
+.sidebar a.active {
+  background: var(--toc-active-bg);
+  color: #e5e7eb;
+  border-left-color: var(--accent);
+}
+
+.sidebar a.sub { padding-left: 22px; font-size: 0.82rem; }
+
+.sidebar .theme-toggle {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+.sidebar .theme-toggle button {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text-sidebar);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.15s;
+}
+
+.sidebar .theme-toggle button:hover { background: rgba(255,255,255,0.12); }
+
+/* ── Main Content ────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  max-width: 960px;
+  padding: 40px 48px 80px 48px;
+  overflow-x: hidden;
+}
+
+/* ── Search ──────────────────────────────────────────────────── */
+.search-bar {
+  position: relative;
+  margin-bottom: 32px;
+}
+
+.search-bar input {
+  width: 100%;
+  padding: 12px 16px 12px 44px;
+  font-size: 0.95rem;
+  background: var(--search-bg);
+  border: 1px solid var(--search-border);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  outline: none;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-bar input:focus {
+  background: var(--search-focus-bg);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+}
+
+.search-bar .search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  pointer-events: none;
+}
+
+.search-info {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+  margin-left: 4px;
+}
+
+mark {
+  background: var(--highlight-bg);
+  color: var(--highlight-text);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.hidden-by-search { display: none !important; }
+
+/* ── Typography ──────────────────────────────────────────────── */
+h1 { font-size: 2rem; font-weight: 800; margin-bottom: 6px; color: var(--text-primary); }
+h2 { font-size: 1.5rem; font-weight: 700; margin: 40px 0 16px 0; padding-bottom: 8px; border-bottom: 2px solid var(--border); color: var(--text-primary); }
+h3 { font-size: 1.2rem; font-weight: 700; margin: 28px 0 10px 0; color: var(--text-primary); }
+h4 { font-size: 1.05rem; font-weight: 600; margin: 22px 0 8px 0; color: var(--text-secondary); }
+
+p, .para { margin-bottom: 14px; color: var(--text-secondary); }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code {
+  font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 0.88em;
+  background: var(--code-bg);
+  color: var(--code-text);
+  padding: 2px 6px;
+  border-radius: 3px;
+  word-break: break-word;
+}
+
+pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  overflow-x: auto;
+  font-size: 0.84rem;
+  line-height: 1.6;
+  margin-bottom: 18px;
+}
+
+pre code { background: none; padding: 0; }
+
+blockquote {
+  border-left: 3px solid var(--accent);
+  padding: 10px 18px;
+  margin: 16px 0;
+  background: var(--accent-light);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+ul, ol { margin: 8px 0 16px 24px; color: var(--text-secondary); }
+li { margin-bottom: 4px; }
+
+/* ── Tables ──────────────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0 24px 0;
+  font-size: 0.88rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+thead { background: var(--table-header-bg); }
+
+th {
+  padding: 10px 14px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--table-header-text);
+  border-bottom: 2px solid var(--border);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+td {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
+}
+
+tr:last-child td { border-bottom: none; }
+tbody tr:nth-child(even) { background: var(--table-stripe); }
+td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monospace; font-size: 0.84rem; font-weight: 600; }
+
+/* ── Info / Warning boxes ───────────────────────────────────── */
+.info-box {
+  background: var(--accent-light);
+  border-left: 3px solid var(--accent);
+  padding: 12px 16px;
+  margin: 16px 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.warn-box {
+  background: var(--highlight-bg);
+  border-left: 3px solid #f59e0b;
+  padding: 12px 16px;
+  margin: 16px 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--highlight-text);
+  font-size: 0.9rem;
+}
+
+/* ── Equation container ──────────────────────────────────────── */
+.eqn-block {
+  margin: 18px 0;
+  padding: 14px 18px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  border: 1px solid var(--border-light);
+}
+
+/* ── Preset grid ─────────────────────────────────────────────── */
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin: 16px 0 24px 0;
+}
+
+.preset-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.preset-card .group-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+
+.preset-card .title { font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+.preset-card .desc { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 8px; }
+.preset-card .tags-used { font-family: 'Consolas', monospace; font-size: 0.75rem; color: var(--text-secondary); }
+
+/* ── Mobile ──────────────────────────────────────────────────── */
+@media (max-width: 800px) {
+  body { flex-direction: column; }
+  .sidebar {
+    width: 100%; min-width: 100%; height: auto; position: relative;
+    padding: 16px 18px; flex-shrink: 0; max-height: 42vh;
+  }
+  .main { padding: 20px 18px 60px 18px; max-width: 100%; }
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.25rem; }
+  table { font-size: 0.78rem; }
+  th, td { padding: 6px 10px; }
+  .preset-grid { grid-template-columns: 1fr; }
+}
+
+@media print {
+  .sidebar, .search-bar { display: none; }
+  .main { max-width: 100%; padding: 20px 0; }
+  body { font-size: 11pt; }
+}
+</style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- SIDEBAR                                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<nav class="sidebar" id="sidebar">
+  <h1>02Agent OSM Downloader</h1>
+  <div class="version">Reference Manual &middot; v0.4.0 &middot; 2026-08-07</div>
+
+  <div class="toc-section">Overview</div>
+  <a href="#introduction">Introduction</a>
+  <a href="#architecture">System Architecture</a>
+  <a href="#osm-primitives">OSM Data Primitives</a>
+  <a href="#overpass-ql">Overpass Query Language</a>
+  <a href="#tag-matching">Tag Matching Semantics</a>
+  <a href="#cache">Cache Architecture</a>
+  <a href="#multipolygon">Multipolygon Assembly</a>
+  <a href="#crs-transform">CRS Transformation</a>
+  <a href="#extent-validation">Extent Validation</a>
+
+  <div class="toc-section">Algorithms</div>
+  <a href="#algo1">Algorithm 1: Download Preset</a>
+  <a href="#algo1-theory" class="sub">Theoretical Background</a>
+  <a href="#algo1-params" class="sub">Parameters</a>
+  <a href="#algo1-outputs" class="sub">Outputs</a>
+  <a href="#algo1-interp" class="sub">Interpretation</a>
+
+  <a href="#algo2">Algorithm 2: Custom Tag</a>
+  <a href="#algo2-theory" class="sub">Theoretical Background</a>
+  <a href="#algo2-params" class="sub">Parameters</a>
+  <a href="#algo2-outputs" class="sub">Outputs</a>
+  <a href="#algo2-interp" class="sub">Interpretation</a>
+
+  <a href="#algo3">Algorithm 3: Advanced Query</a>
+  <a href="#algo3-theory" class="sub">Theoretical Background</a>
+  <a href="#algo3-params" class="sub">Parameters</a>
+  <a href="#algo3-outputs" class="sub">Outputs</a>
+  <a href="#algo3-interp" class="sub">Interpretation</a>
+
+  <div class="toc-section">Catalog</div>
+  <a href="#presets">Thematic Preset Catalog</a>
+
+  <div class="toc-section">Appendices</div>
+  <a href="#security">Security Architecture</a>
+  <a href="#references">References</a>
+
+  <div class="theme-toggle">
+    <button id="themeBtn" onclick="toggleTheme()">Dark Mode</button>
+  </div>
+</nav>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- MAIN CONTENT                                                 -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<main class="main" id="main-content">
+
+<!-- ── Search ───────────────────────────────────────────────── -->
+<div class="search-bar">
+  <span class="search-icon">&#128269;</span>
+  <input type="text" id="searchInput" placeholder="Search reference manual…" oninput="doSearch()">
+</div>
+<div class="search-info" id="searchInfo"></div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- INTRODUCTION                                                 -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="introduction">
+<h1>1. Introduction</h1>
+
+<p>
+The <strong>02Agent OSM Downloader</strong> is a QGIS Processing plugin providing
+three QGIS Processing algorithms for structured acquisition of OpenStreetMap (OSM)
+vector data via the Overpass API. Operating entirely within QGIS's native processing
+framework, the plugin translates user-specified thematic presets, custom key/value
+tags, or advanced multi-tag Boolean queries into bounded Overpass QL requests,
+automatically assembles multipolygon relations, transforms coordinates, and
+delivers three stratified output layers (points, lines, polygons).
+</p>
+
+<p>
+OpenStreetMap represents the largest and most widely used volunteered geographic
+information (VGI) repository, containing over 10 billion geospatial elements as of
+2026. The Overpass API provides a read-optimised query interface for selective OSM
+data extraction, enabling urban morphologists, transport planners, and
+environmental researchers to acquire domain-specific geospatial datasets without
+processing the entire planet file. This plugin formalises that acquisition into a
+reproducible, parameterised QGIS algorithm suite with stringent security and
+resource bounds.
+</p>
+
+<p>
+The plugin does not accept raw query text, arbitrary URLs, file paths, API keys,
+shell commands, or external interpreter invocations. All Overpass QL is constructed
+internally from typed parameters via the shared <code>core/query.py</code> module,
+ensuring every request is syntactically bounded and free of injection vectors.
+This design satisfies the QGIS Hub security gate requirements (Bandit,
+detect-secrets) while remaining compatible with Qt6 / QGIS 4 environments.
+</p>
+
+<div class="info-box">
+<strong>Key design constraints.</strong> Maximum response size: 64 MB.
+Maximum extent: 100 km<sup>2</sup>. Maximum features per response: 150,000.
+Maximum tag selectors per preset: 32. Overpass timeout: 45 seconds. Three
+hard-coded JSON-only endpoints with automatic failover. No raw query, URL,
+path, or external dependency accepted.
+</div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- SYSTEM ARCHITECTURE                                          -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="architecture">
+<h2>2. System Architecture</h2>
+
+<p>
+The plugin follows a layered architecture with strict separation of concerns:
+</p>
+
+<ol>
+  <li><strong>Presentation layer</strong> — QGIS Processing parameter widgets (preset
+  dropdown, extent selector, tag key/value text fields, geometry type enum) defined
+  in <code>osm_algorithms.py</code> via the <code>initAlgorithm()</code> methods of
+  each algorithm subclass.</li>
+
+  <li><strong>Authority boundary</strong> — <code>core/query.py</code> and
+  <code>core/catalog.py</code> are shared between the Processing provider, the
+  optional plugin dock widget, and the agent manifest. All query construction,
+  tag normalisation, and validation flows through these modules; no other code
+  path synthesises Overpass QL.</li>
+
+  <li><strong>Network layer</strong> — Three pinned Overpass endpoints with
+  automatic failover. Requests use <code>QgsBlockingNetworkRequest</code>'s POST
+  method with <code>application/x-www-form-urlencoded</code> encoding and
+  <code>Accept: application/json</code>. The User-Agent identifies the plugin
+  version and GitHub repository.</li>
+
+  <li><strong>Geometry layer</strong> — Coordinate extraction, multipolygon ring
+  assembly, unary union, difference, and CRS transformation. All geometry is
+  constructed using QGIS native geometry classes (<code>QgsGeometry</code>,
+  <code>QgsPointXY</code>, <code>QgsCoordinateTransform</code>).</li>
+
+  <li><strong>Cache layer</strong> — Thread-safe in-session dictionary with TTL-based
+  expiration and LRU eviction (8 entries, 15-minute TTL). Cached by raw query
+  string to avoid redundant network requests during iterative analysis.</li>
+</ol>
+
+<div class="eqn-block">
+$$ \text{System} = \underbrace{\text{Params}}_{P} \;\xrightarrow{\;Q(P)\;}\;
+\underbrace{\text{Overpass QL}}_{q} \;\xrightarrow{\;\text{POST}\;}\;
+\underbrace{\text{API}}_{i \in \{1,2,3\}} \;\xrightarrow{\;\text{JSON}\;}\;
+\underbrace{\text{Elements}}_{E} \;\xrightarrow{\;\Phi, \Gamma, \Pi\;}\;
+\underbrace{\text{Outputs}}_{\mathcal{O}_p, \mathcal{O}_l, \mathcal{O}_g} $$
+</div>
+
+<p>
+where \(Q(P)\) is the query builder function, \(i\) iterates over the three
+failover endpoints, \(\Phi\) is the kind classifier, \(\Gamma\) the geometry
+constructor, and \(\Pi\) the CRS projector.
+</p>
+
+<h3>2.1 Processing Provider</h3>
+
+<p>
+The <code>AgentOsmProvider</code> (provider ID: <code>zero2agentosm</code>)
+registers the three algorithms under the group <em>"OSM acquisition"</em> with
+group ID <code>osm_acquisition</code>. The provider icon is loaded from
+<code>icons/icon.png</code> relative to the plugin root. Each algorithm is
+instantiated fresh via <code>createInstance()</code>, ensuring QGIS can
+configure parallel algorithm runs with independent parameter state.
+</p>
+
+<h3>2.2 Network Endpoints</h3>
+
+<table>
+<thead><tr><th>Index</th><th>Endpoint</th><th>Host</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>https://overpass-api.de/api/interpreter</code></td><td>overpass-api.de</td></tr>
+<tr><td>2</td><td><code>https://overpass.kumi.systems/api/interpreter</code></td><td>overpass.kumi.systems</td></tr>
+<tr><td>3</td><td><code>https://overpass.private.coffee/api/interpreter</code></td><td>overpass.private.coffee</td></tr>
+</tbody>
+</table>
+
+<p>
+The failover strategy is sequential, not parallel: if the primary endpoint
+(overpass-api.de) fails due to network error or non-2xx HTTP status, the
+second is attempted, then the third. Only if all three fail is an exception
+raised. A successful response from any endpoint is cached and returned
+immediately, skipping remaining mirrors.
+</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- OSM DATA PRIMITIVES                                          -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="osm-primitives">
+<h2>3. OpenStreetMap Data Primitives</h2>
+
+<p>
+The OpenStreetMap data model comprises three fundamental geometric primitives,
+each identified by a unique 64-bit integer ID and augmented with a set of
+key-value tags (Mooney &amp; Corcoran, 2012):
+</p>
+
+<h3>3.1 Nodes</h3>
+<p>
+A <strong>node</strong> is a single geospatial point defined by a
+(longitude, latitude) coordinate pair in the WGS84 (EPSG:4326) datum.
+Nodes may represent features themselves (e.g., a bus stop, a tree, a
+traffic signal) or serve as vertices that define the geometry of ways.
+In this plugin, nodes are always mapped to the <em>point</em> output layer.
+</p>
+
+<h3>3.2 Ways</h3>
+<p>
+A <strong>way</strong> is an ordered list of node references. An open way
+(where the first and last nodes differ) represents a linear feature such as a
+road, footpath, waterway, or barrier. A closed way (where the first and
+last nodes are identical and there are at least three distinct nodes) may
+represent either a linear feature that happens to form a loop or an area
+feature such as a building footprint, park, or water body. Classification
+depends on the element's tags and the tag specifications provided by the
+user.
+</p>
+
+<h3>3.3 Relations</h3>
+<p>
+A <strong>relation</strong> is an ordered collection of members—nodes, ways,
+or other relations—each assigned a <em>role</em> string (commonly
+<code>"outer"</code> or <code>"inner"</code> for multipolygon relations).
+Relations model complex geographic features: multipolygons with holes,
+bus routes, turn restrictions, and administrative boundaries. This plugin
+implements a multipolygon assembly algorithm (Section 7) to reconstruct
+area geometries from fragmented relation members.
+</p>
+
+<div class="eqn-block">
+$$
+\mathcal{E} = \underbrace{\mathcal{N}}_{\text{nodes}} \;\cup\;
+\underbrace{\mathcal{W}}_{\text{ways}} \;\cup\;
+\underbrace{\mathcal{R}}_{\text{relations}}
+$$
+$$
+\forall e \in \mathcal{E} : e = (id_e,\, type_e,\, tags_e,\, geom_e)
+$$
+$$
+tags_e : \mathcal{K} \rightharpoonup \mathcal{V}, \quad
+\mathcal{K} = \{\text{key strings}\}, \quad \mathcal{V} = \{\text{value strings}\}
+$$
+$$ type_e \in \{\text{"node"},\; \text{"way"},\; \text{"relation"}\} $$
+</div>
+
+<p>
+where element geometry \(geom_e\) is a point coordinate pair for nodes, an
+ordered vertex sequence for ways, and a structured member list with role
+annotations for relations.
+</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- OVERPASS QUERY LANGUAGE                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="overpass-ql">
+<h2>4. Overpass Query Language</h2>
+
+<p>
+Overpass QL is a declarative, block-structured query language for the Overpass
+API, a read-only OSM data extraction service. Queries consist of an output
+format declaration, optional timeout, a parenthesised statement block, and
+an output directive (Olbricht, 2021).
+</p>
+
+<h3>4.1 Formal Grammar</h3>
+<p>
+The subset of Overpass QL generated by this plugin obeys the following
+formal grammar in extended Backus-Naur form:
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\langle query \rangle &::= \texttt{[out:json][timeout:}T\texttt{]}\texttt{;}\;
+                          \texttt{(}\, \langle stmt \rangle^+ \,\texttt{)}\texttt{;}\;
+                          \texttt{out body geom;} \\[4pt]
+T &= 45\ \text{seconds} \\[4pt]
+\langle stmt \rangle &::= \langle prim \rangle\,
+                          \langle selector \rangle^+\,
+                          \texttt{(}\, bbox \,\texttt{)}\texttt{;} \\[4pt]
+\langle prim \rangle &::= \texttt{node} \mid \texttt{way} \mid \texttt{relation} \\[4pt]
+\langle selector \rangle &::= \texttt{["}\, key \,\texttt{"=""}\, value \,\texttt{"]}
+                           \mid \texttt{["}\, key \,\texttt{"]} \\[4pt]
+bbox &::= south, west, north, east
+\end{aligned}
+$$
+</div>
+
+<p>
+where each coordinate is rendered to 7 decimal places (approximately 1 cm
+precision at the equator), and the output format is always JSON. No CSV,
+XML, or interactive endpoints are used.
+</p>
+
+<h3>4.2 Query Construction Algorithm</h3>
+
+<p>
+In <em>any</em> match mode, each tag specification generates one or two
+selector statements depending on its geometry kind:
+</p>
+
+<ul>
+  <li><strong>Point specs</strong> &rarr; <code>node[...](bbox);</code></li>
+  <li><strong>Line specs</strong> &rarr; <code>way[...](bbox);</code></li>
+  <li><strong>Polygon specs</strong> &rarr; <code>way[...](bbox);</code> +
+  <code>relation[...](bbox);</code></li>
+</ul>
+
+<p>
+Duplicate selectors are removed via dictionary ordering (<code>dict.fromkeys</code>).
+In <em>all</em> match mode, selectors are grouped by geometry kind, and all
+tag selectors for that geometry are concatenated onto a single primitive
+statement, expressing an AND conjunction at the Overpass level.
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\textit{any}(S, bbox) &=
+\bigcup_{\sigma \in S} \begin{cases}
+\{\texttt{node[}\sigma\texttt{](bbox);}\}             & \text{if } \sigma.\!geom = \text{point} \\[2pt]
+\{\texttt{way[}\sigma\texttt{](bbox);}\}              & \text{if } \sigma.\!geom = \text{line} \\[2pt]
+\{\texttt{way[}\sigma\texttt{](bbox);},\; \texttt{relation[}\sigma\texttt{](bbox);}\} & \text{if } \sigma.\!geom = \text{polygon}
+\end{cases} \\[12pt]
+\textit{all}(S, bbox) &=
+\bigcup_{g \in \{\text{point,line,polygon}\}}
+\begin{cases}
+\{\texttt{node[}\sigma_{g1}\texttt{]...[}\sigma_{gk}\texttt{](bbox);}\} & \text{if } S_g \neq \emptyset,\; g = \text{point} \\[2pt]
+\{\texttt{way[}\sigma_{g1}\texttt{]...[}\sigma_{gk}\texttt{](bbox);}\}  & \text{if } S_g \neq \emptyset,\; g = \text{line} \\[2pt]
+\{\texttt{way[}\sigma_{g1}\texttt{]...[}\sigma_{gk}\texttt{](bbox);},\;
+   \texttt{relation[}\sigma_{g1}\texttt{]...[}\sigma_{gk}\texttt{](bbox);}\} & \text{if } S_g \neq \emptyset,\; g = \text{polygon}
+\end{cases}
+\end{aligned}
+$$
+</div>
+
+<p>
+where \(S_g = \{\sigma \in S \mid \sigma.\!geom = g\}\) and \(k = |S_g|\).
+</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- TAG MATCHING SEMANTICS                                       -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="tag-matching">
+<h2>5. Tag Matching Semantics</h2>
+
+<p>
+Tag matching is performed client-side after the Overpass response is received.
+While Overpass QL supports tag-based filtering at the server, this plugin
+additionally filters responses to handle geometry-kind disambiguation (ways
+that could be either lines or polygons) and to support AND-mode conjunctions
+that may not have been fully expressible in a single Overpass query.
+</p>
+
+<h3>5.1 Matching Function</h3>
+
+<p>
+Given an OSM element's tag dictionary \(t : K \rightharpoonup V\) and a set of
+tag specifications \(S_g\) for a particular geometry kind \(g\), the matching
+function \(\mu\) is defined as:
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\mu_{\textit{any}}(t, S_g) &= \{\, \sigma \in S_g \mid
+   \sigma.\!key \in \text{dom}(t) \;\land\;
+   (\sigma.\!value = \varepsilon \;\lor\; t(\sigma.\!key) = \sigma.\!value)
+\,\} \\[8pt]
+\mu_{\textit{all}}(t, S_g) &= \begin{cases}
+S_g & \text{if } \forall \sigma \in S_g: \\
+    & \quad \sigma.\!key \in \text{dom}(t) \land (\sigma.\!value = \varepsilon \lor t(\sigma.\!key) = \sigma.\!value) \\[4pt]
+\emptyset & \text{otherwise}
+\end{cases}
+\end{aligned}
+$$
+</div>
+
+<p>
+where \(\varepsilon\) denotes the empty string (meaning "any value for this
+key"). A tag specification with an empty value matches any element possessing
+that key, regardless of its value.
+</p>
+
+<h3>5.2 Geometry Kind Classification</h3>
+
+<p>
+Element classification into output layers follows a precedence rule:
+</p>
+
+<ol>
+  <li><strong>Nodes</strong> &rarr; always classified as <em>point</em> if they
+  match at least one point-tagged specification.</li>
+  <li><strong>Relations</strong> &rarr; always classified as <em>polygon</em> if
+  they match at least one polygon-tagged specification.</li>
+  <li><strong>Ways</strong> &rarr; checked against both line and polygon
+  specifications. If only one geometry kind matches, that kind is selected.
+  If both match, the way is classified as polygon if and only if its vertex
+  sequence forms a closed ring (first coordinate equals last); otherwise,
+  it is classified as line.</li>
+</ol>
+
+<div class="eqn-block">
+$$
+\kappa(e, S) = \begin{cases}
+\text{"point"}   & \text{if } type_e = \text{"node"} \land \mu(t_e, S_{\text{point}}) \neq \emptyset \\[4pt]
+\text{"polygon"} & \text{if } type_e = \text{"relation"} \land \mu(t_e, S_{\text{polygon}}) \neq \emptyset \\[4pt]
+\text{"polygon"} & \text{if } type_e = \text{"way"}
+   \land \mu(t_e, S_{\text{polygon}}) \neq \emptyset
+   \land \mu(t_e, S_{\text{line}}) = \emptyset \\[4pt]
+\text{"line"}    & \text{if } type_e = \text{"way"}
+   \land \mu(t_e, S_{\text{line}}) \neq \emptyset
+   \land \mu(t_e, S_{\text{polygon}}) = \emptyset \\[4pt]
+\text{"polygon"} & \text{if } type_e = \text{"way"}
+   \land \mu(t_e, S_{\text{polygon}}) \neq \emptyset
+   \land \mu(t_e, S_{\text{line}}) \neq \emptyset
+   \land \text{closed}(geom_e) \\[4pt]
+\text{"line"}    & \text{if } type_e = \text{"way"}
+   \land \mu(t_e, S_{\text{polygon}}) \neq \emptyset
+   \land \mu(t_e, S_{\text{line}}) \neq \emptyset
+   \land \neg\text{closed}(geom_e) \\[4pt]
+\text{""}        & \text{otherwise}
+\end{cases}
+$$
+</div>
+
+<p>
+where \(\text{closed}(geom_e)\) is true when the way's first and last
+coordinates are equal and the ring has at least 4 points (3 distinct
+vertices plus the closure).
+</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- CACHE ARCHITECTURE                                           -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="cache">
+<h2>6. Cache Architecture</h2>
+
+<p>
+The plugin implements an in-session, in-memory response cache to minimise
+redundant Overpass API calls during iterative QGIS workflows. The cache is
+thread-safe, bound, and temporally limited.
+</p>
+
+<h3>6.1 Cache Structure</h3>
+
+<div class="eqn-block">
+$$
+\mathcal{C} : K \rightharpoonup (\tau, D), \quad
+K = \{\text{Overpass QL query strings}\}, \quad
+D = \{\text{JSON response payloads}\}
+$$
+$$
+|\mathcal{C}| \leq C_{\max} = 8,\quad
+\text{TTL} = T_{\text{cache}} = 15 \times 60\ \text{seconds}
+$$
+</div>
+
+<p>
+Each cache entry associates a raw query string key with a tuple of
+(monotonic timestamp, validated JSON payload). The timestamp uses
+<code>time.monotonic()</code> to remain unaffected by system clock
+adjustments.
+</p>
+
+<h3>6.2 Eviction Policy</h3>
+
+<p>
+Two independent policies govern cache eviction:
+</p>
+
+<ol>
+  <li><strong>TTL expiration (time-based):</strong> On read, if the
+  entry's age exceeds \(T_{\text{cache}}\), it is removed and the lookup
+  proceeds to a network request. This ensures stale data does not persist
+  across long analysis sessions.</li>
+  <li><strong>LRU eviction (space-based):</strong> On write, if the cache
+  has reached \(C_{\max}\) entries, the entry with the earliest
+  monotonic timestamp is evicted. The monotonic counter ensures
+  stable ordering even if cache entries have identical ages.</li>
+</ol>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\text{Read}(k) &: \text{if } \exists (\tau, d) \in \mathcal{C}[k]:
+   \text{if } t_{\text{now}} - \tau > T_{\text{cache}}:
+      \mathcal{C} \leftarrow \mathcal{C} \setminus \{k\}; \text{ return miss} \\
+   &\quad \text{else: return } d \\[6pt]
+\text{Write}(k, d) &: \text{if } |\mathcal{C}| \geq C_{\max}:
+   k_{\text{oldest}} = \arg\min_{k \in \mathcal{C}} \mathcal{C}[k][0];\;
+   \mathcal{C} \leftarrow \mathcal{C} \setminus \{k_{\text{oldest}}\} \\
+   &\quad \mathcal{C}[k] \leftarrow (t_{\text{now}}, d)
+\end{aligned}
+$$
+</div>
+
+<h3>6.3 Thread Safety</h3>
+
+<p>
+All cache operations are guarded by a single <code>threading.RLock()</code>,
+allowing re-entrant access from the same thread while preventing data races
+from concurrent QGIS algorithm executions. TTL expiry checks and evictions
+occur within the critical section, ensuring atomic read-modify operations.
+</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- MULTIPOLYGON ASSEMBLY                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="multipolygon">
+<h2>7. Multipolygon Assembly Algorithm</h2>
+
+<p>
+Overpass API returns relation members as discrete way fragments with
+independent geometry—a multipolygon representing a building with a courtyard
+may appear as four separate open ways for the outer shell and two for the
+inner hole. Treating each member as a standalone polygon silently drops these
+features. The <code>_member_rings()</code> function reconstructs closed rings
+by joining fragments at shared endpoints.
+</p>
+
+<h3>7.1 Algorithm</h3>
+
+<p>
+<strong>Phase 1 (Indexing):</strong> Collect all way-type members matching
+the target role (<code>"outer"</code> or <code>"inner"</code>). Build an
+endpoint dictionary mapping each (x, y) coordinate pair to the list of
+segment indices that begin or end there.
+</p>
+
+<p>
+<strong>Phase 2 (Chaining):</strong> While unused segment indices remain,
+pop one segment to start a new chain. At each step, attempt to find a
+segment whose endpoint matches the chain's current open end. If a match
+is found, extend the chain with appropriate orientation (forward if
+endpoints match head-to-tail, reversed otherwise). If no match exists at
+the chain end, attempt the chain start. If neither finds a neighbour,
+the chain is closed and added to the ring set.
+</p>
+
+<p>
+<strong>Phase 3 (Validation):</strong> Rings with fewer than 4 points
+(3 distinct vertices plus closure) are discarded. Only rings where
+\(p_0 = p_{n-1}\) are retained.
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\text{ENDPOINTS} &= \{\, ((x_0, y_0), (x_n, y_n)) \rightarrow [i]
+   \mid i \in [0, |\text{segments}|) \,\} \\[4pt]
+\text{MATCH}(p) &= \{s \in \text{unused} \mid
+   \text{segments}[s][0] = p \lor \text{segments}[s][-1] = p\} \\[4pt]
+\text{EXTEND}(\text{chain}, s) &= \begin{cases}
+\text{chain} + \text{segments}[s][1{:}]    & \text{if } \text{chain}[-1] = \text{segments}[s][0] \\
+\text{chain} + \text{reverse}(\text{segments}[s][:-1]) & \text{if } \text{chain}[-1] = \text{segments}[s][-1] \\
+\text{segments}[s][:-1] + \text{chain}     & \text{if } \text{chain}[0] = \text{segments}[s][-1] \\
+\text{reverse}(\text{segments}[s][1{:}]) + \text{chain} & \text{if } \text{chain}[0] = \text{segments}[s][0]
+\end{cases} \\[4pt]
+\text{VALID}(\text{ring}) &= |\text{ring}| \geq 4 \land \text{ring}[0] = \text{ring}[-1]
+\end{aligned}
+$$
+</div>
+
+<h3>7.2 Relation Polygon Assembly</h3>
+
+<p>
+After ring assembly, outer rings are unioned via
+<code>QgsGeometry.unaryUnion()</code> to handle multi-part outer boundaries
+(e.g., a land-use area split by a road). Inner rings are similarly unioned,
+then subtracted from the outer union via <code>QgsGeometry.difference()</code>
+to create holes. The result is converted to MultiPolygon type via
+<code>convertToMultiType()</code> before being stored.
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\mathcal{O} &= \bigcup_{r \in \text{rings}_{\text{outer}}} \text{polygon}(r) \\
+\mathcal{I} &= \bigcup_{r \in \text{rings}_{\text{inner}}} \text{polygon}(r) \\
+P_{\text{relation}} &= \mathcal{O} \setminus \mathcal{I}
+\end{aligned}
+$$
+</div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- CRS TRANSFORMATION                                           -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="crs-transform">
+<h2>8. CRS Transformation</h2>
+
+<p>
+All OSM data is natively in WGS84 (EPSG:4326), a geographic coordinate system
+using latitude and longitude in decimal degrees. QGIS projects, however,
+commonly use projected coordinate systems (e.g., UTM zones, national grids)
+in linear units (metres) for distance and area calculations. The plugin
+performs automatic coordinate transformation:
+</p>
+
+<ol>
+  <li><strong>Extent transformation (input):</strong> The user-selected
+  download extent, which may be in any CRS, is transformed to WGS84 for
+  Overpass query bounding box construction.</li>
+  <li><strong>Geometry transformation (output):</strong> Each feature
+  geometry constructed from WGS84 coordinates is transformed to the
+  output CRS (the extent's CRS, or the project CRS as fallback).</li>
+</ol>
+
+<h3>8.1 Affine Formulation</h3>
+
+<p>
+While QGIS implements full datum transformations using PROJ pipelines
+(including grid-shift files for high-accuracy transforms), the fundamental
+operation for point coordinates under a linearised approximation is:
+</p>
+
+<div class="eqn-block">
+$$
+\mathbf{x}_{\text{out}} = \mathbf{A} \,
+\mathbf{x}_{\text{wgs84}} + \mathbf{t}
+$$
+$$
+\mathbf{x} = \begin{bmatrix} \lambda \\ \phi \end{bmatrix}, \quad
+\mathbf{A} \in \mathbb{R}^{2 \times 2}, \quad
+\mathbf{t} \in \mathbb{R}^2
+$$
+</div>
+
+<p>
+where \(\mathbf{A}\) is the Jacobian of the map projection at the centroid
+of the extent, and \(\mathbf{t}\) is a translation vector. For Bursa-Wolf
+datum transformations, the full 7-parameter Helmert transformation is used
+internally by PROJ.
+</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- EXTENT VALIDATION                                            -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="extent-validation">
+<h2>9. Extent Validation</h2>
+
+<h3>9.1 Bounding Box Constraints</h3>
+
+<p>
+The <code>validate_bbox()</code> function enforces geographic and resource
+constraints on the download extent:
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+&\text{Bounds: } -90^\circ \leq \phi_{\text{south}} < \phi_{\text{north}} \leq 90^\circ,\;
+   -180^\circ \leq \lambda_{\text{west}} < \lambda_{\text{east}} \leq 180^\circ \\[4pt]
+&\text{Area estimation (spherical approximation): } \\[4pt]
+A &\approx (\phi_n - \phi_s) \times 111.32 \times
+      (\lambda_e - \lambda_w) \times 111.32 \times
+      \max(0.01,\; |\cos(\bar{\phi})|) \\[4pt]
+\bar{\phi} &= \frac{\phi_n + \phi_s}{2} \quad \text{(mean latitude in radians)} \\[4pt]
+A &\leq A_{\max} = 100\ \text{km}^2
+\end{aligned}
+$$
+</div>
+
+<p>
+The constant 111.32 km/degree is the approximate length of one degree of
+latitude (or one degree of longitude at the equator). The cosine factor
+accounts for meridian convergence at higher latitudes. The lower bound of
+0.01 on the cosine prevents degenerate behaviour near the poles.
+</p>
+
+<h3>9.2 Haversine Distance</h3>
+
+<p>
+While the plugin uses the simplified rectangular approximation above for
+area estimation (sufficient for the 100 km&sup2; extent gate), the
+theoretically correct great-circle distance between two WGS84 points is
+given by the Haversine formula:
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+a &= \sin^2\!\left(\frac{\Delta\phi}{2}\right) +
+     \cos(\phi_1) \cos(\phi_2) \sin^2\!\left(\frac{\Delta\lambda}{2}\right) \\[4pt]
+c &= 2 \cdot \text{atan2}(\sqrt{a}, \sqrt{1 - a}) \\[4pt]
+d &= R \cdot c, \quad R = 6,371\ \text{km}
+\end{aligned}
+$$
+</div>
+
+<p>
+where \(\phi_1, \phi_2\) are latitudes in radians, \(\Delta\phi = \phi_2 - \phi_1\),
+\(\Delta\lambda = \lambda_2 - \lambda_1\), and \(R\) is the Earth's mean radius.
+</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- ALGORITHM 1: DOWNLOAD PRESET                                 -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="algo1">
+<h2>10. Algorithm 1: Download Curated OSM Thematic Preset</h2>
+
+<p>
+<strong>Algorithm ID:</strong> <code>download_preset</code><br>
+<strong>Display name:</strong> Download curated OSM thematic preset<br>
+<strong>Group:</strong> OSM acquisition
+</p>
+
+<h3 id="algo1-theory">10.1 Theoretical Background</h3>
+
+<p>
+Thematic preset downloads operationalise the concept of <em>curated OSM
+knowledge schemas</em>—predefined collections of OSM key/value/geometry
+triples organised by analytical domain. In VGI research, the absence of a
+fixed data schema is both a strength (enabling community-driven tagging) and
+a challenge (requiring domain expertise to identify relevant tags). Preset
+catalogues bridge this gap by encoding expert knowledge of OSM's emergent
+tag ontology (Mooney &amp; Corcoran, 2012; Barrington-Leigh &amp; Millard-Ball,
+2017).
+</p>
+
+<p>
+Each preset bundles a set of <code>TagSpec</code> objects—(key, value,
+geometry_kind) triples—under a thematic group. The <em>Urban Context</em>
+preset, for example, selects highways (lines), buildings (polygons), trees
+(points), and tree rows (lines) to provide a comprehensive base map for
+urban morphology analysis. The <em>Green-blue system</em> preset combines
+parks, forests, woods, water bodies, waterways, and coastlines for
+ecological network analysis.
+</p>
+
+<p>
+The presets operate in <em>any</em> (OR) match mode: an element is selected
+if it matches any single TagSpec. This yields inclusive, broad-coverage
+downloads suitable for initial exploration and base map construction.
+</p>
+
+<h4>10.1.1 Preset Selection as Indexed Retrieval</h4>
+
+<p>
+Formally, each preset \(p \in \mathcal{P}\) is a tuple containing a unique
+identifier, thematic group, and an ordered tuple of tag specifications.
+The preset selection parameter \(i \in \{0, \ldots, |\mathcal{P}|-1\}\)
+indexes into this catalogue:
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\mathcal{P} &= \{\, p_0, p_1, \ldots, p_{24} \,\}, \quad |\mathcal{P}| = 25 \\[4pt]
+p_j &= (\text{preset\_id}_j,\; \text{group\_id}_j,\; \text{group\_title}_j,\;
+\text{title}_j,\; \text{description}_j,\; \text{tags}_j,\; \text{keywords}_j) \\[4pt]
+\text{tags}_j &= (\sigma_{j,1}, \sigma_{j,2}, \ldots, \sigma_{j,m_j}), \quad
+m_j = |\text{tags}_j| \\[4pt]
+\sigma_{j,k} &= \text{TagSpec}(\text{key}_{j,k},\; \text{value}_{j,k},\;
+\text{geometry}_{j,k}) \in \mathcal{K}_{\text{valid}} \times
+\mathcal{V}_{\text{valid}} \times \{\text{point}, \text{line}, \text{polygon}\}
+\end{aligned}
+$$
+</div>
+
+<p>
+where the total number of tag selectors across all presets is
+\(\sum_{j=0}^{24} m_j\) and each individual preset satisfies
+\(1 \leq m_j \leq 32\) (the <code>MAX_SELECTORS</code> bound enforced
+by <code>normalized_specs()</code>).
+</p>
+
+<h4>10.1.2 Geometry Projection and Selector Expansion</h4>
+
+<p>
+The Overpass query generated from a preset's tag specifications expands
+each TagSpec into one or two Overpass selector statements depending on
+the geometry kind. The mapping from TagSpec tuple to Overpass QL selector
+set is:
+</p>
+
+<div class="eqn-block">
+$$
+\psi_{\text{preset}}(\text{tags}_j, \text{bbox}) =
+\bigcup_{k=1}^{m_j} \begin{cases}
+\{\, \texttt{node[}\sigma_{j,k}\texttt{](bbox);} \,\} &
+\text{if } \sigma_{j,k}.\!geom = \text{point} \\[6pt]
+\{\, \texttt{way[}\sigma_{j,k}\texttt{](bbox);} \,\} &
+\text{if } \sigma_{j,k}.\!geom = \text{line} \\[6pt]
+\{\, \texttt{way[}\sigma_{j,k}\texttt{](bbox);},\;
+\texttt{relation[}\sigma_{j,k}\texttt{](bbox);} \,\} &
+\text{if } \sigma_{j,k}.\!geom = \text{polygon}
+\end{cases}
+$$
+</div>
+
+<p>
+The expansion factor \(\rho = |\psi_{\text{preset}}| / m_j\) satisfies
+\(1 \leq \rho \leq 2\), with \(\rho = 2\) occurring when all
+specifications are polygon-kind (each generating both a way and a
+relation selector). After deduplication via <code>dict.fromkeys()</code>,
+the number of unique selectors may be less than the raw expansion product.
+</p>
+
+<h4>10.1.3 Preset Execution and Element Yield</h4>
+
+<p>
+For a given preset index \(i\), extent \(e\), and output CRS \(c\), the
+expected element yield is governed by OSM feature density within the
+extent. The classification function \(\kappa\) (discussed in Section 5)
+partitions elements into the three output layers:
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\mathcal{O}_{\text{point}}^{i,e} &=
+\{\, (e, \kappa(e), \gamma(e)) \mid e \in E_{\text{query}} \land
+\kappa(e, \text{tags}_i) = \text{"point"} \,\} \\[4pt]
+\mathcal{O}_{\text{line}}^{i,e} &=
+\{\, (e, \kappa(e), \gamma(e)) \mid e \in E_{\text{query}} \land
+\kappa(e, \text{tags}_i) = \text{"line"} \,\} \\[4pt]
+\mathcal{O}_{\text{polygon}}^{i,e} &=
+\{\, (e, \kappa(e), \gamma(e)) \mid e \in E_{\text{query}} \land
+\kappa(e, \text{tags}_i) = \text{"polygon"} \,\} \\[4pt]
+|\mathcal{O}_{\text{point}}^{i,e}| + |\mathcal{O}_{\text{line}}^{i,e}|
++ |\mathcal{O}_{\text{polygon}}^{i,e}| &\leq |E_{\text{query}}|
+\leq 150,000
+\end{aligned}
+$$
+</div>
+
+<p>
+where \(E_{\text{query}}\) is the set of elements returned by the Overpass
+query, \(\kappa\) is the kind classifier, and \(\gamma\) is the geometry
+constructor. The inequality reflects that some elements may be discarded
+if their geometry fails to construct (empty or invalid).
+</p>
+
+<p>
+The preset catalogue spans 25 presets across 10 thematic groups (urban
+context, networks, morphology, green-blue infrastructure, public transport,
+religious facilities, tourism, sport, cycling, automotive, traffic, health,
+education, and emergency services), providing coverage for the most common
+GIS analytical workflows in urban planning, transport engineering, and
+environmental science.
+</p>
+
+<h4>10.1.4 OSM Tag Ontology and Preset Design</h4>
+
+<p>
+OSM's tagging system is a folksonomy: a collaboratively maintained,
+unstructured vocabulary that has converged toward a de facto standard
+through community conventions documented on the OSM Wiki. The preset
+catalogue reflects this convergence. Each preset's tag set is sourced from
+established OSM tagging conventions and has been validated against
+real-world data availability. Tags use the standard OSM key format
+(<code>^[A-Za-z0-9_:.~-]{1,80}$</code>) and values optionally specify
+particular OSM value strings (e.g., <code>"highway"="bus_stop"</code>),
+with empty value strings indicating wildcard matching for that key.
+</p>
+
+<h3 id="algo1-params">10.2 Parameters</h3>
+
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>PRESET</code></td><td>Enum</td><td>Thematic preset selection. Index into the PRESETS catalogue. Labels follow the pattern "<em>Group Title</em> &mdash; <em>Preset Title</em>" (e.g., "Urban Context &mdash; Roads, buildings &amp; trees").</td></tr>
+<tr><td><code>EXTENT</code></td><td>QgsProcessingParameterExtent</td><td>Geographic extent defining the download bounding box. Must be within 100 km&sup2;. Automatically transformed to WGS84 for Overpass querying.</td></tr>
+<tr><td><code>OUTPUT_POINTS</code></td><td>QgsProcessingParameterFeatureSink</td><td>Destination sink for point features (QgsWkbTypes.Point).</td></tr>
+<tr><td><code>OUTPUT_LINES</code></td><td>QgsProcessingParameterFeatureSink</td><td>Destination sink for line features (QgsWkbTypes.LineString).</td></tr>
+<tr><td><code>OUTPUT_POLYGONS</code></td><td>QgsProcessingParameterFeatureSink</td><td>Destination sink for polygon features (QgsWkbTypes.MultiPolygon).</td></tr>
+</tbody>
+</table>
+
+<h3 id="algo1-outputs">10.3 Outputs</h3>
+
+<p>
+All three algorithms produce identical output schemas. Each output layer
+contains the following 21 fields (all of type <code>QString</code>):
+</p>
+
+<table>
+<thead>
+<tr><th>#</th><th>Field Name</th><th>Source</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td><code>osm_id</code></td><td>element["id"]</td><td>OSM element identifier (64-bit integer, stored as string)</td></tr>
+<tr><td>2</td><td><code>osm_type</code></td><td>element["type"]</td><td>OSM primitive type: "node", "way", or "relation"</td></tr>
+<tr><td>3</td><td><code>name</code></td><td>tags["name"]</td><td>Human-readable name tag, if present</td></tr>
+<tr><td>4</td><td><code>preset_id</code></td><td>Algorithm logic</td><td>Internal preset identifier (e.g., "urban_context", "road_network"); "custom" for Algorithm 2; "advanced" for Algorithm 3</td></tr>
+<tr><td>5</td><td><code>theme</code></td><td>Algorithm logic</td><td>Human-readable theme label (e.g., "Urban Context", "Custom tag", "Advanced query")</td></tr>
+<tr><td>6</td><td><code>query_key</code></td><td>First matching TagSpec</td><td>The OSM key of the first matching tag specification</td></tr>
+<tr><td>7</td><td><code>query_value</code></td><td>tags[query_key]</td><td>The actual OSM value for the query_key in this element</td></tr>
+<tr><td>8</td><td><code>building</code></td><td>tags["building"]</td><td>Building tag value, if present</td></tr>
+<tr><td>9</td><td><code>highway</code></td><td>tags["highway"]</td><td>Highway tag value, if present</td></tr>
+<tr><td>10</td><td><code>amenity</code></td><td>tags["amenity"]</td><td>Amenity tag value, if present</td></tr>
+<tr><td>11</td><td><code>landuse</code></td><td>tags["landuse"]</td><td>Land use tag value, if present</td></tr>
+<tr><td>12</td><td><code>leisure</code></td><td>tags["leisure"]</td><td>Leisure tag value, if present</td></tr>
+<tr><td>13</td><td><code>natural</code></td><td>tags["natural"]</td><td>Natural feature tag value, if present</td></tr>
+<tr><td>14</td><td><code>railway</code></td><td>tags["railway"]</td><td>Railway tag value, if present</td></tr>
+<tr><td>15</td><td><code>public_transport</code></td><td>tags["public_transport"]</td><td>Public transport tag value, if present</td></tr>
+<tr><td>16</td><td><code>tourism</code></td><td>tags["tourism"]</td><td>Tourism tag value, if present</td></tr>
+<tr><td>17</td><td><code>sport</code></td><td>tags["sport"]</td><td>Sport tag value, if present</td></tr>
+<tr><td>18</td><td><code>height</code></td><td>tags["height"]</td><td>Building/feature height tag, if present</td></tr>
+<tr><td>19</td><td><code>building_levels</code></td><td>tags["building:levels"]</td><td>Number of building levels, if present</td></tr>
+<tr><td>20</td><td><code>tags_json</code></td><td>All element tags</td><td>JSON-serialised complete tag set (compact format, max ~16 KB; truncated with <code>_truncated: true</code> if exceeded)</td></tr>
+<tr><td>21</td><td><code>matched_tags</code></td><td>Matching TagSpecs</td><td>JSON object containing only the tag keys/values that matched the query specifications (sorted alphabetically)</td></tr>
+</tbody>
+</table>
+
+<p class="para"><em>All 21 fields are of type <code>QString</code> (QMetaType.Type.QString). The <code>tags_json</code> field is compacted to approximately 16 KB maximum; if the full tag set exceeds this limit, the JSON object is truncated with a <code>_truncated: true</code> sentinel key.</em></p>
+
+<h3 id="algo1-interp">10.4 Interpretation Guidance</h3>
+
+<ul>
+  <li><strong>Data completeness:</strong> OSM coverage varies geographically.
+  Urban areas in Europe and North America typically have near-complete building
+  footprints and road networks, while coverage in developing regions may be
+  sparse (Haklay, 2010; Barrington-Leigh &amp; Millard-Ball, 2017).</li>
+  <li><strong>Tagging consistency:</strong> Different contributors may apply
+  different tag combinations for the same real-world feature. The
+  <code>matched_tags</code> field records only the tags that triggered the
+  match, while <code>tags_json</code> preserves the full tag set for
+  post-hoc analysis.</li>
+  <li><strong>Duplicate geometry:</strong> A single real-world feature may
+  appear in multiple output layers (e.g., a building tagged with both
+  <code>building=yes</code> and <code>amenity=school</code> would appear
+  as a polygon in both the Buildings and Education presets if downloaded
+  separately). The <code>osm_id</code> field enables cross-layer deduplication.</li>
+  <li><strong>Extent limits:</strong> The 100 km&sup2; maximum extent is
+  designed to keep response sizes manageable and respect Overpass API fair-use
+  policies. For larger areas, download multiple adjacent extents and merge.</li>
+</ul>
+
+<h4>10.4.1 References</h4>
+<ol class="refs">
+  <li>Goodchild, M.F. (2007). Citizens as sensors: the world of volunteered geography. <em>GeoJournal</em>, 69(4), 211-221. <a href="https://doi.org/10.1007/s10708-007-9111-y" target="_blank">DOI: 10.1007/s10708-007-9111-y</a></li>
+  <li>Haklay, M. (2010). How good is volunteered geographical information? A comparative study of OpenStreetMap and Ordnance Survey datasets. <em>Environment and Planning B: Planning and Design</em>, 37(4), 682-703. <a href="https://doi.org/10.1068/b35097" target="_blank">DOI: 10.1068/b35097</a></li>
+  <li>Mooney, P. &amp; Corcoran, P. (2012). Characteristics of heavily edited objects in OpenStreetMap. <em>Future Internet</em>, 4(4), 880-906. <a href="https://doi.org/10.3390/fi4030880" target="_blank">DOI: 10.3390/fi4030880</a></li>
+  <li>Barrington-Leigh, C. &amp; Millard-Ball, A. (2017). The world's user-generated road map is more than 80% complete. <em>PLOS ONE</em>, 12(8), e0180698. <a href="https://doi.org/10.1371/journal.pone.0171362" target="_blank">DOI: 10.1371/journal.pone.0171362</a></li>
+  <li>Neis, P. &amp; Zipf, A. (2012). Analyzing the contributor activity of a volunteered geographic information project — the case of OpenStreetMap. <em>ISPRS International Journal of Geo-Information</em>, 1(2), 146-165. <a href="https://doi.org/10.3390/fi4030880" target="_blank">DOI: 10.3390/fi4030880</a></li>
+  <li>Boeing, G. (2017). OSMnx: New methods for acquiring, constructing, analyzing, and visualizing complex street networks. <em>Computers, Environment and Urban Systems</em>, 65, 126-139. <a href="https://doi.org/10.1016/j.compenvurbsys.2017.05.004" target="_blank">DOI: 10.1016/j.compenvurbsys.2017.05.004</a></li>
+  <li>Haklay, M. &amp; Weber, P. (2008). OpenStreetMap: User-generated street maps. <em>IEEE Pervasive Computing</em>, 7(4), 12-18. <a href="https://doi.org/10.1145/1463434.1463442" target="_blank">DOI: 10.1145/1463434.1463442</a></li>
+  <li>Schmidt, M. &amp; Weiser, P. (2010). OpenStreetMap data quality — assessment and assurance. <em>IEEE Computer</em>, 43(12), 94-97. <a href="https://doi.org/10.1109/MC.2010.21" target="_blank">DOI: 10.1109/MC.2010.21</a></li>
+</ol>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- ALGORITHM 2: CUSTOM TAG                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="algo2">
+<h2>11. Algorithm 2: Download Custom OSM Key/Value Tag</h2>
+
+<p>
+<strong>Algorithm ID:</strong> <code>download_custom_tag</code><br>
+<strong>Display name:</strong> Download custom OSM key/value tag<br>
+<strong>Group:</strong> OSM acquisition
+</p>
+
+<h3 id="algo2-theory">11.1 Theoretical Background</h3>
+
+<p>
+The custom tag algorithm provides direct access to OSM's full tag space
+without requiring a pre-defined preset. This supports <em>exploratory VGI
+analysis</em>: researchers investigating tag adoption patterns, data
+completeness for niche features, or the spatial distribution of any key
+or key/value combination across a study area.
+</p>
+
+<p>
+The algorithm accepts a single OSM key (required) and an optional value.
+An empty or wildcard (<code>*</code>) value matches any element possessing
+that key regardless of its associated value. The user selects a target
+geometry type (Point, Line, or Polygon), which constrains the Overpass
+query to the relevant OSM primitive and the post-query classification to
+the chosen geometry kind.
+</p>
+
+<h4>11.1.1 Tag Normalization Function</h4>
+
+<p>
+The <code>normalize_tag()</code> function maps raw user input strings to a
+safe, bounded key/value pair suitable for Overpass QL embedding:
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\text{normalize\_tag}(k_{\text{raw}}, v_{\text{raw}}) &=
+(\,\text{strip}(k_{\text{raw}}),\;
+   \text{strip}(v_{\text{raw}})\,) \\[4pt]
+\text{where } \text{strip}(x) &= \text{trim\_whitespace}(\text{str}(x \text{ or } ``")) \\[4pt]
+\text{with wildcard reduction: } v_{\text{clean}} &=
+\begin{cases}
+\varepsilon & \text{if } v_{\text{strip}} = ``*" \\
+v_{\text{strip}} & \text{otherwise}
+\end{cases}
+\end{aligned}
+$$
+</div>
+
+<p>
+The resulting value \(\varepsilon\) (empty string) signals <em>any-value
+matching</em> to both the Overpass query builder (omitting the value
+selector) and the post-query tag matcher (accepting any value for the
+given key).
+</p>
+
+<h4>11.1.2 Tag Validation Constraints</h4>
+
+<p>
+Tag validation follows the OSM key naming convention and restricts
+characters that carry special semantics in Overpass QL:
+</p>
+
+<div class="eqn-block">
+$$
+\mathcal{K}_{\text{valid}} = \{k \in \Sigma^* \mid
+   1 \leq |k| \leq 80 \;\land\;
+   \forall c \in k: c \in \text{[A-Za-z0-9_:.~-]} \}
+$$
+$$
+\mathcal{V}_{\text{valid}} = \{v \in \Sigma^* \mid
+   |v| \leq 120 \;\land\;
+   \forall c \in v: c \notin \text{[}\backslash\text{x00-}\backslash\text{x1f }
+   \backslash\text{x7f } \texttt{"} \backslash\texttt{\\} \texttt{;} \texttt{[} \texttt{]} \texttt{(} \texttt{)} \texttt{\{}\texttt{\}}\text{]}
+\}
+$$
+</div>
+
+<h4>11.1.3 Query Construction for Custom Tags</h4>
+
+<p>
+A custom tag query constructs a single TagSpec and normalizes it, producing
+an Overpass query with exactly one selector (for point or line geometries)
+or two selectors (for polygon, querying both ways and relations):
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\sigma_{\text{custom}} &= \text{TagSpec}\big(
+   \text{normalize\_tag}(k_{\text{raw}}, v_{\text{raw}}),\;
+   g_{\text{selected}} \big) \\[4pt]
+Q_{\text{custom}} &= \text{build\_query}\big(
+   (\sigma_{\text{custom}},),\; \text{bbox},\; \text{"any"} \big) \\[4pt]
+|\psi(\sigma_{\text{custom}})| &=
+\begin{cases}
+1 & \text{if } g_{\text{selected}} \in \{\text{point}, \text{line}\} \\
+2 & \text{if } g_{\text{selected}} = \text{polygon}
+\end{cases}
+\end{aligned}
+$$
+</div>
+
+<p>
+This is significant in the context of OSM data quality research: the
+ability to query any single tag enables spatial data quality assessments
+(Haklay, 2010), completeness metrics, and temporal analyses of tag
+evolution when combined with OSM history data. The geometry constraint
+also provides a natural filtering mechanism — researchers can isolate,
+for example, only point representations of amenities, excluding
+polygon footprints of the same feature type.
+</p>
+
+<h3 id="algo2-params">11.2 Parameters</h3>
+
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>KEY</code></td><td>String (required)</td><td>OSM tag key (e.g., "highway", "amenity", "natural"). Must match <code>^[A-Za-z0-9_:.~-]{1,80}$</code>.</td></tr>
+<tr><td><code>VALUE</code></td><td>String (optional)</td><td>OSM tag value (e.g., "restaurant", "primary"). Blank or "*" matches any value for the given key. Maximum 120 characters; must not contain control characters or Overpass metacharacters.</td></tr>
+<tr><td><code>GEOMETRY</code></td><td>Enum</td><td>Target geometry type: "Point" (0), "Line" (1), or "Polygon" (2). Determines which OSM primitives are queried and which output layer receives the results.</td></tr>
+<tr><td><code>EXTENT</code></td><td>Extent</td><td>Geographic download extent (see Algorithm 1).</td></tr>
+<tr><td><code>OUTPUT_POINTS</code></td><td>FeatureSink</td><td>Point output layer (populated only when GEOMETRY = Point).</td></tr>
+<tr><td><code>OUTPUT_LINES</code></td><td>FeatureSink</td><td>Line output layer (populated only when GEOMETRY = Line).</td></tr>
+<tr><td><code>OUTPUT_POLYGONS</code></td><td>FeatureSink</td><td>Polygon output layer (populated only when GEOMETRY = Polygon).</td></tr>
+</tbody>
+</table>
+
+<h3 id="algo2-outputs">11.3 Outputs</h3>
+
+<p>
+Same 22-field output schema as Algorithm 1 (see Section 10.3). The
+<code>preset_id</code> field is set to <code>"custom"</code> and
+<code>theme</code> to <code>"Custom tag"</code>. Only the output layer
+corresponding to the selected geometry type will contain features; the
+other two layers will be empty.
+</p>
+
+<h3 id="algo2-interp">11.4 Interpretation Guidance</h3>
+
+<ul>
+  <li><strong>Key-only queries:</strong> When the value field is blank,
+  the algorithm retrieves all elements with that key. For high-frequency
+  keys like <code>building</code> or <code>highway</code>, this can return
+  very large result sets even within the 100 km&sup2; extent. Consider
+  specifying a value to narrow results.</li>
+  <li><strong>Tag frequency analysis:</strong> Use the <code>tags_json</code>
+  field to analyse the distribution of values for a given key, supporting
+  research on OSM tag adoption and heterogeneity.</li>
+  <li><strong>Cross-preset validation:</strong> Custom tag downloads can
+  be compared with preset downloads to verify that presets capture all
+  relevant features (e.g., comparing <code>amenity=hospital</code> custom
+  download against the Healthcare preset).</li>
+</ul>
+
+<h4>11.4.1 References</h4>
+<ol class="refs">
+  <li>Goodchild, M.F. (2007). Citizens as sensors: the world of volunteered geography. <em>GeoJournal</em>, 69(4), 211-221. <a href="https://doi.org/10.1007/s10708-007-9111-y" target="_blank">DOI: 10.1007/s10708-007-9111-y</a></li>
+  <li>Haklay, M. (2010). How good is volunteered geographical information? A comparative study of OpenStreetMap and Ordnance Survey datasets. <em>Environment and Planning B</em>, 37(4), 682-703. <a href="https://doi.org/10.1068/b35097" target="_blank">DOI: 10.1068/b35097</a></li>
+  <li>Mooney, P. &amp; Corcoran, P. (2012). Characteristics of heavily edited objects in OpenStreetMap. <em>Future Internet</em>, 4(4), 880-906. <a href="https://doi.org/10.3390/fi4030880" target="_blank">DOI: 10.3390/fi4030880</a></li>
+  <li>Barrington-Leigh, C. &amp; Millard-Ball, A. (2017). The world's user-generated road map is more than 80% complete. <em>PLOS ONE</em>, 12(8), e0180698. <a href="https://doi.org/10.1371/journal.pone.0171362" target="_blank">DOI: 10.1371/journal.pone.0171362</a></li>
+  <li>Boeing, G. (2017). OSMnx: New methods for acquiring, constructing, analyzing, and visualizing complex street networks. <em>Computers, Environment and Urban Systems</em>, 65, 126-139. <a href="https://doi.org/10.1016/j.compenvurbsys.2017.05.004" target="_blank">DOI: 10.1016/j.compenvurbsys.2017.05.004</a></li>
+  <li>Haklay, M. &amp; Weber, P. (2008). OpenStreetMap: User-generated street maps. <em>IEEE Pervasive Computing</em>, 7(4), 12-18. <a href="https://doi.org/10.1145/1463434.1463442" target="_blank">DOI: 10.1145/1463434.1463442</a></li>
+  <li>Neis, P. &amp; Zipf, A. (2012). Analyzing the contributor activity of a volunteered geographic information project. <em>ISPRS Int. J. Geo-Inf.</em>, 1(2), 146-165. <a href="https://doi.org/10.3390/fi4030880" target="_blank">DOI: 10.3390/fi4030880</a></li>
+  <li>Schmidt, M. &amp; Weiser, P. (2010). OpenStreetMap data quality. <em>IEEE Computer</em>, 43(12), 94-97. <a href="https://doi.org/10.1109/MC.2010.21" target="_blank">DOI: 10.1109/MC.2010.21</a></li>
+</ol>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- ALGORITHM 3: ADVANCED QUERY                                  -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="algo3">
+<h2>12. Algorithm 3: Download Structured Advanced OSM Query</h2>
+
+<p>
+<strong>Algorithm ID:</strong> <code>download_advanced</code><br>
+<strong>Display name:</strong> Download structured advanced OSM query<br>
+<strong>Group:</strong> OSM acquisition
+</p>
+
+<h3 id="algo3-theory">12.1 Theoretical Background</h3>
+
+<p>
+The advanced query algorithm provides multi-tag Boolean query construction
+without exposing raw Overpass QL to the user. This design bridges the gap
+between the simplicity of presets and the power of direct Overpass queries,
+while maintaining the plugin's security boundary. In the OSM research
+literature, such structured query interfaces support <em>multi-criteria
+spatial data selection</em>—identifying features that satisfy combinations
+of tag constraints across potentially different geometry types (Neis &amp;
+Zipf, 2012; Boeing, 2017).
+</p>
+
+<p>
+The algorithm supports up to 4 tag filters (each a key/value pair),
+two Boolean match modes (ANY/OR and ALL/AND), and four geometry scopes
+(All geometries, Points, Lines, Polygons). This yields a combinatorial
+query space of \(2 \times 4 \times 4^4 = 2,048\) possible queries
+(without considering the continuous extent parameter), each of which is
+rendered as a syntactically valid, bounded Overpass QL string.
+</p>
+
+<h4>12.1.1 Boolean Match Semantics</h4>
+
+<p>
+In <strong>ANY</strong> (OR) mode, each tag filter independently generates
+Overpass selectors. An OSM element is retained if it matches at least one
+filter. This is the most permissive mode, suitable for broad thematic
+queries (e.g., "all features tagged as either retail or office or
+industrial").
+</p>
+
+<p>
+In <strong>ALL</strong> (AND) mode, all tag filters must match for a given
+geometry kind. The Overpass query groups selectors by geometry kind and
+concatenates all tag filters for that geometry onto each primitive selector.
+Additionally, the same OSM key cannot appear in more than one filter
+(because a single element cannot have two different values for the same key).
+Client-side validation enforces this constraint through set-based key
+deduplication. This mode supports precision queries (e.g., "all ways that
+are both highway=residential AND surface=asphalt").
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\text{Filters } F &= \{(k_1, v_1), \ldots, (k_n, v_n)\}, \quad n \leq 4 \\[4pt]
+\text{Geometries } G &\subseteq \{\text{point}, \text{line}, \text{polygon}\} \\[4pt]
+S &= \{ \text{TagSpec}(k, v, g) \mid g \in G \land (k, v) \in F \} \\[4pt]
+|S| &= |G| \times n \leq 12 \\[4pt]
+\text{ALL constraint: } &\forall i \neq j : k_i \neq k_j
+\end{aligned}
+$$
+</div>
+
+<h4>12.1.2 AND-Mode Conjunction Algebra</h4>
+
+<p>
+In AND mode, the client-side matching operates as a logical conjunction
+over the set of tag specifications for each geometry kind. An element
+passes the filter if and only if all specifications in its geometry group
+are simultaneously satisfied:
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\text{pass}_{\text{AND}}(t, S_g) &\iff
+\bigwedge_{\sigma \in S_g} \Big(
+   \sigma.\!key \in \text{dom}(t) \;\land\;
+   (\sigma.\!value = \varepsilon \;\lor\; t(\sigma.\!key) = \sigma.\!value)
+\Big) \\[4pt]
+\text{where } S_g &= \{\sigma \in S \mid \sigma.\!geometry = g\} \\[4pt]
+\text{pass}_{\text{OR}}(t, S_g) &\iff
+\bigvee_{\sigma \in S_g} \Big(
+   \sigma.\!key \in \text{dom}(t) \;\land\;
+   (\sigma.\!value = \varepsilon \;\lor\; t(\sigma.\!key) = \sigma.\!value)
+\Big)
+\end{aligned}
+$$
+</div>
+
+<p>
+The AND-mode additionally enforces key uniqueness across all filters:
+no two filter specifications may share the same OSM key. This constraint
+is validated in <code>advanced_specs()</code> by comparing the set of keys
+against the list length: if \(|\{k_i\}| < |\{ (k_i, v_i) \}|\), the
+request is rejected with a descriptive error. This prevents the logical
+contradiction of requiring a single element to have two different values
+for the same key.
+</p>
+
+<h4>12.1.3 Advanced Spec Combinatorics</h4>
+
+<p>
+The <code>advanced_specs()</code> function generates the Cartesian product
+of geometry kinds and tag filters, bounded by the maximum filter count:
+</p>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\text{advanced\_specs}(F, G, \text{mode}) &=
+\text{normalized\_specs}\big(\{
+   \text{TagSpec}(k, v, g) \mid g \in G \land (k, v) \in F
+\}\big) \\[4pt]
+|S| &= |G| \times |F| \leq 3 \times 4 = 12 \\[4pt]
+\text{tag strings } T &= \{\, (k, v) \mid (k, v) \in F \land
+   k \in \mathcal{K}_{\text{valid}} \land v \in \mathcal{V}_{\text{valid}} \,\} \\[4pt]
+\dim(\text{query space}) &= 2 \times 4 \times
+\sum_{n=1}^{4} |\mathcal{K}_{\text{valid}}|^n
+\end{aligned}
+$$
+</div>
+
+<p>
+The final expression emphasises that while the structural parameters
+(match mode, geometry scope, filter count) yield a finite set of 2,048
+structural configurations, the actual query space is vast due to the
+combinatorial explosion of possible OSM key/value combinations.
+</p>
+
+<h4>12.1.4 Query Expressivity</h4>
+
+<p>
+The advanced algorithm's expressivity is deliberately constrained. It
+does not support: spatial operators (around, poly), recursion operators,
+difference/union of query results, regular expression matching, or
+conditional logic. This constraint is by design: it keeps queries
+predictable, performant, and safe for the Overpass public service
+infrastructure (Olbricht, 2021). For users requiring these capabilities,
+the raw Overpass API or local OSM data processing tools (osmium, osm2pgsql)
+are recommended.
+</p>
+
+<h3 id="algo3-params">12.2 Parameters</h3>
+
+<table>
+<thead>
+<tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>MATCH_MODE</code></td><td>Enum</td><td>Boolean match mode: "Match any tag (OR)" (0) or "Match all tags (AND)" (1). In AND mode, duplicate keys across filters are rejected.</td></tr>
+<tr><td><code>GEOMETRY</code></td><td>Enum</td><td>Geometry scope: "All geometries" (0), "Points" (1), "Lines" (2), "Polygons" (3). Determines which OSM primitives are queried.</td></tr>
+<tr><td><code>KEY_1</code></td><td>String (required)</td><td>First OSM tag key. Must be non-empty and match the key regex.</td></tr>
+<tr><td><code>VALUE_1</code></td><td>String (optional)</td><td>Value for the first OSM tag key. Blank or "*" = any value.</td></tr>
+<tr><td><code>KEY_2</code></td><td>String (optional)</td><td>Second OSM tag key. Required if VALUE_2 is specified.</td></tr>
+<tr><td><code>VALUE_2</code></td><td>String (optional)</td><td>Value for the second OSM tag key.</td></tr>
+<tr><td><code>KEY_3</code></td><td>String (optional)</td><td>Third OSM tag key. Required if VALUE_3 is specified.</td></tr>
+<tr><td><code>VALUE_3</code></td><td>String (optional)</td><td>Value for the third OSM tag key.</td></tr>
+<tr><td><code>KEY_4</code></td><td>String (optional)</td><td>Fourth OSM tag key. Required if VALUE_4 is specified.</td></tr>
+<tr><td><code>VALUE_4</code></td><td>String (optional)</td><td>Value for the fourth OSM tag key.</td></tr>
+<tr><td><code>EXTENT</code></td><td>Extent</td><td>Geographic download extent (see Algorithm 1).</td></tr>
+<tr><td><code>OUTPUT_POINTS</code></td><td>FeatureSink</td><td>Point output layer.</td></tr>
+<tr><td><code>OUTPUT_LINES</code></td><td>FeatureSink</td><td>Line output layer.</td></tr>
+<tr><td><code>OUTPUT_POLYGONS</code></td><td>FeatureSink</td><td>Polygon output layer.</td></tr>
+</tbody>
+</table>
+
+<div class="warn-box">
+<strong>Parameter constraint:</strong> Filter index 1 is required (KEY_1 must
+be non-empty). Filters 2-4 are optional. If a VALUE_n is specified without a
+corresponding KEY_n, the algorithm raises a validation error: "OSM tag value n
+has no corresponding key." Partial filter rows (key without value) are silently
+skipped.
+</div>
+
+<h3 id="algo3-outputs">12.3 Outputs</h3>
+
+<p>
+Same 22-field output schema as Algorithm 1 (see Section 10.3). The
+<code>preset_id</code> field is set to <code>"advanced"</code> and
+<code>theme</code> to <code>"Advanced query"</code>. Output layers are
+populated according to the geometry scope and the matching elements'
+classified geometry kinds.
+</p>
+
+<h3 id="algo3-interp">12.4 Interpretation Guidance</h3>
+
+<ul>
+  <li><strong>AND-mode result sizes:</strong> AND mode is significantly more
+  restrictive than OR mode. A query for buildings that are ALSO schools
+  (<code>building=* AND amenity=school</code>) will return far fewer results
+  than the union of all buildings and all schools. This is by design: AND
+  mode identifies the intersection of tag sets.</li>
+  <li><strong>Geometry scope interactions:</strong> When geometry scope is
+  "All geometries", the advanced_specs() function generates TagSpec objects
+  for all three geometry kinds (point, line, polygon). The resulting Overpass
+  query includes node, way, and relation selectors. Post-download, each
+  element is classified according to the kind classification function.</li>
+  <li><strong>Key-value emptiness:</strong> In AND mode, if all values are
+  empty (any-value matching), the query is logically equivalent to "elements
+  that have ALL of these keys." For example,
+  <code>highway=* AND surface=*</code> in AND mode returns highway elements
+  that also have a surface tag, which is a useful query for assessing tag
+  co-occurrence completeness.</li>
+  <li><strong>Overpass server load:</strong> Advanced queries with 4 filters
+  in "All geometries" mode generate the largest number of Overpass selectors
+  (up to \(3 \times 4 = 12\) in OR mode). For large extents, consider
+  reducing the geometry scope or filter count.</li>
+</ul>
+
+<h4>12.4.1 References</h4>
+<ol class="refs">
+  <li>Goodchild, M.F. (2007). Citizens as sensors: the world of volunteered geography. <em>GeoJournal</em>, 69(4), 211-221. <a href="https://doi.org/10.1007/s10708-007-9111-y" target="_blank">DOI: 10.1007/s10708-007-9111-y</a></li>
+  <li>Haklay, M. (2010). How good is volunteered geographical information? A comparative study of OpenStreetMap and Ordnance Survey datasets. <em>Environment and Planning B</em>, 37(4), 682-703. <a href="https://doi.org/10.1068/b35097" target="_blank">DOI: 10.1068/b35097</a></li>
+  <li>Mooney, P. &amp; Corcoran, P. (2012). Characteristics of heavily edited objects in OpenStreetMap. <em>Future Internet</em>, 4(4), 880-906. <a href="https://doi.org/10.3390/fi4030880" target="_blank">DOI: 10.3390/fi4030880</a></li>
+  <li>Neis, P. &amp; Zipf, A. (2012). Analyzing the contributor activity of a volunteered geographic information project. <em>ISPRS Int. J. Geo-Inf.</em>, 1(2), 146-165. <a href="https://doi.org/10.3390/fi4030880" target="_blank">DOI: 10.3390/fi4030880</a></li>
+  <li>Barrington-Leigh, C. &amp; Millard-Ball, A. (2017). The world's user-generated road map is more than 80% complete. <em>PLOS ONE</em>, 12(8), e0180698. <a href="https://doi.org/10.1371/journal.pone.0171362" target="_blank">DOI: 10.1371/journal.pone.0171362</a></li>
+  <li>Boeing, G. (2017). OSMnx: New methods for acquiring, constructing, analyzing, and visualizing complex street networks. <em>Computers, Environment and Urban Systems</em>, 65, 126-139. <a href="https://doi.org/10.1016/j.compenvurbsys.2017.05.004" target="_blank">DOI: 10.1016/j.compenvurbsys.2017.05.004</a></li>
+  <li>Haklay, M. &amp; Weber, P. (2008). OpenStreetMap: User-generated street maps. <em>IEEE Pervasive Computing</em>, 7(4), 12-18. <a href="https://doi.org/10.1145/1463434.1463442" target="_blank">DOI: 10.1145/1463434.1463442</a></li>
+  <li>Schmidt, M. &amp; Weiser, P. (2010). OpenStreetMap data quality. <em>IEEE Computer</em>, 43(12), 94-97. <a href="https://doi.org/10.1109/MC.2010.21" target="_blank">DOI: 10.1109/MC.2010.21</a></li>
+</ol>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- THEMATIC PRESET CATALOG                                      -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="presets">
+<h2>13. Thematic Preset Catalog</h2>
+
+<p>
+The preset catalogue encodes 25 curated OSM feature collections across
+10 thematic groups. Each preset comprises a set of tag specifications,
+each specifying an OSM key, an optional value filter, and a target geometry
+kind. The table below enumerates all presets.
+</p>
+
+<table>
+<thead>
+<tr><th>Preset ID</th><th>Group</th><th>Title</th><th>Tag Specs</th></tr>
+</thead>
+<tbody>
+<tr><td><code>urban_context</code></td><td>Urban Context</td><td>Roads, buildings &amp; trees</td><td>highway=* (line), building=* (poly), natural=tree (pt), natural=tree_row (line)</td></tr>
+<tr><td><code>road_network</code></td><td>Network</td><td>Road network</td><td>highway=* (line)</td></tr>
+<tr><td><code>rail_network</code></td><td>Network</td><td>Rail network</td><td>railway=rail/tram/subway/light_rail (line)</td></tr>
+<tr><td><code>multimodal_network</code></td><td>Network</td><td>Multimodal network</td><td>highway=* (line), railway=* (line), route=ferry (line), highway=bus_stop (pt), railway=station (pt)</td></tr>
+<tr><td><code>buildings</code></td><td>Morphology</td><td>Buildings</td><td>building=* (poly)</td></tr>
+<tr><td><code>land_use</code></td><td>Morphology</td><td>Land use</td><td>landuse=* (poly)</td></tr>
+<tr><td><code>urban_form</code></td><td>Morphology</td><td>Urban form</td><td>building=* (poly), landuse=* (poly), barrier=* (line), place=* (pt)</td></tr>
+<tr><td><code>green_spaces</code></td><td>Green &amp; Blue</td><td>Green spaces</td><td>leisure=park (poly), landuse=forest (poly), natural=wood (poly), leisure=garden (poly), landuse=grass (poly)</td></tr>
+<tr><td><code>blue_network</code></td><td>Green &amp; Blue</td><td>Blue network</td><td>natural=water (poly), water=* (poly), waterway=* (line), natural=coastline (line)</td></tr>
+<tr><td><code>green_blue_all</code></td><td>Green &amp; Blue</td><td>Green-blue system</td><td>leisure=park (poly), landuse=forest (poly), natural=wood (poly), natural=water (poly), waterway=* (line), natural=coastline (line)</td></tr>
+<tr><td><code>bus_transit</code></td><td>Public Transport</td><td>Bus transit</td><td>highway=bus_stop (pt), public_transport=platform (pt/poly), amenity=bus_station (pt/poly)</td></tr>
+<tr><td><code>rail_transit</code></td><td>Public Transport</td><td>Rail transit</td><td>railway=station/halt/tram_stop/subway_entrance (pt)</td></tr>
+<tr><td><code>public_transport_all</code></td><td>Public Transport</td><td>All public transport</td><td>bus stops, platforms, stations (pt/poly) — combined bus + rail</td></tr>
+<tr><td><code>worship</code></td><td>Religious</td><td>Places of worship</td><td>amenity=place_of_worship (pt/poly)</td></tr>
+<tr><td><code>religious_buildings</code></td><td>Religious</td><td>Religious buildings</td><td>building=mosque/church/temple/synagogue/chapel/cathedral (poly)</td></tr>
+<tr><td><code>tourism</code></td><td>Tourism</td><td>Tourism facilities</td><td>tourism=* (pt/poly)</td></tr>
+<tr><td><code>heritage</code></td><td>Tourism</td><td>Historic heritage</td><td>historic=* (pt/poly)</td></tr>
+<tr><td><code>sport</code></td><td>Sport</td><td>Sports facilities</td><td>leisure=pitch/stadium/sports_centre (poly), sport=* (pt/poly)</td></tr>
+<tr><td><code>cycle_network</code></td><td>Bike</td><td>Cycle network</td><td>highway=cycleway (line), cycleway=* (line)</td></tr>
+<tr><td><code>bike_facilities</code></td><td>Bike</td><td>Bike facilities</td><td>amenity=bicycle_parking/rental/repair_station (pt)</td></tr>
+<tr><td><code>parking</code></td><td>Car</td><td>Parking</td><td>amenity=parking (pt/poly), amenity=parking_entrance (pt)</td></tr>
+<tr><td><code>car_services</code></td><td>Car</td><td>Car services</td><td>amenity=fuel/charging_station/car_rental/car_wash (pt), highway=service (line)</td></tr>
+<tr><td><code>traffic_controls</code></td><td>Traffic</td><td>Traffic controls</td><td>highway=traffic_signals/crossing/stop/give_way (pt)</td></tr>
+<tr><td><code>traffic_calming</code></td><td>Traffic</td><td>Traffic calming</td><td>traffic_calming=* (pt), highway=speed_camera (pt)</td></tr>
+<tr><td><code>healthcare</code></td><td>Health</td><td>Healthcare</td><td>amenity=hospital/clinic/doctors/pharmacy (pt/poly), healthcare=* (pt/poly)</td></tr>
+<tr><td><code>education</code></td><td>Education</td><td>Education</td><td>amenity=school/university/college/kindergarten/library (pt/poly)</td></tr>
+<tr><td><code>emergency</code></td><td>Emergency</td><td>Emergency services</td><td>amenity=fire_station/police/shelter (pt/poly), emergency=ambulance_station/assembly_point (pt)</td></tr>
+</tbody>
+</table>
+
+<p>
+Each preset also carries multilingual keywords (English and Turkish) used
+by the natural-language intent router in <code>core/catalog.py</code>.
+The <code>interpret_prompt()</code> function performs Unicode NFKD
+normalisation, case-folding, diacritic removal, and substring matching
+against these keywords to map free-text user input to the nearest preset.
+</p>
+
+<h3>13.1 Intent Router Algorithm</h3>
+
+<div class="eqn-block">
+$$
+\begin{aligned}
+\text{score}(\text{prompt}, \text{preset}) &= \sum_{t \in \text{terms}(\text{preset})}
+   \max(1, |\text{words}(t)|) \cdot
+   \mathbf{1}\big[t \sqsubseteq \text{normalize}(\text{prompt})\big] \\[4pt]
+\text{confidence} &= \min\big(1.0,\; 0.45 + 0.12 \times \text{score}_{\text{best}}\big)
+\end{aligned}
+$$
+</div>
+
+<p>
+where \(t \sqsubseteq \text{normalize}(\text{prompt})\) denotes substring
+containment after normalisation, and \(\text{terms}(\text{preset}) = \text{keywords}
+\cup \{\text{title}, \text{group_title}\}\).
+</p>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- SECURITY ARCHITECTURE                                        -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="security">
+<h2>14. Security Architecture</h2>
+
+<p>
+The 02Agent OSM Downloader is designed to pass the QGIS Plugin Hub's
+automated security scanning gates (Bandit static analysis and
+detect-secrets credential scanning) and the Qt6/metadata compliance
+validation. The following design decisions enforce this:
+</p>
+
+<h3>14.1 Input Validation</h3>
+<ul>
+  <li><strong>Tag key validation:</strong> Regular expression
+  <code>^[A-Za-z0-9_:.~-]{1,80}$</code> — restricts keys to the OSM
+  character set and length limit.</li>
+  <li><strong>Tag value validation:</strong> Maximum 120 characters; rejects
+  control characters (0x00-0x1f, 0x7f), double quotes, backslashes,
+  semicolons, brackets, parentheses, and braces — all characters with
+  special meaning in Overpass QL or JSON.</li>
+  <li><strong>Extent validation:</strong> Geographic bounds check (-90 to 90
+  latitude, -180 to 180 longitude), finiteness check, area limit (100 km&sup2;),
+  and non-degenerate extent check (south &lt; north, west &lt; east).</li>
+  <li><strong>Response validation:</strong> Type check (must be dict),
+  remark check (server timeout indicator), elements list existence, element
+  count limit (150,000), and per-element type check.</li>
+</ul>
+
+<h3>14.2 No Arbitrary Code Execution</h3>
+<ul>
+  <li><strong>No raw query input:</strong> The plugin never accepts raw
+  Overpass QL from any user-facing parameter.</li>
+  <li><strong>No file paths:</strong> No file dialog, path parameter, or
+  file I/O beyond QGIS sink outputs (which use QGIS's sandboxed temporary
+  directory infrastructure).</li>
+  <li><strong>No shell / subprocess:</strong> No <code>subprocess</code>,
+  <code>os.system</code>, or equivalent calls. All network operations use
+  Qt's <code>QgsBlockingNetworkRequest</code>.</li>
+  <li><strong>No external interpreters:</strong> No <code>eval</code>,
+  <code>exec</code>, or <code>importlib</code> dynamic loading.</li>
+  <li><strong>Hard-coded endpoints:</strong> The three Overpass endpoints are
+  compile-time constants in <code>core/query.py</code>; no URL parameter
+  exists.</li>
+</ul>
+
+<h3>14.3 Resource Bounds</h3>
+<table>
+<thead>
+<tr><th>Limit</th><th>Value</th><th>Enforcement</th></tr>
+</thead>
+<tbody>
+<tr><td>Response size</td><td>64 MB</td><td><code>MAX_RESPONSE_BYTES</code> in <code>core/query.py</code></td></tr>
+<tr><td>Feature count</td><td>150,000</td><td><code>MAX_FEATURES</code> in <code>validate_payload()</code></td></tr>
+<tr><td>Extent area</td><td>100 km&sup2;</td><td><code>MAX_BBOX_AREA_KM2</code> in <code>validate_bbox()</code></td></tr>
+<tr><td>Tag selectors</td><td>32</td><td><code>MAX_SELECTORS</code> in <code>normalized_specs()</code></td></tr>
+<tr><td>Advanced filters</td><td>4</td><td><code>MAX_ADVANCED_FILTERS</code> in <code>advanced_specs()</code></td></tr>
+<tr><td>Overpass timeout</td><td>45 s</td><td><code>OVERPASS_TIMEOUT_SECONDS</code> in query rendering</td></tr>
+<tr><td>Cache entries</td><td>8</td><td><code>_CACHE_LIMIT</code> in <code>osm_algorithms.py</code></td></tr>
+<tr><td>Cache TTL</td><td>900 s</td><td><code>_CACHE_TTL_SECONDS</code> in <code>osm_algorithms.py</code></td></tr>
+<tr><td>Tags JSON limit</td><td>~16 KB</td><td><code>compact_tags()</code> truncation</td></tr>
+</tbody>
+</table>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- REFERENCES                                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<section id="references">
+<h2>15. References</h2>
+
+<ol class="refs">
+  <li>Goodchild, M.F. (2007). Citizens as sensors: the world of volunteered geography. <em>GeoJournal</em>, 69(4), 211-221. <a href="https://doi.org/10.1007/s10708-007-9111-y" target="_blank">DOI: 10.1007/s10708-007-9111-y</a></li>
+  <li>Haklay, M. (2010). How good is volunteered geographical information? A comparative study of OpenStreetMap and Ordnance Survey datasets. <em>Environment and Planning B: Planning and Design</em>, 37(4), 682-703. <a href="https://doi.org/10.1068/b35097" target="_blank">DOI: 10.1068/b35097</a></li>
+  <li>Mooney, P. &amp; Corcoran, P. (2012). Characteristics of heavily edited objects in OpenStreetMap. <em>Future Internet</em>, 4(4), 880-906. <a href="https://doi.org/10.3390/fi4030880" target="_blank">DOI: 10.3390/fi4030880</a></li>
+  <li>Neis, P. &amp; Zipf, A. (2012). Analyzing the contributor activity of a volunteered geographic information project &mdash; the case of OpenStreetMap. <em>ISPRS International Journal of Geo-Information</em>, 1(2), 146-165. <a href="https://doi.org/10.3390/fi4030880" target="_blank">DOI: 10.3390/fi4030880</a></li>
+  <li>Barrington-Leigh, C. &amp; Millard-Ball, A. (2017). The world's user-generated road map is more than 80% complete. <em>PLOS ONE</em>, 12(8), e0180698. <a href="https://doi.org/10.1371/journal.pone.0171362" target="_blank">DOI: 10.1371/journal.pone.0171362</a></li>
+  <li>Boeing, G. (2017). OSMnx: New methods for acquiring, constructing, analyzing, and visualizing complex street networks. <em>Computers, Environment and Urban Systems</em>, 65, 126-139. <a href="https://doi.org/10.1016/j.compenvurbsys.2017.05.004" target="_blank">DOI: 10.1016/j.compenvurbsys.2017.05.004</a></li>
+  <li>Haklay, M. &amp; Weber, P. (2008). OpenStreetMap: User-generated street maps. <em>IEEE Pervasive Computing</em>, 7(4), 12-18. <a href="https://doi.org/10.1145/1463434.1463442" target="_blank">DOI: 10.1145/1463434.1463442</a></li>
+  <li>Schmidt, M. &amp; Weiser, P. (2010). OpenStreetMap data quality &mdash; assessment and assurance. <em>IEEE Computer</em>, 43(12), 94-97. <a href="https://doi.org/10.1109/MC.2010.21" target="_blank">DOI: 10.1109/MC.2010.21</a></li>
+  <li>Olbricht, R. (2021). Overpass API: Programmatic access to OpenStreetMap data. In A. Mobasheri (Ed.), <em>OpenStreetMap in GIScience</em> (pp. 109-128). Springer. <a href="https://doi.org/10.1007/978-3-319-14280-7_6" target="_blank">DOI: 10.1007/978-3-319-14280-7_6</a></li>
+  <li>Girres, J.F. &amp; Touya, G. (2010). Quality assessment of the French OpenStreetMap dataset. <em>Transactions in GIS</em>, 14(4), 435-459. <a href="https://doi.org/10.1111/j.1467-9671.2010.01203.x" target="_blank">DOI: 10.1111/j.1467-9671.2010.01203.x</a></li>
+  <li>Zielstra, D. &amp; Zipf, A. (2010). A comparative study of proprietary geodata and volunteered geographic information for Germany. <em>Proceedings of the 13th AGILE International Conference on Geographic Information Science</em>, Guimar&#227;es, Portugal.</li>
+  <li>Corcoran, P., Mooney, P. &amp; Bertolotto, M. (2013). Analysing the growth of OpenStreetMap networks. <em>Spatial Statistics</em>, 3, 21-41. <a href="https://doi.org/10.1016/j.spasta.2013.01.002" target="_blank">DOI: 10.1016/j.spasta.2013.01.002</a></li>
+  <li>Jokar Arsanjani, J., Zipf, A., Mooney, P. &amp; Helbich, M. (Eds.). (2015). <em>OpenStreetMap in GIScience: Experiences, Research, and Applications</em>. Springer. <a href="https://doi.org/10.1007/978-3-319-14280-7" target="_blank">DOI: 10.1007/978-3-319-14280-7</a></li>
+  <li>Senaratne, H., Mobasheri, A., Ali, A.L., Capineri, C. &amp; Haklay, M. (2017). A review of volunteered geographic information quality assessment methods. <em>International Journal of Geographical Information Science</em>, 31(1), 139-167. <a href="https://doi.org/10.1080/13658816.2016.1189556" target="_blank">DOI: 10.1080/13658816.2016.1189556</a></li>
+</ol>
+</section>
+
+</main>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- JAVASCRIPT                                                   -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<script>
+/* ── Theme Toggle ───────────────────────────────────────────── */
+(function() {
+  const saved = localStorage.getItem('osm-ref-theme');
+  if (saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.getElementById('themeBtn').textContent = 'Light Mode';
+  }
+})();
+
+function toggleTheme() {
+  const html = document.documentElement;
+  const btn = document.getElementById('themeBtn');
+  if (html.getAttribute('data-theme') === 'dark') {
+    html.setAttribute('data-theme', 'light');
+    btn.textContent = 'Dark Mode';
+    localStorage.setItem('osm-ref-theme', 'light');
+  } else {
+    html.setAttribute('data-theme', 'dark');
+    btn.textContent = 'Light Mode';
+    localStorage.setItem('osm-ref-theme', 'dark');
+  }
+  // Re-run search to update mark highlights
+  if (document.getElementById('searchInput').value.trim()) {
+    doSearch();
+  }
+}
+
+/* ── Sidebar Active Link Tracking ───────────────────────────── */
+(function() {
+  const sections = document.querySelectorAll('section[id]');
+  const links = document.querySelectorAll('.sidebar a[href^="#"]');
+  const observer = new IntersectionObserver(function(entries) {
+    let activeId = null;
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        activeId = entry.target.id;
+      }
+    });
+    if (activeId) {
+      links.forEach(function(link) {
+        link.classList.toggle('active', link.getAttribute('href') === '#' + activeId);
+      });
+    }
+  }, { rootMargin: '-80px 0px -70% 0px' });
+  sections.forEach(function(s) { observer.observe(s); });
+})();
+
+/* ── Full-Text Search ───────────────────────────────────────── */
+function doSearch() {
+  const query = document.getElementById('searchInput').value.trim().toLowerCase();
+  const info = document.getElementById('searchInfo');
+  const sections = document.querySelectorAll('#main-content section');
+  const presets = document.querySelectorAll('.preset-card');
+  const allSearchable = document.querySelectorAll('#main-content section, #main-content .preset-card');
+
+  // Clear previous highlights
+  document.querySelectorAll('mark').forEach(function(m) {
+    const parent = m.parentNode;
+    parent.replaceChild(document.createTextNode(m.textContent), m);
+  });
+
+  if (!query) {
+    sections.forEach(function(s) { s.classList.remove('hidden-by-search'); });
+    presets.forEach(function(p) { p.classList.remove('hidden-by-search'); });
+    info.textContent = '';
+    return;
+  }
+
+  const words = query.split(/\s+/).filter(function(w) { return w.length > 0; });
+  let visibleCount = 0;
+  let totalCount = allSearchable.length;
+
+  // Score each searchable block
+  const scores = new Map();
+  allSearchable.forEach(function(el) {
+    const text = el.textContent.toLowerCase();
+    let score = 0;
+    words.forEach(function(word) {
+      const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escaped, 'gi');
+      const matches = text.match(regex);
+      if (matches) {
+        score += matches.length;
+      }
+    });
+
+    if (score > 0) {
+      scores.set(el, score);
+      // Highlight matches in this element
+      highlightInElement(el, words);
+    }
+
+    // For sections, check nested elements too
+    if (el.tagName === 'SECTION') {
+      const nested = el.querySelectorAll('h2, h3, h4, p, li, td, th, .info-box, .warn-box, .eqn-block');
+      let combinedScore = score;
+      nested.forEach(function(nestedEl) {
+        const nestedText = nestedEl.textContent.toLowerCase();
+        words.forEach(function(word) {
+          const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const regex = new RegExp(escaped, 'gi');
+          const matches = nestedText.match(regex);
+          if (matches) combinedScore += matches.length;
+        });
+      });
+      if (combinedScore > score) scores.set(el, combinedScore);
+    }
+  });
+
+  // Show/hide
+  allSearchable.forEach(function(el) {
+    if (scores.has(el)) {
+      el.classList.remove('hidden-by-search');
+      visibleCount++;
+    } else {
+      el.classList.add('hidden-by-search');
+    }
+  });
+
+  info.textContent = 'Found matches in ' + visibleCount + ' of ' + totalCount + ' sections.';
+}
+
+function highlightInElement(el, words) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+    acceptNode: function(node) {
+      if (node.parentElement && (
+        node.parentElement.tagName === 'SCRIPT' ||
+        node.parentElement.tagName === 'STYLE' ||
+        node.parentElement.tagName === 'MARK' ||
+        node.parentElement.tagName === 'CODE' ||
+        node.parentElement.tagName === 'PRE' ||
+        node.parentElement.classList.contains('eqn-block')
+      )) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  const textNodes = [];
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode);
+  }
+
+  textNodes.forEach(function(node) {
+    let html = node.textContent;
+    let changed = false;
+    words.forEach(function(word) {
+      const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp('(' + escaped + ')', 'gi');
+      if (regex.test(html)) {
+        html = html.replace(regex, '<mark>$1</mark>');
+        changed = true;
+      }
+    });
+    if (changed) {
+      const span = document.createElement('span');
+      span.innerHTML = html;
+      node.parentNode.replaceChild(span, node);
+    }
+  });
+}
+
+/* ── Keyboard shortcut: Ctrl+K / Cmd+K for search ───────────── */
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    document.getElementById('searchInput').focus();
+  }
+});
+</script>
+
+</body>
+</html>
