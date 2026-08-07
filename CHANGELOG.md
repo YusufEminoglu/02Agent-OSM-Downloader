@@ -2,6 +2,53 @@
 
 All notable changes to 02Agent OSM Downloader are documented here.
 
+## [0.4.0] - 2026-08-01
+
+### Added
+
+- Add 16 persistent cartographic themes with compact live palette previews:
+  twelve palettes adapted from OSM Quick 3D and four new 02Agent palettes.
+- Add native categorized renderers for functional building classes, road
+  hierarchy, rail, water, green space, trees, transit and common POI classes.
+- Add a **Query** panel for up to four validated OSM key/value filters with
+  ANY/OR or ALL/AND matching and point, line, polygon or mixed geometry scope.
+- Add four ready-to-load advanced examples and a live, read-only Overpass QL
+  preview with a non-executable selected-extent placeholder.
+- Add the stable `zero2agentosm:download_advanced` Processing endpoint with
+  fixed temporary point, line and polygon outputs.
+- Add SmartModeler allowlist, live-signature and proposal validation coverage
+  for advanced multi-tag requests.
+
+### Changed
+
+- Apply the chosen map style only to newly downloaded result layers, preserving
+  the project background and existing layer styles.
+- Refresh the dock with lighter palette-derived dark surfaces, brighter cards,
+  selected-tab fills, clearer input separation and WCAG-tested text contrast.
+- Rename the main preset and integration tabs to **Presets** and **Agent**, add a
+  contextual run summary, and hide download controls where they are irrelevant.
+- Collapse the generated Overpass preview by default so the complete advanced
+  form fits without scrolling; keep it one click away for inspection.
+- Mark the release as experimental while the public alpha receives field
+  testing.
+- Record all tags matched by advanced filters in the additive `matched_tags`
+  output attribute.
+- Update the network user agent, public Agent Protocol manifest and user-facing
+  documentation for the three-endpoint contract.
+
+### Fixed
+
+- Synchronize the shared session cache across concurrent Processing tasks.
+- Detach dock and menu actions during unload so plugin reloads do not retain
+  orphaned Qt objects.
+
+### Security
+
+- Keep advanced requests bounded to four normalized tag filters, fixed ANY/ALL
+  semantics, QGIS-owned extents, pinned HTTPS mirrors and temporary outputs.
+- Continue rejecting editable raw Overpass, arbitrary endpoints, paths and
+  credentials.
+
 ## [0.3.0] - 2026-07-30
 
 ### Added
