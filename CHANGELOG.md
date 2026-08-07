@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.4.2] - 2026-08-07
+
+- Add floating Save as PDF button to reference manual
+
 All notable changes to 02Agent OSM Downloader are documented here.
 
 ## [0.4.0] - 2026-08-01
