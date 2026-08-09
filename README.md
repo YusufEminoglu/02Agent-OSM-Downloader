@@ -1,7 +1,7 @@
 # 02Agent OSM Downloader
 [![Documentation](https://img.shields.io/badge/📖_Reference_Manual-13a0a0)](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/)
 
-02Agent OSM Downloader is a public-alpha QGIS 4 plugin for reliable, repeatable
+02Agent OSM Downloader is a public-alpha QGIS 3.28+ and QGIS 4 plugin for reliable, repeatable
 OpenStreetMap data acquisition. It works independently through its dock and
 Processing provider, and SmartModeler GIS can use the same Processing
 algorithms from Agent Workspace.
@@ -125,7 +125,8 @@ Advanced example:
 ## Verification
 
 The release gate runs pure-Python tests plus the provider smoke test on QGIS
-3.44 LTR and QGIS 4.2. The deterministic smoke covers preset and advanced
+3.44 LTR and QGIS 4.2. The plugin metadata targets QGIS 3.28+, while the
+current deterministic smoke covers preset and advanced
 geometry conversion without depending on a public service. Maintainers can
 also exercise the real pinned-mirror transport with a small bounded extent:
 

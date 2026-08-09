@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.4] - 2026-08-09
+
+- Declare QGIS 3.28+ and QGIS 4 compatibility in plugin metadata and
+  documentation while retaining the shared SmartModeler AI Connections bridge.
+
 ## [0.4.3] - 2026-08-07
 
 - Added online user manual link (https://yusufeminoglu.github.io/02Agent-OSM-Downloader/) and GitHub repository star call-to-action.
