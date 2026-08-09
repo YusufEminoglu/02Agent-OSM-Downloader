@@ -483,7 +483,7 @@ class AgentOsmDock(QDockWidget):
         heading.setObjectName("heroEyebrow")
         prompt_layout.addWidget(heading)
         hint = QLabel(
-            "Describe a preset in English or Turkish, or enter a safe "
+            "Describe a preset in English, or enter a safe "
             "key=value tag. The command is interpreted locally."
         )
         hint.setObjectName("mutedText")
@@ -500,11 +500,11 @@ class AgentOsmDock(QDockWidget):
         command_examples = QHBoxLayout()
         self.command_example_combo = QComboBox()
         for example in (
-            "Download parks in Konak",
-            "Binaları London için indir",
-            "Van için public transport",
+            "Download parks in London",
+            "Download buildings in Izmir Konak",
+            "Download public transport in Van",
             "building=* polygon",
-            "wheelchair=yes noktaları",
+            "Download wheelchair=yes points",
             "Download green and blue infrastructure",
         ):
             self.command_example_combo.addItem(example)

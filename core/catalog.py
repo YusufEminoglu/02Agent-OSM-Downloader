@@ -53,15 +53,14 @@ PRESETS: Tuple[Preset, ...] = (
             "base map",
             "roads buildings trees",
             "road building tree",
-            "yollar binalar agaclar",
-            "kent baglami",
+            "city context",
         ),
     ),
     Preset(
         "road_network", "network", "Network", "Road network",
         "All OSM highway ways for network analysis.",
         _tags(("highway", "", "line")),
-        ("road network", "street network", "yol ağı", "yollar", "network"),
+        ("road network", "street network", "network"),
     ),
     Preset(
         "rail_network", "network", "Network", "Rail network",
@@ -70,7 +69,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("railway", "rail", "line"), ("railway", "tram", "line"),
             ("railway", "subway", "line"), ("railway", "light_rail", "line"),
         ),
-        ("rail network", "railway", "demiryolu", "tram", "metro ağı"),
+        ("rail network", "railway", "tram", "metro"),
     ),
     Preset(
         "multimodal_network", "network", "Network", "Multimodal network",
@@ -80,19 +79,19 @@ PRESETS: Tuple[Preset, ...] = (
             ("route", "ferry", "line"), ("highway", "bus_stop", "point"),
             ("railway", "station", "point"),
         ),
-        ("multimodal", "complete network", "tüm ağ", "ulaşım ağı"),
+        ("multimodal", "complete network"),
     ),
     Preset(
         "buildings", "morphology", "Morphology", "Buildings",
         "Building footprints for urban morphology.",
         _tags(("building", "", "polygon")),
-        ("building", "buildings", "bina", "binalar", "binaları", "footprint"),
+        ("building", "buildings", "footprint"),
     ),
     Preset(
         "land_use", "morphology", "Morphology", "Land use",
         "OSM land-use polygons.",
         _tags(("landuse", "", "polygon")),
-        ("land use", "landuse", "arazi kullanımı", "kullanım"),
+        ("land use", "landuse", "zoning"),
     ),
     Preset(
         "urban_form", "morphology", "Morphology", "Urban form",
@@ -101,7 +100,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("building", "", "polygon"), ("landuse", "", "polygon"),
             ("barrier", "", "line"), ("place", "", "point"),
         ),
-        ("urban form", "morphology", "morfoloji", "kent formu", "urban fabric"),
+        ("urban form", "morphology", "urban fabric"),
     ),
     Preset(
         "green_spaces", "green_blue", "Green & Blue", "Green spaces",
@@ -111,7 +110,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("natural", "wood", "polygon"), ("leisure", "garden", "polygon"),
             ("landuse", "grass", "polygon"),
         ),
-        ("green", "green space", "park", "parks", "forest", "forests", "yeşil", "orman"),
+        ("green", "green space", "park", "parks", "forest", "forests"),
     ),
     Preset(
         "blue_network", "green_blue", "Green & Blue", "Blue network",
@@ -120,7 +119,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("natural", "water", "polygon"), ("water", "", "polygon"),
             ("waterway", "", "line"), ("natural", "coastline", "line"),
         ),
-        ("blue", "water", "waterway", "mavi", "su", "dere", "nehir"),
+        ("blue", "water", "waterway", "river"),
     ),
     Preset(
         "green_blue_all", "green_blue", "Green & Blue", "Green-blue system",
@@ -130,7 +129,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("natural", "wood", "polygon"), ("natural", "water", "polygon"),
             ("waterway", "", "line"), ("natural", "coastline", "line"),
         ),
-        ("green blue", "green-blue", "yeşil mavi", "ekolojik ağ"),
+        ("green blue", "green-blue", "ecological network"),
     ),
     Preset(
         "bus_transit", "public_transport", "Public Transport", "Bus transit",
@@ -142,7 +141,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("amenity", "bus_station", "point"),
             ("amenity", "bus_station", "polygon"),
         ),
-        ("bus", "bus stop", "otobüs", "durak", "bus transit"),
+        ("bus", "bus stop", "bus transit"),
     ),
     Preset(
         "rail_transit", "public_transport", "Public Transport", "Rail transit",
@@ -152,7 +151,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("railway", "tram_stop", "point"),
             ("railway", "subway_entrance", "point"),
         ),
-        ("rail transit", "station", "tram stop", "metro", "istasyon"),
+        ("rail transit", "station", "tram stop", "metro station"),
     ),
     Preset(
         "public_transport_all", "public_transport", "Public Transport",
@@ -167,7 +166,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("railway", "station", "point"), ("railway", "tram_stop", "point"),
             ("railway", "subway_entrance", "point"),
         ),
-        ("public transport", "toplu taşıma", "transit", "ulaşım durakları"),
+        ("public transport", "transit", "transit stops"),
     ),
     Preset(
         "worship", "religious", "Religious", "Places of worship",
@@ -176,7 +175,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("amenity", "place_of_worship", "point"),
             ("amenity", "place_of_worship", "polygon"),
         ),
-        ("worship", "religious", "cami", "kilise", "ibadet", "dini"),
+        ("worship", "religious", "mosque", "church", "place of worship"),
     ),
     Preset(
         "religious_buildings", "religious", "Religious", "Religious buildings",
@@ -189,19 +188,19 @@ PRESETS: Tuple[Preset, ...] = (
             ("building", "chapel", "polygon"),
             ("building", "cathedral", "polygon"),
         ),
-        ("religious building", "dini yapı", "mosque", "church", "temple"),
+        ("religious building", "mosque", "church", "temple"),
     ),
     Preset(
         "tourism", "tourism", "Tourism", "Tourism facilities",
         "OSM tourism features as points and areas.",
         _tags(("tourism", "", "point"), ("tourism", "", "polygon")),
-        ("tourism", "tourist", "turizm", "otel", "museum", "müze"),
+        ("tourism", "tourist", "hotel", "museum"),
     ),
     Preset(
         "heritage", "tourism", "Tourism", "Historic heritage",
         "Historic and archaeological features.",
         _tags(("historic", "", "point"), ("historic", "", "polygon")),
-        ("heritage", "historic", "archaeology", "tarihi", "arkeoloji"),
+        ("heritage", "historic", "archaeology"),
     ),
     Preset(
         "sport", "sport", "Sport", "Sports facilities",
@@ -211,13 +210,13 @@ PRESETS: Tuple[Preset, ...] = (
             ("leisure", "sports_centre", "polygon"),
             ("sport", "", "point"), ("sport", "", "polygon"),
         ),
-        ("sport", "sports", "stadium", "pitch", "spor", "stadyum"),
+        ("sport", "sports", "stadium", "pitch"),
     ),
     Preset(
         "cycle_network", "bike", "Bike", "Cycle network",
         "Dedicated cycleways and cycleway-tagged roads.",
         _tags(("highway", "cycleway", "line"), ("cycleway", "", "line")),
-        ("cycle network", "cycleway", "bike network", "bisiklet ağı"),
+        ("cycle network", "cycleway", "bike network"),
     ),
     Preset(
         "bike_facilities", "bike", "Bike", "Bike facilities",
@@ -227,7 +226,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("amenity", "bicycle_rental", "point"),
             ("amenity", "bicycle_repair_station", "point"),
         ),
-        ("bike facility", "bicycle parking", "bisiklet park", "bisiklet"),
+        ("bike facility", "bicycle parking", "bike parking"),
     ),
     Preset(
         "parking", "car", "Car", "Parking",
@@ -237,7 +236,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("amenity", "parking", "polygon"),
             ("amenity", "parking_entrance", "point"),
         ),
-        ("parking", "car park", "otopark", "park yeri"),
+        ("parking", "car park", "parking area"),
     ),
     Preset(
         "car_services", "car", "Car", "Car services",
@@ -249,7 +248,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("amenity", "car_wash", "point"),
             ("highway", "service", "line"),
         ),
-        ("car service", "fuel", "charging", "benzin", "şarj", "araç"),
+        ("car service", "fuel", "charging", "vehicle"),
     ),
     Preset(
         "traffic_controls", "traffic", "Traffic", "Traffic controls",
@@ -260,7 +259,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("highway", "stop", "point"),
             ("highway", "give_way", "point"),
         ),
-        ("traffic signal", "crossing", "trafik ışığı", "sinyal", "yaya geçidi"),
+        ("traffic signal", "crossing", "traffic control"),
     ),
     Preset(
         "traffic_calming", "traffic", "Traffic", "Traffic calming",
@@ -269,7 +268,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("traffic_calming", "", "point"),
             ("highway", "speed_camera", "point"),
         ),
-        ("traffic calming", "speed camera", "kasis", "hız kamerası"),
+        ("traffic calming", "speed camera"),
     ),
     Preset(
         "healthcare", "health", "Health", "Healthcare",
@@ -280,7 +279,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("amenity", "doctors", "point"), ("amenity", "pharmacy", "point"),
             ("healthcare", "", "point"), ("healthcare", "", "polygon"),
         ),
-        ("health", "hospital", "clinic", "sağlık", "hastane", "eczane"),
+        ("health", "hospital", "clinic", "pharmacy"),
     ),
     Preset(
         "education", "education", "Education", "Education",
@@ -294,7 +293,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("amenity", "kindergarten", "polygon"),
             ("amenity", "library", "point"), ("amenity", "library", "polygon"),
         ),
-        ("education", "school", "university", "eğitim", "okul", "üniversite"),
+        ("education", "school", "university", "college"),
     ),
     Preset(
         "emergency", "emergency", "Emergency", "Emergency services",
@@ -307,7 +306,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("emergency", "assembly_point", "point"),
             ("amenity", "shelter", "point"), ("amenity", "shelter", "polygon"),
         ),
-        ("emergency", "fire", "police", "acil", "itfaiye", "polis", "toplanma"),
+        ("emergency", "fire", "police", "assembly point"),
     ),
     Preset(
         "administrative_places", "places", "Places", "Administrative places",
@@ -319,8 +318,8 @@ PRESETS: Tuple[Preset, ...] = (
         ),
         (
             "place", "places", "location", "locations", "city", "town",
-            "district", "mahalle", "il", "ilce", "şehir", "sehir",
-            "yer", "konum", "idari sınır", "idari sinir",
+            "district", "neighbourhood", "city", "county", "state",
+            "location", "administrative boundary",
         ),
     ),
 )
@@ -377,17 +376,17 @@ def _geometry_hint(text: str, key: str) -> str:
     words = _normalized(text)
     if any(
         _contains_phrase(words, item)
-        for item in ("point", "nokta", "poi", "durak")
+        for item in ("point", "poi", "stop")
     ):
         return "point"
     if any(
         _contains_phrase(words, item)
-        for item in ("line", "çizgi", "hat", "yol", "network")
+        for item in ("line", "network", "route")
     ):
         return "line"
     if any(
         _contains_phrase(words, item)
-        for item in ("polygon", "poligon", "alan", "bina")
+        for item in ("polygon", "area", "building")
     ):
         return "polygon"
     if key in {"building", "landuse", "leisure"}:
@@ -398,9 +397,8 @@ def _geometry_hint(text: str, key: str) -> str:
 
 
 _COMMAND_WORDS = {
-    "download", "indir", "get", "fetch", "load", "al", "veri", "data",
-    "osm", "from", "for", "in", "at", "near", "within", "around",
-    "için", "icin", "içinde", "icinde", "yakınında", "yakininda",
+    "download", "get", "fetch", "load", "data", "osm", "from", "for",
+    "in", "at", "near", "within", "around",
 }
 
 
@@ -429,43 +427,17 @@ def _extract_place(raw: str, preset_id: str) -> str:
     text = " ".join(str(raw or "").split()).strip(" ,;:-")
     if not text:
         return ""
-    # Turkish commands commonly put the place before “için”: “Van için
-    # toplu taşıma” and “Binaları London için indir”.
-    turkish_before = re.search(
-        r"^(.+?)\s+\b(?:için|icin)\b",
-        text,
-        flags=re.IGNORECASE,
-    )
-    if turkish_before:
-        candidate = turkish_before.group(1).strip(" ,;:-")
-        candidate = re.sub(
-            r"^(?:download|indir|get|fetch|load|osm|veri|data)\s+",
-            "",
-            candidate,
-            flags=re.IGNORECASE,
-        ).strip(" ,;:-")
-        if preset_id:
-            candidate = re.sub(
-                r"\b(?:bina|binalar|building|buildings|park|parks|"
-                r"ulaşım|ulasim|transport|toplu taşıma|toplu tasima)\w*\b",
-                "",
-                candidate,
-                flags=re.IGNORECASE,
-            ).strip(" ,;:-")
-        if candidate:
-            return candidate[:120]
-    # Explicit location connectors work for both command languages and allow
-    # arbitrary administrative names (including names not shipped in a list).
+    # Explicit location connectors allow arbitrary administrative names,
+    # including names not shipped in a fixed list.
     connector = re.search(
-        r"\b(?:in|at|near|within|around|for|için|icin|içinde|icinde|"
-        r"yakınında|yakininda)\b\s+(.+)$",
+        r"\b(?:in|at|near|within|around|for)\b\s+(.+)$",
         text,
         flags=re.IGNORECASE,
     )
     if connector:
         candidate = connector.group(1).strip(" ,;:-")
         candidate = re.split(
-            r"\b(?:download|indir|get|fetch|load|with|where|olarak)\b",
+            r"\b(?:download|get|fetch|load|with|where)\b",
             candidate,
             maxsplit=1,
             flags=re.IGNORECASE,
@@ -473,29 +445,10 @@ def _extract_place(raw: str, preset_id: str) -> str:
         return candidate[:120]
 
     if preset_id:
-        # “Konak için park” has the location before the Turkish connector.
-        before = re.search(
-            r"^(.+?)\s+\b(?:için|icin)\b",
-            text,
-            flags=re.IGNORECASE,
-        )
-        if before:
-            candidate = before.group(1).strip(" ,;:-")
-            candidate = re.sub(
-                r"^(?:download|indir|get|fetch|load|osm|veri|data)\s+",
-                "",
-                candidate,
-                flags=re.IGNORECASE,
-            ).strip(" ,;:-")
-            if candidate and _normalized(candidate) not in {
-                _normalized(get_preset(preset_id).title),
-                _normalized(get_preset(preset_id).group_title),
-            }:
-                return candidate[:120]
         return ""
 
     candidate = re.sub(
-        r"^(?:download|indir|get|fetch|load|osm|veri|data)\s+",
+        r"^(?:download|get|fetch|load|osm|data)\s+",
         "",
         text,
         flags=re.IGNORECASE,
@@ -528,13 +481,13 @@ def interpret_prompt(text: object) -> PromptIntent:
     normalized = _normalized(raw)
     words = tuple(normalized.split())
     has_road = any(
-        word.startswith(("road", "street", "yol")) for word in words
+        word.startswith(("road", "street")) for word in words
     )
     has_building = any(
-        word.startswith(("building", "bina")) for word in words
+        word.startswith("building") for word in words
     )
     has_tree = any(
-        word.startswith(("tree", "agac")) for word in words
+        word.startswith("tree") for word in words
     )
     if has_road and has_building and has_tree:
         return PromptIntent(

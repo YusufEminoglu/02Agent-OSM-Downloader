@@ -544,10 +544,10 @@ building metadata. The read-only Overpass preview remains collapsed until
 
 <h3>Command workspace</h3>
 <p>
-The Command tab accepts Turkish or English dataset requests, safe
+The Command tab accepts English dataset requests, safe
 <code>key=value</code> commands, and place-aware phrases. Examples include
-<code>Download parks in Konak</code>,
-<code>Van için public transport</code>, and <code>London</code>. After
+<code>Download parks in London</code>,
+<code>Download public transport in Van</code>, and <code>London</code>. After
 interpretation, review the checked Dataset list and the resolved place label
 before pressing Download. Command text is interpreted locally; only the
 explicit download operation performs a network request.
@@ -1942,13 +1942,13 @@ kind. The table below enumerates all presets.
 </table>
 
 <p>
-Each preset also carries multilingual keywords (English and Turkish) used
-by the natural-language intent router in <code>core/catalog.py</code>.
+Each preset also carries English keywords used by the natural-language intent
+router in <code>core/catalog.py</code>.
 The <code>interpret_prompt()</code> function performs Unicode NFKD
 normalisation, case-folding, diacritic removal, and substring matching
 against these keywords to map free-text user input to the nearest preset. It
 also extracts a place phrase from connectors such as <code>in</code>,
-<code>near</code>, and Turkish <code>için</code>. A place-only command such as
+<code>near</code>, and <code>within</code>. A place-only command such as
 <code>Konak</code> selects the administrative-places preset and is resolved by
 the named-place endpoint at download time.
 </p>

@@ -100,7 +100,7 @@ class AgentOsmDownloaderPlugin:
                 "<p>Choose from 15 thematic groups and 28 curated urban-analysis "
                 "presets, combine datasets, build a structured four-filter ANY/ALL "
                 "query, resolve named administrative places, request "
-                "a custom OSM tag, or use the Turkish/English offline command "
+                "a custom OSM tag, or use the English offline command "
                 "router.</p>"
                 "<p><b>Agent Protocol v1</b><br>"
                 "Provider: <code>zero2agentosm</code><br>"

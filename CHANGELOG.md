@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.6] - 2026-08-09
+
+- Make all shipped interface copy, examples, documentation and metadata
+  English-only.
+- Restrict offline command interpretation to English keywords and connectors.
+
 ## [0.4.5] - 2026-08-09
 
 - Allow multiple datasets to be checked within a selected theme and combine
@@ -78,7 +84,7 @@ All notable changes to 02Agent OSM Downloader are documented here.
 - Add the **Urban Context — Roads, buildings & trees** preset: all highway
   ways, building footprints, individual trees and tree rows in one bounded
   compound Overpass request with temporary point, line and polygon outputs.
-- Route Turkish and English multi-theme requests containing roads, buildings
+- Route multi-theme requests containing roads, buildings
   and trees directly to the combined preset instead of selecting only the first
   requested theme.
 - Add catalog, router and exact-query regression tests for the combined preset,
@@ -148,7 +154,7 @@ All notable changes to 02Agent OSM Downloader are documented here.
 - Curated preset catalog with 13 thematic groups and 26 datasets.
 - One compound, bounded Overpass request per preset.
 - Custom OSM key/value acquisition for points, lines and polygons.
-- Offline Turkish/English command interpretation.
+- Offline English command interpretation.
 - Current-map or active-layer extent selection.
 - Asynchronous QGIS task execution, cancellation and themed layer grouping.
 - Processing provider for standalone, model and SmartModeler Agent use.

@@ -28,9 +28,9 @@ class CatalogTests(unittest.TestCase):
                 self.assertIn(tag.geometry, ("point", "line", "polygon"))
                 self.assertTrue(tag.key)
 
-    def test_offline_router_matches_turkish_and_english_presets(self) -> None:
+    def test_offline_router_matches_english_presets(self) -> None:
         self.assertEqual(
-            interpret_prompt("toplu taşıma duraklarını indir").preset_id,
+            interpret_prompt("download public transport stops").preset_id,
             "public_transport_all",
         )
         self.assertEqual(
@@ -38,12 +38,12 @@ class CatalogTests(unittest.TestCase):
             "green_blue_all",
         )
         self.assertEqual(
-            interpret_prompt("bina morfolojisi").preset_id,
+            interpret_prompt("building morphology").preset_id,
             "buildings",
         )
         self.assertEqual(
             interpret_prompt(
-                "Ekrandaki map extent'e göre tüm yolları, binaları ve ağaçları indir"
+                "download all roads, buildings and trees for the map extent"
             ).preset_id,
             "urban_context",
         )
@@ -62,7 +62,7 @@ class CatalogTests(unittest.TestCase):
 
     def test_explicit_tag_becomes_custom_intent(self) -> None:
         intent = interpret_prompt(
-            "building=* verilerini poligon olarak indir"
+            "download building=* data as polygon"
         )
         self.assertEqual(intent.mode, "custom")
         self.assertEqual((intent.key, intent.value), ("building", "*"))
@@ -83,7 +83,7 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(parks.preset_id, "green_spaces")
         self.assertEqual(parks.place_name, "Konak")
         self.assertEqual(
-            interpret_prompt("Van için public transport").place_name,
+            interpret_prompt("Download public transport in Van").place_name,
             "Van",
         )
         self.assertEqual(interpret_prompt("london").place_name, "london")

@@ -21,8 +21,8 @@ Processing registry rather than plugin UI automation.
   - **Presets** for curated datasets and safe custom tags. Datasets within a
     theme can be checked together and downloaded in one bounded request.
   - **Query** for structured multi-tag ANY/ALL requests and a read-only preview.
-  - **Command** for the Turkish/English intent router, including named-place
-    commands such as `Download parks in Konak` and `Van için public transport`.
+  - **Command** for the English intent router, including named-place commands
+    such as `Download parks in London` and `Download public transport in Van`.
   - **Agent** for the SmartModeler bridge and Agent Protocol status.
 - A lighter palette-derived visual system with separated cards, selected-tab
   fills, contextual run summaries and tested text contrast in light and dark
