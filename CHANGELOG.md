@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1] - 2026-08-09
+
+- Refine the dock hierarchy with a clearer OSM header, status badge and workflow guidance.
+- Add dataset selection actions and a live selection counter for multi-dataset downloads.
+- Expand global Command examples with more explicit administrative place names.
+- Refresh the toolbar icon for stronger small-size readability and fix the About dialog copy.
+
 ## [0.5.0] - 2026-08-09
 
 - Add an English **Add OSM basemap** action with duplicate protection and

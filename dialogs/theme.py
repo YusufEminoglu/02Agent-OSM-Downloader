@@ -126,6 +126,14 @@ QFrame#heroPanel {
     border: 1px solid %(border)s;
     border-radius: 9px;
 }
+QLabel#heroMark {
+    background: %(accent)s;
+    color: %(accent_text)s;
+    border: 1px solid %(accent)s;
+    border-radius: 10px;
+    font-size: 12pt;
+    font-weight: 800;
+}
 QLabel#heroEyebrow {
     color: %(accent)s;
     font-size: 8pt;
@@ -133,11 +141,32 @@ QLabel#heroEyebrow {
 }
 QLabel#heroTitle {
     color: %(text)s;
-    font-size: 15pt;
-    font-weight: 650;
+    font-size: 16pt;
+    font-weight: 700;
+}
+QLabel#heroBadge {
+    color: %(accent)s;
+    background: %(status)s;
+    border: 1px solid %(accent)s;
+    border-radius: 8px;
+    padding: 3px 7px;
+    font-size: 7pt;
+    font-weight: 750;
+}
+QLabel#heroHint {
+    color: %(subtle)s;
+    padding-left: 46px;
 }
 QLabel#mutedText, QLabel#descriptionText, QLabel#connectionDetail {
     color: %(subtle)s;
+}
+QLabel#countPill {
+    color: %(accent)s;
+    background: %(status)s;
+    border: 1px solid %(border)s;
+    border-radius: 8px;
+    padding: 3px 7px;
+    font-weight: 650;
 }
 QLabel#endpointPill {
     color: %(accent)s;
@@ -195,12 +224,34 @@ QLineEdit, QPlainTextEdit, QComboBox {
 QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus {
     border: 2px solid %(accent)s;
 }
+QListWidget#datasetList {
+    background: %(input_surface)s;
+    color: %(input_text)s;
+    border: 1px solid %(border)s;
+    border-radius: 6px;
+    padding: 3px;
+}
+QListWidget#datasetList::item {
+    padding: 5px 4px;
+    border-radius: 4px;
+}
+QListWidget#datasetList::item:hover {
+    background: %(tab_active)s;
+}
+QListWidget#datasetList::item:selected {
+    background: %(selection)s;
+    color: %(accent_text)s;
+}
+QCheckBox {
+    spacing: 6px;
+}
 QPushButton {
     background: %(button)s;
     color: %(button_text)s;
     border: 1px solid %(border)s;
     border-radius: 6px;
     padding: 7px 11px;
+    min-height: 17px;
 }
 QPushButton:hover { border-color: %(accent)s; color: %(accent)s; }
 QPushButton:focus { border: 2px solid %(accent)s; }

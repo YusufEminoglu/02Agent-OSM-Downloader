@@ -179,17 +179,42 @@ class AgentOsmDock(QDockWidget):
         hero.setObjectName("heroPanel")
         hero_layout = QVBoxLayout(hero)
         hero_layout.setContentsMargins(12, 7, 12, 7)
-        hero_layout.setSpacing(0)
+        hero_layout.setSpacing(4)
+
+        hero_top = QHBoxLayout()
+        hero_top.setSpacing(9)
+        hero_mark = QLabel("02")
+        hero_mark.setObjectName("heroMark")
+        hero_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero_mark.setFixedSize(37, 37)
+        hero_top.addWidget(hero_mark)
+
+        hero_copy = QVBoxLayout()
+        hero_copy.setContentsMargins(0, 0, 0, 0)
+        hero_copy.setSpacing(0)
         eyebrow = QLabel("OPENSTREETMAP ACQUISITION")
         eyebrow.setObjectName("heroEyebrow")
         title = QLabel("02Agent")
         title.setObjectName("heroTitle")
-        subtitle = QLabel("Bounded downloads for QGIS workflows")
+        subtitle = QLabel("Bounded OSM downloads for QGIS workflows")
         subtitle.setObjectName("mutedText")
         subtitle.setWordWrap(True)
-        hero_layout.addWidget(eyebrow)
-        hero_layout.addWidget(title)
-        hero_layout.addWidget(subtitle)
+        hero_copy.addWidget(eyebrow)
+        hero_copy.addWidget(title)
+        hero_copy.addWidget(subtitle)
+        hero_top.addLayout(hero_copy, 1)
+
+        hero_badge = QLabel("OSM\nREADY")
+        hero_badge.setObjectName("heroBadge")
+        hero_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero_badge.setToolTip("OpenStreetMap acquisition tools")
+        hero_top.addWidget(hero_badge)
+        hero_layout.addLayout(hero_top)
+
+        workflow_hint = QLabel("Choose a workflow, review the request, then download.")
+        workflow_hint.setObjectName("heroHint")
+        workflow_hint.setWordWrap(True)
+        hero_layout.addWidget(workflow_hint)
         layout.addWidget(hero)
 
         self.tabs = QTabWidget()
@@ -345,6 +370,20 @@ class AgentOsmDock(QDockWidget):
             "Select one or more datasets from this theme. They run as one bounded request."
         )
         self.dataset_list.itemChanged.connect(self._dataset_changed)
+        dataset_actions = QHBoxLayout()
+        dataset_actions.setSpacing(5)
+        self.dataset_count = QLabel("0 selected")
+        self.dataset_count.setObjectName("countPill")
+        select_all = QPushButton("Select all")
+        select_all.setObjectName("quietButton")
+        select_all.clicked.connect(self._select_all_datasets)
+        clear_datasets = QPushButton("Clear")
+        clear_datasets.setObjectName("quietButton")
+        clear_datasets.clicked.connect(self._clear_datasets)
+        dataset_actions.addWidget(self.dataset_count)
+        dataset_actions.addStretch(1)
+        dataset_actions.addWidget(select_all)
+        dataset_actions.addWidget(clear_datasets)
         self.theme_context = QLabel()
         self.theme_context.setObjectName("mutedText")
         self.theme_context.setWordWrap(True)
@@ -353,8 +392,10 @@ class AgentOsmDock(QDockWidget):
         self.description.setObjectName("descriptionText")
         self.description.setWordWrap(True)
         self.description.setMinimumHeight(42)
+        self.description.setMaximumHeight(64)
         preset_form.addRow("Theme", self.group_combo)
         preset_form.addRow("Dataset (multi-select)", self.dataset_list)
+        preset_form.addRow(dataset_actions)
         preset_form.addRow(self.theme_context)
         preset_form.addRow(self.description)
         outer.addWidget(preset_group)
@@ -539,19 +580,23 @@ class AgentOsmDock(QDockWidget):
         command_examples = QHBoxLayout()
         self.command_example_combo = QComboBox()
         for example in (
-            "Download parks in London",
-            "Download buildings in Izmir Konak",
-            "Download public transport in Van",
-            "Download public transport in Tokyo",
-            "Download buildings in New York City",
-            "Download roads and buildings in Paris",
-            "Download healthcare in Toronto",
-            "Download parks in Nairobi",
-            "Download schools in Melbourne",
-            "Download cycle network in Copenhagen",
+            "Download administrative places in Konak, Izmir, Turkey",
+            "Download administrative places in Van, Turkey",
+            "Download buildings in London, United Kingdom",
+            "Download roads and buildings in Paris, France",
+            "Download public transport in Tokyo, Japan",
+            "Download parks in Nairobi, Kenya",
+            "Download healthcare in Toronto, Canada",
+            "Download schools in Melbourne, Australia",
+            "Download cycle network in Copenhagen, Denmark",
+            "Download green and blue infrastructure in Amsterdam, Netherlands",
+            "Download buildings in New York City, United States",
+            "Download administrative places in São Paulo, Brazil",
+            "Download public transport in Singapore",
+            "Download roads in Cape Town, South Africa",
             "building=* polygon",
             "Download wheelchair=yes points",
-            "Download green and blue infrastructure",
+            "Download parks and playgrounds in Seoul, South Korea",
         ):
             self.command_example_combo.addItem(example)
         load_command = QPushButton("Load example")
@@ -669,6 +714,24 @@ class AgentOsmDock(QDockWidget):
         self.dataset_list.blockSignals(False)
         self._dataset_changed()
 
+    def _select_all_datasets(self) -> None:
+        self.dataset_list.blockSignals(True)
+        for index in range(self.dataset_list.count()):
+            self.dataset_list.item(index).setCheckState(
+                Qt.CheckState.Checked
+            )
+        self.dataset_list.blockSignals(False)
+        self._dataset_changed()
+
+    def _clear_datasets(self) -> None:
+        self.dataset_list.blockSignals(True)
+        for index in range(self.dataset_list.count()):
+            self.dataset_list.item(index).setCheckState(
+                Qt.CheckState.Unchecked
+            )
+        self.dataset_list.blockSignals(False)
+        self._dataset_changed()
+
     def _selected_preset_ids(self) -> tuple[str, ...]:
         return tuple(
             str(self.dataset_list.item(index).data(Qt.ItemDataRole.UserRole) or "")
@@ -678,13 +741,19 @@ class AgentOsmDock(QDockWidget):
 
     def _dataset_changed(self, *_args) -> None:
         preset_ids = self._selected_preset_ids()
+        self.dataset_count.setText(
+            f"{len(preset_ids)} of {self.dataset_list.count()} selected"
+        )
         if not preset_ids:
-            self.description.clear()
+            self.description.setText(
+                "Select one or more datasets to build a combined request."
+            )
             self._refresh_run_summary()
             return
-        self.description.setText(
-            " ".join(get_preset(preset_id).description for preset_id in preset_ids)
-        )
+        descriptions = [
+            get_preset(preset_id).description for preset_id in preset_ids
+        ]
+        self.description.setText(" ".join(descriptions))
         self._refresh_run_summary()
 
     def _select_preset(self, preset_id: str) -> None:
