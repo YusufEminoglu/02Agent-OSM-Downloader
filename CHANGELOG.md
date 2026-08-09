@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0] - 2026-08-09
+
+- Add an English **Add OSM basemap** action with duplicate protection and
+  OpenStreetMap attribution metadata.
+- Expand Urban Context with public transport and public-realm datasets, plus
+  theme focus and related-context guidance in the Presets tab.
+- Add OSM highway-category road widths with an optional uniform-width mode.
+- Replace the Command examples with a broader global set of named-place
+  workflows and improve multi-mirror diagnostics and actionable failures.
+- Support line geometries from mapped route relations such as bus and tram
+  routes, and expose the route tag in result attributes.
+
 ## [0.4.6] - 2026-08-09
 
 - Make all shipped interface copy, examples, documentation and metadata

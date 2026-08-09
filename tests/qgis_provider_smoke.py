@@ -58,6 +58,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             sys.path.insert(0, parent)
 
         from zero2agent_osm_downloader.core.catalog import PRESETS, get_preset
+        from zero2agent_osm_downloader.core.basemap import add_osm_basemap
         from zero2agent_osm_downloader.core.query import (
             advanced_specs,
             build_query,
@@ -184,6 +185,24 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
                 )
             if dock.map_theme_combo.count() != len(MAP_THEMES):
                 raise RuntimeError("The complete map-theme catalog is not visible.")
+            urban_index = dock.group_combo.findData("urban_context")
+            dock.group_combo.setCurrentIndex(urban_index)
+            if dock.dataset_list.count() < 3 or "Public transport context" not in {
+                dock.dataset_list.item(index).text()
+                for index in range(dock.dataset_list.count())
+            }:
+                raise RuntimeError("Urban Context lacks related transit datasets.")
+            if "Public Transport" not in dock.theme_context.text():
+                raise RuntimeError("Theme relationship guidance is missing.")
+            if dock.current_road_width_mode() != "highway":
+                raise RuntimeError("Highway-category road widths are not default.")
+            if dock.road_width_combo.findData("uniform") < 0:
+                raise RuntimeError("Uniform road-width fallback is missing.")
+            if dock.command_example_combo.count() < 12 or not any(
+                "Tokyo" in dock.command_example_combo.itemText(index)
+                for index in range(dock.command_example_combo.count())
+            ):
+                raise RuntimeError("Global command examples are incomplete.")
             cyber_index = dock.map_theme_combo.findData("cyber")
             dock.map_theme_combo.setCurrentIndex(cyber_index)
             if dock.current_map_theme() != "cyber":
@@ -229,6 +248,15 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
                 plugins.pop("planx_smartmodeler", None)
             else:
                 plugins["planx_smartmodeler"] = previous_bridge
+
+        basemap_project = QgsProject()
+        basemap, added = add_osm_basemap(basemap_project)
+        if not added or not basemap.isValid():
+            raise RuntimeError("The OSM XYZ basemap could not be created.")
+        same_basemap, added_again = add_osm_basemap(basemap_project)
+        if added_again or same_basemap.id() != basemap.id():
+            raise RuntimeError("OSM basemap duplicate protection failed.")
+        basemap_project.removeMapLayer(basemap.id())
 
         bbox = (38.4100, 27.1200, 38.4160, 27.1260)
         query = build_query(get_preset("urban_form").tags, bbox)
@@ -319,7 +347,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
 
         expected_categories = {
             "OUTPUT_POINTS": 9,
-            "OUTPUT_LINES": 10,
+            "OUTPUT_LINES": 11,
             "OUTPUT_POLYGONS": 12,
         }
         for name, layer in output_layers.items():

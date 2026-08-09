@@ -159,6 +159,7 @@ def _render_query(
                 selectors.append(f"  node{tag}({box});")
             elif spec.geometry == "line":
                 selectors.append(f"  way{tag}({box});")
+                selectors.append(f"  relation{tag}({box});")
             else:
                 selectors.append(f"  way{tag}({box});")
                 selectors.append(f"  relation{tag}({box});")
@@ -179,6 +180,7 @@ def _render_query(
                 selectors.append(f"  node{tags}({box});")
             elif geometry == "line":
                 selectors.append(f"  way{tags}({box});")
+                selectors.append(f"  relation{tags}({box});")
             else:
                 selectors.append(f"  way{tags}({box});")
                 selectors.append(f"  relation{tags}({box});")

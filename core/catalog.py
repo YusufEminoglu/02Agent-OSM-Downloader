@@ -40,7 +40,7 @@ PRESETS: Tuple[Preset, ...] = (
         "urban_context",
         "urban_context",
         "Urban Context",
-        "Roads, buildings & trees",
+        "Street, built form & nature",
         "Road network, building footprints, individual trees and tree rows.",
         _tags(
             ("highway", "", "line"),
@@ -54,6 +54,55 @@ PRESETS: Tuple[Preset, ...] = (
             "roads buildings trees",
             "road building tree",
             "city context",
+        ),
+    ),
+    Preset(
+        "urban_transit",
+        "urban_context",
+        "Urban Context",
+        "Public transport context",
+        "Bus stops, platforms, stations, entrances and mapped transit routes.",
+        _tags(
+            ("highway", "bus_stop", "point"),
+            ("public_transport", "stop_position", "point"),
+            ("public_transport", "platform", "point"),
+            ("public_transport", "platform", "polygon"),
+            ("public_transport", "station", "point"),
+            ("public_transport", "station", "polygon"),
+            ("amenity", "bus_station", "point"),
+            ("amenity", "bus_station", "polygon"),
+            ("railway", "station", "point"),
+            ("railway", "tram_stop", "point"),
+            ("railway", "subway_entrance", "point"),
+            ("route", "bus", "line"),
+            ("route", "tram", "line"),
+        ),
+        (
+            "public transport context", "bus stops", "transit stops",
+            "stations", "transit routes",
+        ),
+    ),
+    Preset(
+        "urban_amenities",
+        "urban_context",
+        "Urban Context",
+        "Street amenities & public realm",
+        "Crossings, signals, lighting, benches, drinking water and everyday services.",
+        _tags(
+            ("highway", "crossing", "point"),
+            ("highway", "traffic_signals", "point"),
+            ("highway", "street_lamp", "point"),
+            ("amenity", "bench", "point"),
+            ("amenity", "bicycle_parking", "point"),
+            ("amenity", "drinking_water", "point"),
+            ("amenity", "waste_basket", "point"),
+            ("amenity", "toilets", "point"),
+            ("amenity", "cafe", "point"),
+            ("amenity", "restaurant", "point"),
+        ),
+        (
+            "street amenities", "public realm", "pedestrian services",
+            "crossings", "street furniture",
         ),
     ),
     Preset(
@@ -156,7 +205,7 @@ PRESETS: Tuple[Preset, ...] = (
     Preset(
         "public_transport_all", "public_transport", "Public Transport",
         "All public transport",
-        "Combined bus and rail passenger facilities.",
+        "Combined bus, rail and mapped passenger-route features.",
         _tags(
             ("highway", "bus_stop", "point"),
             ("public_transport", "platform", "point"),
@@ -165,6 +214,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("public_transport", "station", "polygon"),
             ("railway", "station", "point"), ("railway", "tram_stop", "point"),
             ("railway", "subway_entrance", "point"),
+            ("route", "bus", "line"), ("route", "tram", "line"),
         ),
         ("public transport", "transit", "transit stops"),
     ),
@@ -329,6 +379,87 @@ GROUPS: Tuple[Tuple[str, str], ...] = tuple(
     dict.fromkeys((item.group_id, item.group_title) for item in PRESETS)
 )
 
+GROUP_CONTEXTS: Dict[str, Tuple[str, str]] = {
+    "urban_context": (
+        "Start with the street-scale city context: movement, built form, nature, "
+        "transit and everyday public-realm features.",
+        "Related: Network, Green & Blue, Public Transport",
+    ),
+    "network": (
+        "Explore movement systems as connected infrastructure: roads, rail, "
+        "ferries and key interchange points.",
+        "Related: Urban Context, Public Transport, Bike",
+    ),
+    "morphology": (
+        "Study the physical structure of the city through buildings, land use, "
+        "barriers and named place centres.",
+        "Related: Urban Context, Places, Green & Blue",
+    ),
+    "green_blue": (
+        "Read the ecological structure of a place through parks, vegetation, "
+        "water bodies, coastlines and waterways.",
+        "Related: Urban Context, Morphology",
+    ),
+    "public_transport": (
+        "Inspect passenger movement from stops and platforms to stations, "
+        "entrances and mapped bus or tram routes.",
+        "Related: Urban Context, Network, Bike",
+    ),
+    "religious": (
+        "Map places of worship and the building footprints associated with them.",
+        "Related: Tourism, Heritage, Urban Context",
+    ),
+    "tourism": (
+        "Combine visitor facilities with historic, archaeological and heritage "
+        "features.",
+        "Related: Religious, Sport, Urban Context",
+    ),
+    "sport": (
+        "Locate pitches, stadiums, sports centres and sport-tagged places.",
+        "Related: Green & Blue, Urban Context",
+    ),
+    "bike": (
+        "Follow cycling infrastructure and the facilities that support everyday "
+        "bike journeys.",
+        "Related: Network, Public Transport, Urban Context",
+    ),
+    "car": (
+        "Find parking, charging, fuel, rental, washing and service-road features.",
+        "Related: Network, Traffic, Urban Context",
+    ),
+    "traffic": (
+        "Inspect safety and movement-control features such as crossings, signals, "
+        "stops, calming devices and cameras.",
+        "Related: Network, Urban Context, Public Transport",
+    ),
+    "health": (
+        "Map healthcare buildings, facilities, clinics, doctors and pharmacies.",
+        "Related: Emergency, Urban Context, Places",
+    ),
+    "education": (
+        "Map schools, universities, colleges, kindergartens and libraries.",
+        "Related: Urban Context, Places, Public Transport",
+    ),
+    "emergency": (
+        "Locate emergency response, police, fire, ambulance, shelter and assembly "
+        "facilities.",
+        "Related: Health, Urban Context, Places",
+    ),
+    "places": (
+        "Resolve named administrative boundaries and place centres when a command "
+        "needs a real-world location.",
+        "Related: Urban Context, Morphology",
+    ),
+}
+
+
+def group_context(group_id: str) -> Tuple[str, str]:
+    """Return a short focus and relationship hint for a thematic group."""
+    return GROUP_CONTEXTS.get(
+        str(group_id or ""),
+        ("Choose related OSM datasets for a bounded download.", ""),
+    )
+
 _TAG_RE = re.compile(
     r"\b([A-Za-z0-9_:.~-]{1,80})\s*=\s*(\*|[A-Za-z0-9_:.~-]{0,120})"
 )
@@ -489,11 +620,9 @@ def interpret_prompt(text: object) -> PromptIntent:
     has_tree = any(
         word.startswith("tree") for word in words
     )
-    if has_road and has_building and has_tree:
-        return PromptIntent(
-            "preset", preset_id="urban_context", confidence=1.0
-        )
     preset_id, confidence = _best_preset(normalized)
+    if has_road and has_building:
+        preset_id, confidence = "urban_context", 1.0
     place_name = _extract_place(raw, preset_id)
     if place_name:
         return PromptIntent(

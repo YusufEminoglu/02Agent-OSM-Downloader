@@ -497,7 +497,7 @@ detect-secrets) while remaining compatible with Qt6 / QGIS 4 environments.
 </p>
 
 <div class="info-box">
-<strong>Key design constraints.</strong> The catalogue contains 28 curated
+<strong>Key design constraints.</strong> The catalogue contains 30 curated
 presets in 15 thematic groups. Maximum response size: 64 MB.
 Maximum extent: 100 km<sup>2</sup>. Maximum features per response: 150,000.
 Maximum tag selectors per request: 32; advanced queries accept four validated
@@ -523,12 +523,22 @@ connection panel is active.
 
 <h3>Theme and multi-dataset selection</h3>
 <p>
-Choose a Theme first. Its Dataset list is checkable, so multiple datasets can
+Choose a Theme first. The Presets tab shows a theme focus and related contexts
+before selection. Its Dataset list is checkable, so multiple datasets can
 be selected within the same theme—for example, <em>Bus transit</em> and
 <em>Rail transit</em>. The checked datasets are flattened into one validated
 TagSpec collection, duplicate selectors are removed, and one Overpass request
 produces the point, line, and polygon outputs. The selected dataset IDs remain
 visible in the output <code>preset_id</code> field, joined with a plus sign.
+</p>
+
+<p>
+Urban Context is deliberately cross-disciplinary: its public-transport context
+includes bus stops, stop positions, platforms, stations, entrances and mapped
+bus or tram routes; its public-realm context includes crossings, signals,
+street lighting, benches, bicycle parking, drinking water, waste baskets,
+toilets, cafes and restaurants. The dedicated Public Transport theme provides
+the same transit domain when a narrower transport-only request is preferred.
 </p>
 
 <h3>Structured Query workspace</h3>
@@ -543,14 +553,32 @@ building metadata. The read-only Overpass preview remains collapsed until
 </p>
 
 <h3>Command workspace</h3>
+<p><strong>Global command examples.</strong> The Load example menu includes
+named places from multiple regions so the parser can be tested with cities,
+districts and administrative names beyond one local dataset.</p>
 <p>
 The Command tab accepts English dataset requests, safe
 <code>key=value</code> commands, and place-aware phrases. Examples include
 <code>Download parks in London</code>,
-<code>Download public transport in Van</code>, and <code>London</code>. After
+<code>Download public transport in Van</code>, <code>Download public transport in Tokyo</code>,
+<code>Download buildings in New York City</code>, and <code>London</code>. After
 interpretation, review the checked Dataset list and the resolved place label
 before pressing Download. Command text is interpreted locally; only the
 explicit download operation performs a network request.
+</p>
+</section>
+
+<section id="basemap-style">
+<h3>Basemap and road hierarchy</h3>
+<p>
+<em>Add OSM basemap</em> adds one standard OpenStreetMap XYZ layer to the current
+project, marks it with duplicate protection and records the required attribution
+metadata. Repeated clicks reveal the existing layer instead of adding another
+copy. The Run card also offers <em>By OSM highway category</em> (the default) or
+<em>Uniform road width</em>. Category mode assigns a visual hierarchy to
+motorway/trunk, primary, secondary, tertiary, residential and service roads;
+the choice is stored in QGIS settings and applied to newly downloaded line
+layers.
 </p>
 </section>
 
@@ -606,7 +634,7 @@ The plugin follows a layered architecture with strict separation of concerns:
   path synthesises Overpass QL.</li>
 
   <li><strong>Network layer</strong> — Three pinned Overpass endpoints with
-  automatic failover. Requests use <code>QgsBlockingNetworkRequest</code>'s POST
+  sequential failover with per-mirror status diagnostics. Requests use <code>QgsBlockingNetworkRequest</code>'s POST
   method with <code>application/x-www-form-urlencoded</code> encoding and
   <code>Accept: application/json</code>. The User-Agent identifies the plugin
   version and GitHub repository.</li>
@@ -1237,7 +1265,7 @@ datasets from this catalogue:
 <div class="eqn-block">
 $$
 \begin{aligned}
-\mathcal{P} &= \{\, p_0, p_1, \ldots, p_{27} \,\}, \quad |\mathcal{P}| = 28 \\[4pt]
+\mathcal{P} &= \{\, p_0, p_1, \ldots, p_{29} \,\}, \quad |\mathcal{P}| = 30 \\[4pt]
 p_j &= (\text{preset\_id}_j,\; \text{group\_id}_j,\; \text{group\_title}_j,\;
 \text{title}_j,\; \text{description}_j,\; \text{tags}_j,\; \text{keywords}_j) \\[4pt]
 \text{tags}_j &= (\sigma_{j,1}, \sigma_{j,2}, \ldots, \sigma_{j,m_j}), \quad
@@ -1271,7 +1299,8 @@ $$
 \bigcup_{k=1}^{m_j} \begin{cases}
 \{\, \texttt{node[}\sigma_{j,k}\texttt{](bbox);} \,\} &
 \text{if } \sigma_{j,k}.\!geom = \text{point} \\[6pt]
-\{\, \texttt{way[}\sigma_{j,k}\texttt{](bbox);} \,\} &
+\{\, \texttt{way[}\sigma_{j,k}\texttt{](bbox);},\;
+\texttt{relation[}\sigma_{j,k}\texttt{](bbox);} \,\} &
 \text{if } \sigma_{j,k}.\!geom = \text{line} \\[6pt]
 \{\, \texttt{way[}\sigma_{j,k}\texttt{](bbox);},\;
 \texttt{relation[}\sigma_{j,k}\texttt{](bbox);} \,\} &
@@ -1324,7 +1353,7 @@ if their geometry fails to construct (empty or invalid).
 </p>
 
 <p>
-The preset catalogue spans 28 presets across 15 thematic groups (urban
+The preset catalogue spans 30 presets across 15 thematic groups (urban
 context, networks, morphology, green-blue infrastructure, public transport,
 religious facilities, tourism, sport, cycling, automotive, traffic, health,
 education, emergency services, and named places), providing coverage for the most common
@@ -1365,7 +1394,7 @@ with empty value strings indicating wildcard matching for that key.
 
 <p>
 All four algorithms produce identical output schemas. Each output layer
-contains the following 21 fields (all of type <code>QString</code>):
+contains the following 22 fields (all of type <code>QString</code>):
 </p>
 
 <table>
@@ -1388,16 +1417,17 @@ contains the following 21 fields (all of type <code>QString</code>):
 <tr><td>13</td><td><code>natural</code></td><td>tags["natural"]</td><td>Natural feature tag value, if present</td></tr>
 <tr><td>14</td><td><code>railway</code></td><td>tags["railway"]</td><td>Railway tag value, if present</td></tr>
 <tr><td>15</td><td><code>public_transport</code></td><td>tags["public_transport"]</td><td>Public transport tag value, if present</td></tr>
-<tr><td>16</td><td><code>tourism</code></td><td>tags["tourism"]</td><td>Tourism tag value, if present</td></tr>
-<tr><td>17</td><td><code>sport</code></td><td>tags["sport"]</td><td>Sport tag value, if present</td></tr>
-<tr><td>18</td><td><code>height</code></td><td>tags["height"]</td><td>Building/feature height tag, if present</td></tr>
-<tr><td>19</td><td><code>building_levels</code></td><td>tags["building:levels"]</td><td>Number of building levels, if present</td></tr>
-<tr><td>20</td><td><code>tags_json</code></td><td>All element tags</td><td>JSON-serialised complete tag set (compact format, max ~16 KB; truncated with <code>_truncated: true</code> if exceeded)</td></tr>
-<tr><td>21</td><td><code>matched_tags</code></td><td>Matching TagSpecs</td><td>JSON object containing only the tag keys/values that matched the query specifications (sorted alphabetically)</td></tr>
+<tr><td>16</td><td><code>route</code></td><td>tags["route"]</td><td>Mapped route type, such as bus or tram, if present</td></tr>
+<tr><td>17</td><td><code>tourism</code></td><td>tags["tourism"]</td><td>Tourism tag value, if present</td></tr>
+<tr><td>18</td><td><code>sport</code></td><td>tags["sport"]</td><td>Sport tag value, if present</td></tr>
+<tr><td>19</td><td><code>height</code></td><td>tags["height"]</td><td>Building/feature height tag, if present</td></tr>
+<tr><td>20</td><td><code>building_levels</code></td><td>tags["building:levels"]</td><td>Number of building levels, if present</td></tr>
+<tr><td>21</td><td><code>tags_json</code></td><td>All element tags</td><td>JSON-serialised complete tag set (compact format, max ~16 KB; truncated with <code>_truncated: true</code> if exceeded)</td></tr>
+<tr><td>22</td><td><code>matched_tags</code></td><td>Matching TagSpecs</td><td>JSON object containing only the tag keys/values that matched the query specifications (sorted alphabetically)</td></tr>
 </tbody>
 </table>
 
-<p class="para"><em>All 21 fields are of type <code>QString</code> (QMetaType.Type.QString). The <code>tags_json</code> field is compacted to approximately 16 KB maximum; if the full tag set exceeds this limit, the JSON object is truncated with a <code>_truncated: true</code> sentinel key.</em></p>
+<p class="para"><em>All 22 fields are of type <code>QString</code> (QMetaType.Type.QString). The <code>tags_json</code> field is compacted to approximately 16 KB maximum; if the full tag set exceeds this limit, the JSON object is truncated with a <code>_truncated: true</code> sentinel key.</em></p>
 
 <h3 id="algo1-interp">10.4 Interpretation Guidance</h3>
 
@@ -1899,7 +1929,7 @@ and administrative level when available.
 <h2>14. Thematic Preset Catalog</h2>
 
 <p>
-The preset catalogue encodes 28 curated OSM feature collections across
+The preset catalogue encodes 30 curated OSM feature collections across
 15 thematic groups. Each preset comprises a set of tag specifications,
 each specifying an OSM key, an optional value filter, and a target geometry
 kind. The table below enumerates all presets.
@@ -1910,7 +1940,9 @@ kind. The table below enumerates all presets.
 <tr><th>Preset ID</th><th>Group</th><th>Title</th><th>Tag Specs</th></tr>
 </thead>
 <tbody>
-<tr><td><code>urban_context</code></td><td>Urban Context</td><td>Roads, buildings &amp; trees</td><td>highway=* (line), building=* (poly), natural=tree (pt), natural=tree_row (line)</td></tr>
+<tr><td><code>urban_context</code></td><td>Urban Context</td><td>Street, built form &amp; nature</td><td>highway=* (line), building=* (poly), natural=tree (pt), natural=tree_row (line)</td></tr>
+<tr><td><code>urban_transit</code></td><td>Urban Context</td><td>Public transport context</td><td>bus stops, stop positions, platforms, stations, entrances and route=bus/tram (pt/line/poly)</td></tr>
+<tr><td><code>urban_amenities</code></td><td>Urban Context</td><td>Street amenities &amp; public realm</td><td>crossings, signals, street lamps, benches, bicycle parking, water, waste baskets, toilets, cafes and restaurants (pt)</td></tr>
 <tr><td><code>road_network</code></td><td>Network</td><td>Road network</td><td>highway=* (line)</td></tr>
 <tr><td><code>rail_network</code></td><td>Network</td><td>Rail network</td><td>railway=rail/tram/subway/light_rail (line)</td></tr>
 <tr><td><code>multimodal_network</code></td><td>Network</td><td>Multimodal network</td><td>highway=* (line), railway=* (line), route=ferry (line), highway=bus_stop (pt), railway=station (pt)</td></tr>
@@ -1922,7 +1954,7 @@ kind. The table below enumerates all presets.
 <tr><td><code>green_blue_all</code></td><td>Green &amp; Blue</td><td>Green-blue system</td><td>leisure=park (poly), landuse=forest (poly), natural=wood (poly), natural=water (poly), waterway=* (line), natural=coastline (line)</td></tr>
 <tr><td><code>bus_transit</code></td><td>Public Transport</td><td>Bus transit</td><td>highway=bus_stop (pt), public_transport=platform (pt/poly), amenity=bus_station (pt/poly)</td></tr>
 <tr><td><code>rail_transit</code></td><td>Public Transport</td><td>Rail transit</td><td>railway=station/halt/tram_stop/subway_entrance (pt)</td></tr>
-<tr><td><code>public_transport_all</code></td><td>Public Transport</td><td>All public transport</td><td>bus stops, platforms, stations (pt/poly) — combined bus + rail</td></tr>
+<tr><td><code>public_transport_all</code></td><td>Public Transport</td><td>All public transport</td><td>bus stops, platforms, stations and route=bus/tram (pt/poly/line) — combined bus + rail</td></tr>
 <tr><td><code>worship</code></td><td>Religious</td><td>Places of worship</td><td>amenity=place_of_worship (pt/poly)</td></tr>
 <tr><td><code>religious_buildings</code></td><td>Religious</td><td>Religious buildings</td><td>building=mosque/church/temple/synagogue/chapel/cathedral (poly)</td></tr>
 <tr><td><code>tourism</code></td><td>Tourism</td><td>Tourism facilities</td><td>tourism=* (pt/poly)</td></tr>

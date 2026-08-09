@@ -42,18 +42,22 @@ from qgis.core import (
 from ..core.catalog import (
     GROUPS,
     PRESETS,
+    group_context,
     get_preset,
     interpret_prompt,
     presets_for_group,
 )
+from ..core.basemap import add_osm_basemap
 from ..core.query import (
     MAX_ADVANCED_FILTERS,
     QueryError,
     advanced_specs,
     normalize_tag,
+    normalized_specs,
     preview_query,
 )
 from ..core.map_styling import apply_map_theme
+from ..core.map_styling import ROAD_WIDTH_MODES
 from ..core.map_themes import (
     DEFAULT_MAP_THEME,
     map_theme,
@@ -68,6 +72,7 @@ from ..core.smartmodeler_bridge import (
 from .theme import apply_adaptive_theme
 
 _MAP_THEME_SETTING = "zero2agent_osm_downloader/map_theme"
+_ROAD_WIDTH_SETTING = "zero2agent_osm_downloader/road_width_mode"
 
 _ADVANCED_EXAMPLES = (
     (
@@ -215,6 +220,13 @@ class AgentOsmDock(QDockWidget):
         )
         run_form.addRow("Extent", self.extent_combo)
 
+        self.basemap_button = QPushButton("Add OSM basemap")
+        self.basemap_button.setToolTip(
+            "Add the standard OpenStreetMap XYZ basemap to the current project."
+        )
+        self.basemap_button.clicked.connect(self._add_basemap)
+        run_form.addRow(self.basemap_button)
+
         self.map_theme_combo = QComboBox()
         self.map_theme_combo.setAccessibleName("Downloaded layer map style")
         for theme_id, label in map_theme_items():
@@ -229,6 +241,25 @@ class AgentOsmDock(QDockWidget):
             self._map_theme_changed
         )
         run_form.addRow("Map style", self.map_theme_combo)
+
+        self.road_width_combo = QComboBox()
+        self.road_width_combo.addItem(
+            "By OSM highway category (recommended)", "highway"
+        )
+        self.road_width_combo.addItem("Uniform road width", "uniform")
+        stored_width = str(
+            QgsSettings().value(_ROAD_WIDTH_SETTING, "highway") or "highway"
+        )
+        stored_width_index = self.road_width_combo.findData(stored_width)
+        self.road_width_combo.setCurrentIndex(max(0, stored_width_index))
+        self.road_width_combo.currentIndexChanged.connect(
+            self._road_width_changed
+        )
+        self.road_width_combo.setToolTip(
+            "Use OSM highway classes such as motorway, primary, residential "
+            "and service to assign line widths."
+        )
+        run_form.addRow("Road width", self.road_width_combo)
 
         map_theme_preview = QWidget()
         map_theme_preview.setObjectName("mapThemePreview")
@@ -314,12 +345,17 @@ class AgentOsmDock(QDockWidget):
             "Select one or more datasets from this theme. They run as one bounded request."
         )
         self.dataset_list.itemChanged.connect(self._dataset_changed)
+        self.theme_context = QLabel()
+        self.theme_context.setObjectName("mutedText")
+        self.theme_context.setWordWrap(True)
+        self.theme_context.setMinimumHeight(42)
         self.description = QLabel()
         self.description.setObjectName("descriptionText")
         self.description.setWordWrap(True)
         self.description.setMinimumHeight(42)
         preset_form.addRow("Theme", self.group_combo)
         preset_form.addRow("Dataset (multi-select)", self.dataset_list)
+        preset_form.addRow(self.theme_context)
         preset_form.addRow(self.description)
         outer.addWidget(preset_group)
 
@@ -491,18 +527,28 @@ class AgentOsmDock(QDockWidget):
         prompt_layout.addWidget(hint)
         self.prompt = QPlainTextEdit()
         self.prompt.setPlaceholderText(
-            "Example: download public transport for the active layer\n"
-            "Example: building=* polygon"
+            "Example: download public transport in Tokyo\n"
+            "Example: download building=* data as polygons"
         )
         self.prompt.setMinimumHeight(115)
         self.prompt.setMaximumHeight(180)
         prompt_layout.addWidget(self.prompt)
+        examples_label = QLabel("Global command examples")
+        examples_label.setObjectName("mutedText")
+        prompt_layout.addWidget(examples_label)
         command_examples = QHBoxLayout()
         self.command_example_combo = QComboBox()
         for example in (
             "Download parks in London",
             "Download buildings in Izmir Konak",
             "Download public transport in Van",
+            "Download public transport in Tokyo",
+            "Download buildings in New York City",
+            "Download roads and buildings in Paris",
+            "Download healthcare in Toronto",
+            "Download parks in Nairobi",
+            "Download schools in Melbourne",
+            "Download cycle network in Copenhagen",
             "building=* polygon",
             "Download wheelchair=yes points",
             "Download green and blue infrastructure",
@@ -607,11 +653,17 @@ class AgentOsmDock(QDockWidget):
         for preset in presets_for_group(str(group_id or "")):
             item = QListWidgetItem(preset.title)
             item.setData(Qt.ItemDataRole.UserRole, preset.preset_id)
+            item.setToolTip(preset.description)
             item.setFlags(
                 item.flags() | Qt.ItemFlag.ItemIsUserCheckable
             )
             item.setCheckState(Qt.CheckState.Unchecked)
             self.dataset_list.addItem(item)
+        focus, related = group_context(str(group_id or ""))
+        self.theme_context.setText(
+            f"Theme focus: {focus}\n{related}" if related
+            else f"Theme focus: {focus}"
+        )
         if self.dataset_list.count():
             self.dataset_list.item(0).setCheckState(Qt.CheckState.Checked)
         self.dataset_list.blockSignals(False)
@@ -951,6 +1003,19 @@ class AgentOsmDock(QDockWidget):
             if not preset_indexes:
                 self._set_status("Choose a valid preset.")
                 return
+            try:
+                normalized_specs(
+                    tag
+                    for index in preset_indexes
+                    for tag in PRESETS[index].tags
+                )
+            except QueryError as error:
+                QMessageBox.warning(
+                    self,
+                    "Too many combined dataset selectors",
+                    f"{error} Select fewer related datasets and try again.",
+                )
+                return
             algorithm_id = (
                 "zero2agentosm:download_place" if self._place_name
                 else "zero2agentosm:download_preset"
@@ -1061,7 +1126,11 @@ class AgentOsmDock(QDockWidget):
                 layer.deleteLater()
                 continue
             layer.setName(f"{self._current_label} — {suffix}")
-            self._style_layer(layer, self.current_map_theme())
+            self._style_layer(
+                layer,
+                self.current_map_theme(),
+                self.current_road_width_mode(),
+            )
             project.addMapLayer(layer, False)
             group.addLayer(layer)
             added.append(f"{suffix}: {layer.featureCount():,}")
@@ -1072,6 +1141,11 @@ class AgentOsmDock(QDockWidget):
     def current_map_theme(self) -> str:
         """Return the selected persistent cartographic theme identifier."""
         return str(self.map_theme_combo.currentData() or DEFAULT_MAP_THEME)
+
+    def current_road_width_mode(self) -> str:
+        """Return the selected road-width strategy."""
+        value = str(self.road_width_combo.currentData() or "highway")
+        return value if value in ROAD_WIDTH_MODES else "highway"
 
     def _map_theme_changed(self, *_args) -> None:
         """Refresh the palette preview and persist the user's selection."""
@@ -1094,9 +1168,36 @@ class AgentOsmDock(QDockWidget):
         )
         QgsSettings().setValue(_MAP_THEME_SETTING, theme_id)
 
+    def _road_width_changed(self, *_args) -> None:
+        """Persist the road-width strategy for future result layers."""
+        if not hasattr(self, "road_width_combo"):
+            return
+        mode = self.current_road_width_mode()
+        QgsSettings().setValue(_ROAD_WIDTH_SETTING, mode)
+        self.road_width_combo.setToolTip(
+            "Road lines use OSM highway categories for width."
+            if mode == "highway"
+            else "Road lines use one consistent width."
+        )
+
+    def _add_basemap(self) -> None:
+        """Add or reveal the marked OpenStreetMap XYZ layer."""
+        try:
+            _layer, added = add_osm_basemap(QgsProject.instance())
+        except (TypeError, ValueError) as error:
+            QMessageBox.warning(self, "OpenStreetMap basemap", str(error))
+            return
+        self._set_status(
+            "OpenStreetMap basemap added. Attribution: OpenStreetMap contributors."
+            if added
+            else "OpenStreetMap basemap is already in the project and is now visible."
+        )
+
     @staticmethod
-    def _style_layer(layer: QgsVectorLayer, theme_id: str) -> None:
-        apply_map_theme(layer, theme_id)
+    def _style_layer(
+        layer: QgsVectorLayer, theme_id: str, road_width_mode: str = "highway"
+    ) -> None:
+        apply_map_theme(layer, theme_id, road_width_mode)
 
     def _reset_task_state(self) -> None:
         self._task = None

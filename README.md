@@ -19,7 +19,9 @@ Processing registry rather than plugin UI automation.
 
 - A compact four-tab dock:
   - **Presets** for curated datasets and safe custom tags. Datasets within a
-    theme can be checked together and downloaded in one bounded request.
+    context-aware theme can be checked together and downloaded in one bounded
+    request. Urban Context links streets, built form, trees, transit and public
+    realm datasets.
   - **Query** for structured multi-tag ANY/ALL requests and a read-only preview.
   - **Command** for the English intent router, including named-place commands
     such as `Download parks in London` and `Download public transport in Van`.
@@ -33,12 +35,17 @@ Processing registry rather than plugin UI automation.
 - Semantic native QGIS renderers applied immediately after download: buildings
   are colored by function, roads by class and width, while waterways, green
   space, trees, transit and common POIs receive geometry-aware symbols.
+- An **Add OSM basemap** action for the standard OpenStreetMap XYZ layer, with
+  duplicate protection and attribution metadata.
+- A road-width choice between **By OSM highway category** and **Uniform road
+  width**. The category mode gives motorways, primary roads, residential roads,
+  service roads and active travel routes distinct visual hierarchy.
 - Context-aware controls: the run area appears only for Presets and Query, and
   the generated query preview stays collapsed until requested.
 - Palette-derived styling that follows QGIS light, dark, high-contrast and
   custom themes without forcing a fixed foreground/background pair.
 - One-click curated thematic presets for:
-  - Urban Context (roads, building footprints, trees and tree rows in one run)
+  - Urban Context (street network, built form, trees, transit and public realm)
   - Network
   - Morphology
   - Green & Blue
@@ -64,7 +71,8 @@ Processing registry rather than plugin UI automation.
 - Separate temporary point, line and polygon result layers.
 - A single compound Overpass request per preset, rather than one request per
   tag.
-- Three pinned HTTPS Overpass mirrors, QGIS proxy support, cancellation, a
+  - Three pinned HTTPS Overpass mirrors with per-mirror diagnostics and automatic
+    failover, QGIS proxy support, cancellation, a
   15-minute session cache, a 100 km² area ceiling, a 64 MB response ceiling and
   a 150,000-element ceiling.
 

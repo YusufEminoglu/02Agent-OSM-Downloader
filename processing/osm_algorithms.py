@@ -112,9 +112,24 @@ def _fetch_json(query: str, feedback) -> Dict:
         request.setRawHeader(b"Accept", b"application/json")
         request.setRawHeader(b"User-Agent", USER_AGENT.encode("ascii"))
         client = QgsBlockingNetworkRequest()
-        code = client.post(request, body, False, feedback)
+        try:
+            code = client.post(request, body, False, feedback)
+        except Exception as error:  # noqa: BLE001 - mirror fallback boundary
+            detail = str(error).strip() or "request exception"
+            failures.append(f"{host}: {detail}")
+            feedback.pushInfo(
+                f"{host} failed ({detail}); trying the next OSM mirror."
+            )
+            continue
         if code != QgsBlockingNetworkRequest.NoError:
-            failures.append("network request failed")
+            detail = "network request failed"
+            error_message = getattr(client, "errorMessage", None)
+            if callable(error_message):
+                detail = str(error_message()).strip() or detail
+            failures.append(f"{host}: {detail}")
+            feedback.pushInfo(
+                f"{host} failed ({detail}); trying the next OSM mirror."
+            )
             continue
         reply = client.reply()
         status = reply.attribute(_status_attribute())
@@ -123,7 +138,11 @@ def _fetch_json(query: str, feedback) -> Dict:
         except (TypeError, ValueError):
             status_code = 0
         if status_code and not 200 <= status_code < 300:
-            failures.append(f"HTTP {status_code}")
+            detail = f"HTTP {status_code}"
+            failures.append(f"{host}: {detail}")
+            feedback.pushInfo(
+                f"{host} returned {detail}; trying the next OSM mirror."
+            )
             continue
         content = bytes(reply.content())
         if len(content) > MAX_RESPONSE_BYTES:
@@ -133,7 +152,12 @@ def _fetch_json(query: str, feedback) -> Dict:
         try:
             payload = validate_payload(json.loads(content.decode("utf-8")))
         except (UnicodeDecodeError, json.JSONDecodeError, QueryError) as exc:
-            failures.append(str(exc))
+            detail = str(exc).strip() or "invalid OSM response"
+            failures.append(f"{host}: {detail}")
+            feedback.pushInfo(
+                f"{host} returned an unusable response ({detail}); "
+                "trying the next OSM mirror."
+            )
             continue
         with _CACHE_LOCK:
             if len(_CACHE) >= _CACHE_LIMIT:
@@ -141,9 +165,10 @@ def _fetch_json(query: str, feedback) -> Dict:
                 _CACHE.pop(oldest, None)
             _CACHE[query] = (time.monotonic(), payload)
         return payload
-    detail = failures[-1] if failures else "no server answered"
+    detail = "; ".join(failures[-3:]) if failures else "no server answered"
     raise QgsProcessingException(
-        f"All OSM servers failed ({detail}). Zoom in or retry shortly."
+        "All pinned OSM mirrors failed. Reduce the map extent or retry shortly. "
+        f"Details: {detail}"
     )
 
 
@@ -262,6 +287,27 @@ def _relation_polygon(element: Dict) -> Optional[QgsGeometry]:
     return geometry
 
 
+def _relation_line(element: Dict) -> Optional[QgsGeometry]:
+    """Join route relation member ways into a multi-line geometry."""
+    members = element.get("members")
+    if not isinstance(members, list):
+        return None
+    lines = []
+    for member in members:
+        if not isinstance(member, dict) or member.get("type") != "way":
+            continue
+        points = _points(member.get("geometry"))
+        if len(points) >= 2:
+            lines.append(QgsGeometry.fromPolylineXY(points))
+    if not lines:
+        return None
+    geometry = QgsGeometry.unaryUnion(lines)
+    if geometry.isEmpty():
+        return None
+    geometry.convertToMultiType()
+    return geometry
+
+
 def _kind_for_element(
     element: Dict,
     specs: Tuple[TagSpec, ...],
@@ -273,6 +319,9 @@ def _kind_for_element(
         matches = matching_specs(tags, specs, "point", match_mode)
         return ("point", matches) if matches else ("", ())
     if element_type == "relation":
+        line_matches = matching_specs(tags, specs, "line", match_mode)
+        if line_matches:
+            return "line", line_matches
         matches = matching_specs(tags, specs, "polygon", match_mode)
         return ("polygon", matches) if matches else ("", ())
     if element_type != "way":
@@ -297,6 +346,8 @@ def _geometry(element: Dict, kind: str) -> Optional[QgsGeometry]:
         except (KeyError, TypeError, ValueError):
             return None
     if kind == "line":
+        if element.get("type") == "relation":
+            return _relation_line(element)
         points = _points(element.get("geometry"))
         return QgsGeometry.fromPolylineXY(points) if len(points) >= 2 else None
     if element.get("type") == "relation":
@@ -315,7 +366,7 @@ def _fields() -> QgsFields:
         "osm_id", "osm_type", "name", "preset_id", "theme",
         "query_key", "query_value", "building", "highway", "amenity",
         "landuse", "leisure", "natural", "railway", "public_transport",
-        "tourism", "sport", "height", "building_levels", "tags_json",
+        "route", "tourism", "sport", "height", "building_levels", "tags_json",
         "matched_tags",
     ):
         fields.append(QgsField(name, QMetaType.Type.QString))
@@ -342,7 +393,8 @@ def _attributes(
         str(tags.get("landuse", "")), str(tags.get("leisure", "")),
         str(tags.get("natural", "")), str(tags.get("railway", "")),
         str(tags.get("public_transport", "")), str(tags.get("tourism", "")),
-        str(tags.get("sport", "")), str(tags.get("height", "")),
+        str(tags.get("route", "")), str(tags.get("sport", "")),
+        str(tags.get("height", "")),
         str(tags.get("building:levels", "")), compact_tags(tags),
         json.dumps(matched_tags, ensure_ascii=False, sort_keys=True),
     ]

@@ -6,6 +6,7 @@ from zero2agent_osm_downloader.core.catalog import (
     GROUPS,
     PRESETS,
     PRESETS_BY_ID,
+    group_context,
     get_preset,
     interpret_prompt,
     presets_for_group,
@@ -60,6 +61,26 @@ class CatalogTests(unittest.TestCase):
             },
         )
 
+    def test_urban_context_includes_related_transit_and_amenity_datasets(self) -> None:
+        urban_ids = {
+            preset.preset_id
+            for preset in presets_for_group("urban_context")
+        }
+        self.assertGreaterEqual(
+            urban_ids,
+            {"urban_context", "urban_transit", "urban_amenities"},
+        )
+        transit = get_preset("urban_transit")
+        self.assertIn(("highway", "bus_stop", "point"), {
+            (tag.key, tag.value, tag.geometry) for tag in transit.tags
+        })
+        self.assertIn(("route", "bus", "line"), {
+            (tag.key, tag.value, tag.geometry) for tag in transit.tags
+        })
+        focus, related = group_context("urban_context")
+        self.assertIn("transit", focus.casefold())
+        self.assertIn("Public Transport", related)
+
     def test_explicit_tag_becomes_custom_intent(self) -> None:
         intent = interpret_prompt(
             "download building=* data as polygon"
@@ -87,6 +108,12 @@ class CatalogTests(unittest.TestCase):
             "Van",
         )
         self.assertEqual(interpret_prompt("london").place_name, "london")
+
+    def test_router_maps_global_road_and_building_command_to_context(self) -> None:
+        intent = interpret_prompt("Download roads and buildings in Paris")
+        self.assertEqual(intent.mode, "place")
+        self.assertEqual(intent.preset_id, "urban_context")
+        self.assertEqual(intent.place_name, "Paris")
 
 
 if __name__ == "__main__":

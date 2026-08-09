@@ -13,6 +13,9 @@ from qgis.core import (
 from .map_themes import map_theme
 
 
+ROAD_WIDTH_MODES = ("highway", "uniform")
+
+
 BUILDING_EXPRESSION = (
     "CASE"
     " WHEN lower(coalesce(\"building\",'')) IN ('apartments','residential','house',"
@@ -52,6 +55,7 @@ LINE_EXPRESSION = (
     " WHEN lower(coalesce(\"query_key\",'')) IN ('water','waterway')"
     "   OR lower(coalesce(\"natural\",'')) = 'water' THEN 'water'"
     " WHEN coalesce(\"railway\",'') <> '' THEN 'rail'"
+    " WHEN coalesce(\"route\",'') <> '' THEN 'transit'"
     " WHEN lower(coalesce(\"highway\",'')) IN ('motorway','trunk','motorway_link',"
     "'trunk_link') THEN 'major'"
     " WHEN lower(coalesce(\"highway\",'')) IN ('primary','primary_link') THEN 'primary'"
@@ -153,18 +157,29 @@ def _polygon_renderer(theme: dict):
     return _renderer(POLYGON_EXPRESSION, entries)
 
 
-def _line_renderer(theme: dict):
+def _line_renderer(theme: dict, road_width_mode: str = "highway"):
     major = theme["roads_major"]
     minor = theme["roads_minor"]
+    widths = {
+        "major": 1.55,
+        "primary": 1.28,
+        "secondary": 1.05,
+        "tertiary": 0.82,
+        "residential": 0.66,
+        "service": 0.48,
+    }
+    if road_width_mode != "highway":
+        widths.update({category: 0.82 for category in widths})
     entries = (
         ("water", "Waterways", _line(theme["water"], 1.15)),
         ("rail", "Railways", _line(theme["base"], 0.95, True)),
-        ("major", "Motorway and trunk", _line(major, 1.55)),
-        ("primary", "Primary roads", _line(major, 1.28)),
-        ("secondary", "Secondary roads", _line(major, 1.05)),
-        ("tertiary", "Tertiary roads", _line(major, 0.82)),
-        ("residential", "Residential roads", _line(minor, 0.66)),
-        ("service", "Service roads", _line(minor, 0.48)),
+        ("transit", "Transit routes", _line(theme["roads_major"], 0.72, True)),
+        ("major", "Motorway and trunk", _line(major, widths["major"])),
+        ("primary", "Primary roads", _line(major, widths["primary"])),
+        ("secondary", "Secondary roads", _line(major, widths["secondary"])),
+        ("tertiary", "Tertiary roads", _line(major, widths["tertiary"])),
+        ("residential", "Residential roads", _line(minor, widths["residential"])),
+        ("service", "Service roads", _line(minor, widths["service"])),
         ("active", "Walking and cycling", _line(theme["greens"], 0.55, True)),
         ("other", "Other lines", _line(theme["base"], 0.58)),
     )
@@ -187,7 +202,9 @@ def _point_renderer(theme: dict):
     return _renderer(POINT_EXPRESSION, entries)
 
 
-def apply_map_theme(layer, theme_id: str) -> str:
+def apply_map_theme(
+    layer, theme_id: str, road_width_mode: str = "highway"
+) -> str:
     """Apply a semantic renderer and return the resolved theme id."""
     from .map_themes import DEFAULT_MAP_THEME, MAP_THEMES
 
@@ -197,12 +214,19 @@ def apply_map_theme(layer, theme_id: str) -> str:
     if geometry == QgsWkbTypes.GeometryType.PolygonGeometry:
         renderer = _polygon_renderer(theme)
     elif geometry == QgsWkbTypes.GeometryType.LineGeometry:
-        renderer = _line_renderer(theme)
+        renderer = _line_renderer(
+            theme,
+            road_width_mode if road_width_mode in ROAD_WIDTH_MODES else "highway",
+        )
     elif geometry == QgsWkbTypes.GeometryType.PointGeometry:
         renderer = _point_renderer(theme)
     else:
         return resolved_id
     layer.setRenderer(renderer)
     layer.setCustomProperty("zero2agent/map_theme", resolved_id)
+    layer.setCustomProperty(
+        "zero2agent/road_width_mode",
+        road_width_mode if road_width_mode in ROAD_WIDTH_MODES else "highway",
+    )
     layer.triggerRepaint()
     return resolved_id
