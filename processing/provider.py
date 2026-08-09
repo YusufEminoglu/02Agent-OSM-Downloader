@@ -9,6 +9,7 @@ from qgis.core import QgsProcessingProvider
 from .osm_algorithms import (
     DownloadAdvancedQueryAlgorithm,
     DownloadCustomTagAlgorithm,
+    DownloadPlaceAlgorithm,
     DownloadPresetAlgorithm,
 )
 
@@ -31,5 +32,6 @@ class AgentOsmProvider(QgsProcessingProvider):
 
     def loadAlgorithms(self) -> None:
         self.addAlgorithm(DownloadPresetAlgorithm())
+        self.addAlgorithm(DownloadPlaceAlgorithm())
         self.addAlgorithm(DownloadCustomTagAlgorithm())
         self.addAlgorithm(DownloadAdvancedQueryAlgorithm())

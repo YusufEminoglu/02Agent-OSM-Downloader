@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.5] - 2026-08-09
+
+- Allow multiple datasets to be checked within a selected theme and combine
+  them into one bounded Processing request.
+- Expand Query examples and add tag-key/value suggestions, filter count and
+  clear-filter controls.
+- Add place-aware commands and `download_place`, resolving administrative
+  names such as Konak, Van and London through the pinned Overpass mirrors.
+
 ## [0.4.4] - 2026-08-09
 
 - Declare QGIS 3.28+ and QGIS 4 compatibility in plugin metadata and

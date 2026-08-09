@@ -77,6 +77,17 @@ class CatalogTests(unittest.TestCase):
             "green_blue_all",
         )
 
+    def test_router_extracts_named_places_with_or_without_a_dataset(self) -> None:
+        parks = interpret_prompt("Download parks in Konak")
+        self.assertEqual(parks.mode, "place")
+        self.assertEqual(parks.preset_id, "green_spaces")
+        self.assertEqual(parks.place_name, "Konak")
+        self.assertEqual(
+            interpret_prompt("Van için public transport").place_name,
+            "Van",
+        )
+        self.assertEqual(interpret_prompt("london").place_name, "london")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,11 +24,18 @@ from qgis.core import (
     QgsProcessingParameterExtent,
     QgsProcessingParameterFeatureSink,
     QgsProcessingParameterString,
+    QgsReferencedRectangle,
+    QgsRectangle,
     QgsProject,
     QgsWkbTypes,
 )
 
-from ..core.catalog import GEOMETRY_KINDS, PRESETS, TagSpec
+from ..core.catalog import (
+    GEOMETRY_KINDS,
+    PRESETS,
+    TagSpec,
+)
+from ..core.places import build_place_query, parse_place_candidates
 from ..core.query import (
     MAX_ADVANCED_FILTERS,
     MAX_RESPONSE_BYTES,
@@ -523,17 +530,64 @@ class DownloadPresetAlgorithm(_BaseDownloadAlgorithm):
                 self.PRESET,
                 "Thematic preset",
                 options=[item.processing_label for item in PRESETS],
-                defaultValue=0,
+                allowMultiple=True,
+                defaultValue=[0],
             )
         )
         self._add_common_parameters()
 
     def _request(self, parameters, context):
-        index = self.parameterAsEnum(parameters, self.PRESET, context)
-        if index < 0 or index >= len(PRESETS):
+        raw_indexes = self.parameterAsEnums(parameters, self.PRESET, context)
+        indexes = tuple(dict.fromkeys(int(index) for index in raw_indexes))
+        if not indexes:
+            fallback = self.parameterAsEnum(parameters, self.PRESET, context)
+            indexes = (fallback,)
+        if any(index < 0 or index >= len(PRESETS) for index in indexes):
             raise QgsProcessingException("The selected preset is not valid.")
-        preset = PRESETS[index]
-        return preset.preset_id, preset.group_title, preset.tags, "any"
+        presets = tuple(PRESETS[index] for index in indexes)
+        specs = tuple(tag for preset in presets for tag in preset.tags)
+        return "+".join(preset.preset_id for preset in presets), presets[0].group_title, specs, "any"
+
+
+class DownloadPlaceAlgorithm(DownloadPresetAlgorithm):
+    PLACE = "PLACE"
+    ALGORITHM_NAME = "download_place"
+    DISPLAY_NAME = "Download curated OSM datasets for a named place"
+
+    def initAlgorithm(self, _configuration=None) -> None:
+        self.addParameter(
+            QgsProcessingParameterString(
+                self.PLACE,
+                "Place or administrative name",
+            )
+        )
+        super().initAlgorithm(_configuration)
+
+    def processAlgorithm(self, parameters, context, feedback):
+        place = self.parameterAsString(parameters, self.PLACE, context).strip()
+        if not place:
+            raise QgsProcessingException("Enter a place or administrative name.")
+        try:
+            payload = _fetch_json(build_place_query(place), feedback)
+            candidates = parse_place_candidates(payload, place)
+        except (QueryError, ValueError) as exc:
+            raise QgsProcessingException(str(exc)) from exc
+        if not candidates:
+            raise QgsProcessingException(
+                f"No administrative place matched '{place}'. Try a fuller name."
+            )
+        candidate = candidates[0]
+        south, west, north, east = candidate.bbox
+        feedback.pushInfo(
+            f"Resolved place: {candidate.label}"
+            + (f" (admin level {candidate.admin_level})" if candidate.admin_level else "")
+        )
+        working = dict(parameters)
+        working[self.EXTENT] = QgsReferencedRectangle(
+            QgsRectangle(west, south, east, north),
+            QgsCoordinateReferenceSystem("EPSG:4326"),
+        )
+        return super().processAlgorithm(working, context, feedback)
 
 
 class DownloadCustomTagAlgorithm(_BaseDownloadAlgorithm):

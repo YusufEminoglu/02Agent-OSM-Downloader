@@ -34,6 +34,7 @@ class AgentProtocolTests(unittest.TestCase):
             {item["id"] for item in manifest["algorithms"]},
             {
                 "zero2agentosm:download_preset",
+                "zero2agentosm:download_place",
                 "zero2agentosm:download_custom_tag",
                 "zero2agentosm:download_advanced",
             },
@@ -58,7 +59,7 @@ class AgentProtocolTests(unittest.TestCase):
         metadata = parser["general"]
         self.assertGreaterEqual(len(metadata["description"]), 100)
         self.assertIn("Agent Protocol v1", metadata["about"])
-        self.assertIn("27 curated presets", metadata["about"])
+        self.assertIn("28 curated presets", metadata["about"])
         tags = {item.strip() for item in metadata["tags"].split(",")}
         self.assertGreaterEqual(len(tags), 15)
         self.assertTrue(

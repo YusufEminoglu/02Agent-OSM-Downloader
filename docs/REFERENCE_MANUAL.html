@@ -395,7 +395,7 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
 <!-- ════════════════════════════════════════════════════════════ -->
 <nav class="sidebar" id="sidebar">
   <h1>02Agent OSM Downloader</h1>
-  <div class="version">Reference Manual &middot; v0.4.0 &middot; 2026-08-07</div>
+  <div class="version">Reference Manual &middot; working tree &middot; 2026-08-09</div>
 
   <div class="toc-section">Overview</div>
   <a href="#introduction">Introduction</a>
@@ -407,6 +407,10 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
   <a href="#multipolygon">Multipolygon Assembly</a>
   <a href="#crs-transform">CRS Transformation</a>
   <a href="#extent-validation">Extent Validation</a>
+
+  <div class="toc-section">User Workflows</div>
+  <a href="#dock">Dock Workflows</a>
+  <a href="#places">Named Places</a>
 
   <div class="toc-section">Algorithms</div>
   <a href="#algo1">Algorithm 1: Download Preset</a>
@@ -426,6 +430,11 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
   <a href="#algo3-params" class="sub">Parameters</a>
   <a href="#algo3-outputs" class="sub">Outputs</a>
   <a href="#algo3-interp" class="sub">Interpretation</a>
+
+  <a href="#algo4">Algorithm 4: Named Place</a>
+  <a href="#algo4-params" class="sub">Parameters</a>
+  <a href="#algo4-outputs" class="sub">Outputs</a>
+  <a href="#algo4-interp" class="sub">Interpretation</a>
 
   <div class="toc-section">Catalog</div>
   <a href="#presets">Thematic Preset Catalog</a>
@@ -459,7 +468,7 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
 
 <p>
 The <strong>02Agent OSM Downloader</strong> is a QGIS Processing plugin providing
-three QGIS Processing algorithms for structured acquisition of OpenStreetMap (OSM)
+four QGIS Processing algorithms for structured acquisition of OpenStreetMap (OSM)
 vector data via the Overpass API. Operating entirely within QGIS's native processing
 framework, the plugin translates user-specified thematic presets, custom key/value
 tags, or advanced multi-tag Boolean queries into bounded Overpass QL requests,
@@ -488,10 +497,13 @@ detect-secrets) while remaining compatible with Qt6 / QGIS 4 environments.
 </p>
 
 <div class="info-box">
-<strong>Key design constraints.</strong> Maximum response size: 64 MB.
+<strong>Key design constraints.</strong> The catalogue contains 28 curated
+presets in 15 thematic groups. Maximum response size: 64 MB.
 Maximum extent: 100 km<sup>2</sup>. Maximum features per response: 150,000.
-Maximum tag selectors per preset: 32. Overpass timeout: 45 seconds. Three
-hard-coded JSON-only endpoints with automatic failover. No raw query, URL,
+Maximum tag selectors per request: 32; advanced queries accept four validated
+filters. Overpass timeout: 45 seconds. Three hard-coded JSON-only endpoints
+with automatic failover. Named-place lookup returns at most 25 candidates and
+uses the best administrative relation/way or named place. No raw query, URL,
 path, or external dependency accepted.
 </div>
 </section>
@@ -499,6 +511,81 @@ path, or external dependency accepted.
 <!-- ════════════════════════════════════════════════════════════ -->
 <!-- SYSTEM ARCHITECTURE                                          -->
 <!-- ════════════════════════════════════════════════════════════ -->
+<section id="dock">
+<h2>1.1 Dock Workflows</h2>
+
+<p>
+The dock has four tabs: <strong>Presets</strong>, <strong>Query</strong>,
+<strong>Command</strong>, and <strong>Agent</strong>. The bottom run card is
+contextual: it is visible for Presets and Query, and hidden while the Agent
+connection panel is active.
+</p>
+
+<h3>Theme and multi-dataset selection</h3>
+<p>
+Choose a Theme first. Its Dataset list is checkable, so multiple datasets can
+be selected within the same theme—for example, <em>Bus transit</em> and
+<em>Rail transit</em>. The checked datasets are flattened into one validated
+TagSpec collection, duplicate selectors are removed, and one Overpass request
+produces the point, line, and polygon outputs. The selected dataset IDs remain
+visible in the output <code>preset_id</code> field, joined with a plus sign.
+</p>
+
+<h3>Structured Query workspace</h3>
+<p>
+The Query tab provides four bounded key/value rows. Key and value fields offer
+common OSM suggestions, the live counter shows how many rows are populated,
+and <em>Clear filters</em> resets the form. <em>Load example</em> supplies
+ready-to-edit patterns for accessibility, transit, healthcare, parks,
+waterways, historic features, pedestrian streets, electric charging, and
+building metadata. The read-only Overpass preview remains collapsed until
+<em>Show preview</em> is pressed.
+</p>
+
+<h3>Command workspace</h3>
+<p>
+The Command tab accepts Turkish or English dataset requests, safe
+<code>key=value</code> commands, and place-aware phrases. Examples include
+<code>Download parks in Konak</code>,
+<code>Van için public transport</code>, and <code>London</code>. After
+interpretation, review the checked Dataset list and the resolved place label
+before pressing Download. Command text is interpreted locally; only the
+explicit download operation performs a network request.
+</p>
+</section>
+
+<section id="places">
+<h2>1.2 Named Places</h2>
+
+<p>
+Place-aware commands use the <code>download_place</code> endpoint. The typed
+name is normalised and escaped as data, then sent to the same pinned Overpass
+mirrors used by ordinary downloads. The lookup searches administrative
+relations and ways plus named <code>place=*</code> nodes across common OSM
+name fields: <code>name</code>, <code>official_name</code>,
+<code>alt_name</code>, <code>name:en</code>, <code>name:tr</code>, and
+<code>int_name</code>.
+</p>
+
+<p>
+Candidates are ranked by exact name match, administrative boundary type,
+administrative level, and available parent context. Thus a short command such
+as <code>Konak</code> can resolve to the OSM administrative Konak relation,
+while a fuller phrase such as <code>Izmir Konak</code> can use the final name
+token and retain the supplied parent context in the displayed label. The
+resolved bounding box is then used for the selected datasets. The normal
+100 km<sup>2</sup> limit still applies; a large result such as London may need
+to be narrowed before download.
+</p>
+
+<div class="warn-box">
+<strong>Disambiguation rule.</strong> A place name is not silently converted
+into a global download. The plugin selects the highest-ranked OSM candidate,
+reports the resolved label in the Processing feedback, and applies all normal
+extent, response, feature-count, and cancellation limits.
+</div>
+</section>
+
 <section id="architecture">
 <h2>2. System Architecture</h2>
 
@@ -508,12 +595,12 @@ The plugin follows a layered architecture with strict separation of concerns:
 
 <ol>
   <li><strong>Presentation layer</strong> — QGIS Processing parameter widgets (preset
-  dropdown, extent selector, tag key/value text fields, geometry type enum) defined
+  multi-select preset enum, extent selector, tag key/value text fields, geometry type enum) defined
   in <code>osm_algorithms.py</code> via the <code>initAlgorithm()</code> methods of
   each algorithm subclass.</li>
 
   <li><strong>Authority boundary</strong> — <code>core/query.py</code> and
-  <code>core/catalog.py</code> are shared between the Processing provider, the
+  <code>core/catalog.py</code>, and <code>core/places.py</code> are shared between the Processing provider, the
   optional plugin dock widget, and the agent manifest. All query construction,
   tag normalisation, and validation flows through these modules; no other code
   path synthesises Overpass QL.</li>
@@ -552,7 +639,7 @@ constructor, and \(\Pi\) the CRS projector.
 
 <p>
 The <code>AgentOsmProvider</code> (provider ID: <code>zero2agentosm</code>)
-registers the three algorithms under the group <em>"OSM acquisition"</em> with
+registers four algorithms under the group <em>"OSM acquisition"</em> with
 group ID <code>osm_acquisition</code>. The provider icon is loaded from
 <code>icons/icon.png</code> relative to the plugin root. Each algorithm is
 instantiated fresh via <code>createInstance()</code>, ensuring QGIS can
@@ -1142,14 +1229,15 @@ downloads suitable for initial exploration and base map construction.
 <p>
 Formally, each preset \(p \in \mathcal{P}\) is a tuple containing a unique
 identifier, thematic group, and an ordered tuple of tag specifications.
-The preset selection parameter \(i \in \{0, \ldots, |\mathcal{P}|-1\}\)
-indexes into this catalogue:
+The preset selection parameter is a non-empty index set
+\(I \subseteq \{0, \ldots, |\mathcal{P}|-1\}\) containing one or more
+datasets from this catalogue:
 </p>
 
 <div class="eqn-block">
 $$
 \begin{aligned}
-\mathcal{P} &= \{\, p_0, p_1, \ldots, p_{24} \,\}, \quad |\mathcal{P}| = 25 \\[4pt]
+\mathcal{P} &= \{\, p_0, p_1, \ldots, p_{27} \,\}, \quad |\mathcal{P}| = 28 \\[4pt]
 p_j &= (\text{preset\_id}_j,\; \text{group\_id}_j,\; \text{group\_title}_j,\;
 \text{title}_j,\; \text{description}_j,\; \text{tags}_j,\; \text{keywords}_j) \\[4pt]
 \text{tags}_j &= (\sigma_{j,1}, \sigma_{j,2}, \ldots, \sigma_{j,m_j}), \quad
@@ -1163,7 +1251,7 @@ $$
 
 <p>
 where the total number of tag selectors across all presets is
-\(\sum_{j=0}^{24} m_j\) and each individual preset satisfies
+\(\sum_{j=0}^{27} m_j\) and each individual preset satisfies
 \(1 \leq m_j \leq 32\) (the <code>MAX_SELECTORS</code> bound enforced
 by <code>normalized_specs()</code>).
 </p>
@@ -1203,7 +1291,7 @@ the number of unique selectors may be less than the raw expansion product.
 <h4>10.1.3 Preset Execution and Element Yield</h4>
 
 <p>
-For a given preset index \(i\), extent \(e\), and output CRS \(c\), the
+For a selected preset index set \(I\), extent \(e\), and output CRS \(c\), the
 expected element yield is governed by OSM feature density within the
 extent. The classification function \(\kappa\) (discussed in Section 5)
 partitions elements into the three output layers:
@@ -1236,10 +1324,10 @@ if their geometry fails to construct (empty or invalid).
 </p>
 
 <p>
-The preset catalogue spans 25 presets across 10 thematic groups (urban
+The preset catalogue spans 28 presets across 15 thematic groups (urban
 context, networks, morphology, green-blue infrastructure, public transport,
 religious facilities, tourism, sport, cycling, automotive, traffic, health,
-education, and emergency services), providing coverage for the most common
+education, emergency services, and named places), providing coverage for the most common
 GIS analytical workflows in urban planning, transport engineering, and
 environmental science.
 </p>
@@ -1265,7 +1353,7 @@ with empty value strings indicating wildcard matching for that key.
 <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>PRESET</code></td><td>Enum</td><td>Thematic preset selection. Index into the PRESETS catalogue. Labels follow the pattern "<em>Group Title</em> &mdash; <em>Preset Title</em>" (e.g., "Urban Context &mdash; Roads, buildings &amp; trees").</td></tr>
+<tr><td><code>PRESET</code></td><td>Multi-enum</td><td>One or more thematic selections from the PRESETS catalogue. Labels follow the pattern "<em>Group Title</em> &mdash; <em>Preset Title</em>" (e.g., "Urban Context &mdash; Roads, buildings &amp; trees"). Duplicate TagSpecs are removed before query construction.</td></tr>
 <tr><td><code>EXTENT</code></td><td>QgsProcessingParameterExtent</td><td>Geographic extent defining the download bounding box. Must be within 100 km&sup2;. Automatically transformed to WGS84 for Overpass querying.</td></tr>
 <tr><td><code>OUTPUT_POINTS</code></td><td>QgsProcessingParameterFeatureSink</td><td>Destination sink for point features (QgsWkbTypes.Point).</td></tr>
 <tr><td><code>OUTPUT_LINES</code></td><td>QgsProcessingParameterFeatureSink</td><td>Destination sink for line features (QgsWkbTypes.LineString).</td></tr>
@@ -1276,7 +1364,7 @@ with empty value strings indicating wildcard matching for that key.
 <h3 id="algo1-outputs">10.3 Outputs</h3>
 
 <p>
-All three algorithms produce identical output schemas. Each output layer
+All four algorithms produce identical output schemas. Each output layer
 contains the following 21 fields (all of type <code>QString</code>):
 </p>
 
@@ -1751,12 +1839,68 @@ classified geometry kinds.
 <!-- ════════════════════════════════════════════════════════════ -->
 <!-- THEMATIC PRESET CATALOG                                      -->
 <!-- ════════════════════════════════════════════════════════════ -->
-<section id="presets">
-<h2>13. Thematic Preset Catalog</h2>
+<section id="algo4">
+<h2>13. Algorithm 4: Download Curated OSM Datasets for a Named Place</h2>
 
 <p>
-The preset catalogue encodes 25 curated OSM feature collections across
-10 thematic groups. Each preset comprises a set of tag specifications,
+<strong>Algorithm ID:</strong> <code>download_place</code><br>
+<strong>Display name:</strong> Download curated OSM datasets for a named place<br>
+<strong>Group:</strong> OSM acquisition
+</p>
+
+<p>
+This endpoint combines the multi-dataset preset request with a bounded place
+lookup. It first constructs a safe administrative-name query, ranks the OSM
+results, and replaces the temporary extent with the selected candidate's
+bounding box. It then follows the same selector normalisation, geometry
+classification, output-sink, caching, and cancellation pipeline as
+<code>download_preset</code>.
+</p>
+
+<h3 id="algo4-params">13.1 Parameters</h3>
+<table>
+<thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td><code>PLACE</code></td><td>String</td><td>Place or administrative name, maximum 120 characters. It is escaped as a name value and cannot contain raw Overpass syntax.</td></tr>
+<tr><td><code>PRESET</code></td><td>Multi-enum</td><td>One or more curated datasets. The dock exposes datasets belonging to the selected Theme as checkable items.</td></tr>
+<tr><td><code>OUTPUT_POINTS</code></td><td>FeatureSink</td><td>Temporary point output layer.</td></tr>
+<tr><td><code>OUTPUT_LINES</code></td><td>FeatureSink</td><td>Temporary line output layer.</td></tr>
+<tr><td><code>OUTPUT_POLYGONS</code></td><td>FeatureSink</td><td>Temporary polygon output layer.</td></tr>
+</tbody>
+</table>
+
+<h3 id="algo4-outputs">13.2 Outputs</h3>
+<p>
+The output schema is the same 22-field schema used by the other download
+algorithms. The <code>preset_id</code> value contains the selected preset IDs
+joined by <code>+</code>; <code>theme</code> contains the first selected
+preset's group title. Processing feedback reports the resolved candidate label
+and administrative level when available.
+</p>
+
+<h3 id="algo4-interp">13.3 Interpretation Guidance</h3>
+<ul>
+  <li><strong>Short names:</strong> <code>Konak</code>, <code>Van</code>, and
+  <code>London</code> are valid place inputs. The resolver searches multiple
+  OSM name fields rather than relying on a fixed local city list.</li>
+  <li><strong>Parent context:</strong> A phrase such as
+  <code>Izmir Konak</code> queries the full phrase and the final name token,
+  retaining the supplied parent context for a useful display label.</li>
+  <li><strong>Large boundaries:</strong> A valid match can still be rejected
+  if its bounding box exceeds 100 km<sup>2</sup>. This prevents a place name
+  from bypassing the normal request-area guard.</li>
+  <li><strong>Failure handling:</strong> No match, malformed place text,
+  network failure, oversized response, timeout, and cancellation all produce
+  an actionable Processing error without creating partial output layers.</li>
+</ul>
+</section>
+
+<section id="presets">
+<h2>14. Thematic Preset Catalog</h2>
+
+<p>
+The preset catalogue encodes 28 curated OSM feature collections across
+15 thematic groups. Each preset comprises a set of tag specifications,
 each specifying an OSM key, an optional value filter, and a target geometry
 kind. The table below enumerates all presets.
 </p>
@@ -1793,6 +1937,7 @@ kind. The table below enumerates all presets.
 <tr><td><code>healthcare</code></td><td>Health</td><td>Healthcare</td><td>amenity=hospital/clinic/doctors/pharmacy (pt/poly), healthcare=* (pt/poly)</td></tr>
 <tr><td><code>education</code></td><td>Education</td><td>Education</td><td>amenity=school/university/college/kindergarten/library (pt/poly)</td></tr>
 <tr><td><code>emergency</code></td><td>Emergency</td><td>Emergency services</td><td>amenity=fire_station/police/shelter (pt/poly), emergency=ambulance_station/assembly_point (pt)</td></tr>
+<tr><td><code>administrative_places</code></td><td>Places</td><td>Administrative places</td><td>boundary=administrative (line/poly), place=* (pt)</td></tr>
 </tbody>
 </table>
 
@@ -1801,7 +1946,11 @@ Each preset also carries multilingual keywords (English and Turkish) used
 by the natural-language intent router in <code>core/catalog.py</code>.
 The <code>interpret_prompt()</code> function performs Unicode NFKD
 normalisation, case-folding, diacritic removal, and substring matching
-against these keywords to map free-text user input to the nearest preset.
+against these keywords to map free-text user input to the nearest preset. It
+also extracts a place phrase from connectors such as <code>in</code>,
+<code>near</code>, and Turkish <code>için</code>. A place-only command such as
+<code>Konak</code> selects the administrative-places preset and is resolved by
+the named-place endpoint at download time.
 </p>
 
 <h3>13.1 Intent Router Algorithm</h3>
@@ -1828,7 +1977,7 @@ containment after normalisation, and \(\text{terms}(\text{preset}) = \text{keywo
 <!-- SECURITY ARCHITECTURE                                        -->
 <!-- ════════════════════════════════════════════════════════════ -->
 <section id="security">
-<h2>14. Security Architecture</h2>
+<h2>15. Security Architecture</h2>
 
 <p>
 The 02Agent OSM Downloader is designed to pass the QGIS Plugin Hub's
@@ -1852,6 +2001,9 @@ validation. The following design decisions enforce this:
   <li><strong>Response validation:</strong> Type check (must be dict),
   remark check (server timeout indicator), elements list existence, element
   count limit (150,000), and per-element type check.</li>
+  <li><strong>Place-name validation:</strong> Maximum 120 characters;
+  control characters, quotes, and backslashes are rejected before the value
+  is escaped into a bounded name-field regular expression.</li>
 </ul>
 
 <h3>14.2 No Arbitrary Code Execution</h3>
@@ -1869,6 +2021,9 @@ validation. The following design decisions enforce this:
   <li><strong>Hard-coded endpoints:</strong> The three Overpass endpoints are
   compile-time constants in <code>core/query.py</code>; no URL parameter
   exists.</li>
+  <li><strong>Place lookup remains bounded:</strong> Place resolution uses the
+  same pinned endpoints and only reads tags, centres, and bounding boxes. It
+  cannot submit a user-supplied query, URL, path, or credential.</li>
 </ul>
 
 <h3>14.3 Resource Bounds</h3>
@@ -1882,6 +2037,7 @@ validation. The following design decisions enforce this:
 <tr><td>Extent area</td><td>100 km&sup2;</td><td><code>MAX_BBOX_AREA_KM2</code> in <code>validate_bbox()</code></td></tr>
 <tr><td>Tag selectors</td><td>32</td><td><code>MAX_SELECTORS</code> in <code>normalized_specs()</code></td></tr>
 <tr><td>Advanced filters</td><td>4</td><td><code>MAX_ADVANCED_FILTERS</code> in <code>advanced_specs()</code></td></tr>
+<tr><td>Place candidates</td><td>25</td><td><code>MAX_PLACE_RESULTS</code> in <code>core/places.py</code></td></tr>
 <tr><td>Overpass timeout</td><td>45 s</td><td><code>OVERPASS_TIMEOUT_SECONDS</code> in query rendering</td></tr>
 <tr><td>Cache entries</td><td>8</td><td><code>_CACHE_LIMIT</code> in <code>osm_algorithms.py</code></td></tr>
 <tr><td>Cache TTL</td><td>900 s</td><td><code>_CACHE_TTL_SECONDS</code> in <code>osm_algorithms.py</code></td></tr>
@@ -1894,7 +2050,7 @@ validation. The following design decisions enforce this:
 <!-- REFERENCES                                                   -->
 <!-- ════════════════════════════════════════════════════════════ -->
 <section id="references">
-<h2>15. References</h2>
+<h2>16. References</h2>
 
 <ol class="refs">
   <li>Goodchild, M.F. (2007). Citizens as sensors: the world of volunteered geography. <em>GeoJournal</em>, 69(4), 211-221. <a href="https://doi.org/10.1007/s10708-007-9111-y" target="_blank">DOI: 10.1007/s10708-007-9111-y</a></li>

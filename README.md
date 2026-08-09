@@ -18,9 +18,11 @@ Processing registry rather than plugin UI automation.
 ## What it provides
 
 - A compact four-tab dock:
-  - **Presets** for curated datasets and safe custom tags.
+  - **Presets** for curated datasets and safe custom tags. Datasets within a
+    theme can be checked together and downloaded in one bounded request.
   - **Query** for structured multi-tag ANY/ALL requests and a read-only preview.
-  - **Command** for the offline Turkish/English intent router.
+  - **Command** for the Turkish/English intent router, including named-place
+    commands such as `Download parks in Konak` and `Van için public transport`.
   - **Agent** for the SmartModeler bridge and Agent Protocol status.
 - A lighter palette-derived visual system with separated cards, selected-tab
   fills, contextual run summaries and tested text contrast in light and dark
@@ -53,7 +55,11 @@ Processing registry rather than plugin UI automation.
 - An offline natural-language intent router in the dock.
 - A custom `key=value` downloader for point, line or polygon data.
 - A four-filter advanced builder with ANY/OR and ALL/AND matching, mixed or
-  geometry-specific requests, loadable examples and an exact query preview.
+  geometry-specific requests, loadable examples, key/value suggestions,
+  filter clearing, a live filter count and an exact query preview.
+- A place-aware Processing endpoint that resolves administrative names through
+  pinned Overpass mirrors and uses the best administrative boundary returned by
+  OSM. The normal 100 km² request ceiling still applies.
 - Current-map and active-layer extent modes.
 - Separate temporary point, line and polygon result layers.
 - A single compound Overpass request per preset, rather than one request per
@@ -68,6 +74,7 @@ installation is accepted or required.
 ## Processing algorithms
 
 - `zero2agentosm:download_preset`
+- `zero2agentosm:download_place`
 - `zero2agentosm:download_custom_tag`
 - `zero2agentosm:download_advanced`
 
@@ -76,7 +83,8 @@ populated outputs, groups them under a themed layer-tree group, and applies the
 selected persistent map style without changing the project background or any
 existing layer.
 
-The advanced endpoint exposes four fixed key/value rows instead of accepting a
+The preset endpoint accepts multiple datasets from its live enum. The advanced
+endpoint exposes four fixed key/value rows instead of accepting a
 JSON document or raw query. `MATCH_MODE` chooses ANY/OR or ALL/AND semantics and
 `GEOMETRY` limits the request to all geometries, points, lines or polygons.
 Unused optional rows are omitted.

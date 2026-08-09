@@ -8,6 +8,7 @@ from qgis.PyQt.QtCore import QEvent, Qt
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QCompleter,
     QDockWidget,
     QFormLayout,
     QFrame,
@@ -16,6 +17,8 @@ from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -91,6 +94,56 @@ _ADVANCED_EXAMPLES = (
         "point",
         (("public_transport", "platform"), ("name", "")),
     ),
+    (
+        "Hospitals with emergency access", "all", "point",
+        (("amenity", "hospital"), ("emergency", "yes")),
+    ),
+    (
+        "Libraries and community centres", "any", "point",
+        (("amenity", "library"), ("amenity", "community_centre")),
+    ),
+    (
+        "Accessible public toilets", "all", "point",
+        (("amenity", "toilets"), ("wheelchair", "yes")),
+    ),
+    (
+        "Restaurants with outdoor seating", "all", "point",
+        (("amenity", "restaurant"), ("outdoor_seating", "yes")),
+    ),
+    (
+        "Electric vehicle charging", "any", "point",
+        (("amenity", "charging_station"), ("amenity", "fuel")),
+    ),
+    (
+        "Historic places and monuments", "any", "all",
+        (("historic", "monument"), ("historic", "memorial"), ("tourism", "museum")),
+    ),
+    (
+        "Pedestrian-friendly streets", "any", "line",
+        (("highway", "pedestrian"), ("highway", "living_street"), ("highway", "footway")),
+    ),
+    (
+        "Parks with playgrounds", "all", "polygon",
+        (("leisure", "park"), ("leisure", "playground")),
+    ),
+    (
+        "Water and waterways", "any", "all",
+        (("natural", "water"), ("waterway", ""), ("landuse", "reservoir")),
+    ),
+    (
+        "Buildings with height data", "all", "polygon",
+        (("building", ""), ("height", "")),
+    ),
+)
+
+_QUERY_KEY_SUGGESTIONS = (
+    "amenity", "building", "boundary", "highway", "historic", "landuse",
+    "leisure", "natural", "name", "place", "public_transport", "railway",
+    "shop", "tourism", "wheelchair", "waterway", "wikidata",
+)
+_QUERY_VALUE_SUGGESTIONS = (
+    "*", "yes", "no", "school", "hospital", "park", "restaurant", "library",
+    "residential", "pedestrian", "administrative", "tree", "water",
 )
 
 
@@ -105,6 +158,7 @@ class AgentOsmDock(QDockWidget):
         self._feedback = None
         self._context = None
         self._current_label = ""
+        self._place_name = ""
         self._theme_refreshing = False
         self._build_ui()
         self._populate_groups()
@@ -250,15 +304,22 @@ class AgentOsmDock(QDockWidget):
         self.group_combo = QComboBox()
         self.group_combo.setToolTip("Choose an urban-analysis theme.")
         self.group_combo.currentIndexChanged.connect(self._group_changed)
-        self.preset_combo = QComboBox()
-        self.preset_combo.setToolTip("Choose a bounded set of OSM tags.")
-        self.preset_combo.currentIndexChanged.connect(self._preset_changed)
+        self.dataset_list = QListWidget()
+        self.dataset_list.setObjectName("datasetList")
+        self.dataset_list.setSelectionMode(
+            QListWidget.SelectionMode.NoSelection
+        )
+        self.dataset_list.setMaximumHeight(132)
+        self.dataset_list.setToolTip(
+            "Select one or more datasets from this theme. They run as one bounded request."
+        )
+        self.dataset_list.itemChanged.connect(self._dataset_changed)
         self.description = QLabel()
         self.description.setObjectName("descriptionText")
         self.description.setWordWrap(True)
         self.description.setMinimumHeight(42)
         preset_form.addRow("Theme", self.group_combo)
-        preset_form.addRow("Dataset", self.preset_combo)
+        preset_form.addRow("Dataset (multi-select)", self.dataset_list)
         preset_form.addRow(self.description)
         outer.addWidget(preset_group)
 
@@ -340,13 +401,19 @@ class AgentOsmDock(QDockWidget):
         tag_grid.addWidget(QLabel("Value (* = any)"), 0, 1)
         self.query_key_edits = []
         self.query_value_edits = []
+        key_completer = QCompleter(list(_QUERY_KEY_SUGGESTIONS), self)
+        key_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        value_completer = QCompleter(list(_QUERY_VALUE_SUGGESTIONS), self)
+        value_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         for row in range(MAX_ADVANCED_FILTERS):
             key_edit = QLineEdit()
             key_edit.setPlaceholderText("amenity" if row == 0 else "optional")
             key_edit.setClearButtonEnabled(True)
+            key_edit.setCompleter(key_completer)
             value_edit = QLineEdit()
             value_edit.setPlaceholderText("school or *")
             value_edit.setClearButtonEnabled(True)
+            value_edit.setCompleter(value_completer)
             key_edit.textChanged.connect(self._update_query_preview)
             value_edit.textChanged.connect(self._update_query_preview)
             tag_grid.addWidget(key_edit, row + 1, 0)
@@ -354,6 +421,17 @@ class AgentOsmDock(QDockWidget):
             self.query_key_edits.append(key_edit)
             self.query_value_edits.append(value_edit)
         outer.addWidget(tag_group)
+
+        filter_actions = QHBoxLayout()
+        self.query_filter_status = QLabel("0 / 4 filters")
+        self.query_filter_status.setObjectName("mutedText")
+        clear_filters = QPushButton("Clear filters")
+        clear_filters.setObjectName("quietButton")
+        clear_filters.clicked.connect(self._clear_query_filters)
+        filter_actions.addWidget(self.query_filter_status)
+        filter_actions.addStretch(1)
+        filter_actions.addWidget(clear_filters)
+        outer.addLayout(filter_actions)
 
         self.query_match_combo.currentIndexChanged.connect(
             self._update_query_preview
@@ -419,10 +497,38 @@ class AgentOsmDock(QDockWidget):
         self.prompt.setMinimumHeight(115)
         self.prompt.setMaximumHeight(180)
         prompt_layout.addWidget(self.prompt)
+        command_examples = QHBoxLayout()
+        self.command_example_combo = QComboBox()
+        for example in (
+            "Download parks in Konak",
+            "Binaları London için indir",
+            "Van için public transport",
+            "building=* polygon",
+            "wheelchair=yes noktaları",
+            "Download green and blue infrastructure",
+        ):
+            self.command_example_combo.addItem(example)
+        load_command = QPushButton("Load example")
+        load_command.clicked.connect(
+            lambda: self.prompt.setPlainText(self.command_example_combo.currentText())
+        )
+        command_examples.addWidget(self.command_example_combo, 1)
+        command_examples.addWidget(load_command)
+        prompt_layout.addLayout(command_examples)
         self.interpret_button = QPushButton("Interpret command")
         self.interpret_button.setObjectName("primaryButton")
         self.interpret_button.clicked.connect(self._interpret)
         prompt_layout.addWidget(self.interpret_button)
+        place_row = QHBoxLayout()
+        self.command_place_label = QLabel("Place: not selected")
+        self.command_place_label.setObjectName("mutedText")
+        self.command_place_label.setWordWrap(True)
+        clear_place = QPushButton("Clear place")
+        clear_place.setObjectName("quietButton")
+        clear_place.clicked.connect(self._clear_place)
+        place_row.addWidget(self.command_place_label, 1)
+        place_row.addWidget(clear_place)
+        prompt_layout.addLayout(place_row)
         privacy = QLabel("No command text or project data leaves QGIS.")
         privacy.setObjectName("mutedText")
         privacy.setWordWrap(True)
@@ -496,20 +602,37 @@ class AgentOsmDock(QDockWidget):
 
     def _group_changed(self) -> None:
         group_id = self.group_combo.currentData()
-        self.preset_combo.blockSignals(True)
-        self.preset_combo.clear()
+        self.dataset_list.blockSignals(True)
+        self.dataset_list.clear()
         for preset in presets_for_group(str(group_id or "")):
-            self.preset_combo.addItem(preset.title, preset.preset_id)
-        self.preset_combo.blockSignals(False)
-        self._preset_changed()
+            item = QListWidgetItem(preset.title)
+            item.setData(Qt.ItemDataRole.UserRole, preset.preset_id)
+            item.setFlags(
+                item.flags() | Qt.ItemFlag.ItemIsUserCheckable
+            )
+            item.setCheckState(Qt.CheckState.Unchecked)
+            self.dataset_list.addItem(item)
+        if self.dataset_list.count():
+            self.dataset_list.item(0).setCheckState(Qt.CheckState.Checked)
+        self.dataset_list.blockSignals(False)
+        self._dataset_changed()
 
-    def _preset_changed(self) -> None:
-        preset_id = str(self.preset_combo.currentData() or "")
-        if not preset_id:
+    def _selected_preset_ids(self) -> tuple[str, ...]:
+        return tuple(
+            str(self.dataset_list.item(index).data(Qt.ItemDataRole.UserRole) or "")
+            for index in range(self.dataset_list.count())
+            if self.dataset_list.item(index).checkState() == Qt.CheckState.Checked
+        )
+
+    def _dataset_changed(self, *_args) -> None:
+        preset_ids = self._selected_preset_ids()
+        if not preset_ids:
             self.description.clear()
             self._refresh_run_summary()
             return
-        self.description.setText(get_preset(preset_id).description)
+        self.description.setText(
+            " ".join(get_preset(preset_id).description for preset_id in preset_ids)
+        )
         self._refresh_run_summary()
 
     def _select_preset(self, preset_id: str) -> None:
@@ -517,9 +640,17 @@ class AgentOsmDock(QDockWidget):
         group_index = self.group_combo.findData(preset.group_id)
         if group_index >= 0:
             self.group_combo.setCurrentIndex(group_index)
-        preset_index = self.preset_combo.findData(preset_id)
-        if preset_index >= 0:
-            self.preset_combo.setCurrentIndex(preset_index)
+        for index in range(self.dataset_list.count()):
+            item = self.dataset_list.item(index)
+            checked = item.data(Qt.ItemDataRole.UserRole) == preset_id
+            item.setCheckState(
+                Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+            )
+
+    def _clear_query_filters(self) -> None:
+        for edit in (*self.query_key_edits, *self.query_value_edits):
+            edit.clear()
+        self._update_query_preview()
 
     def _query_filters(self) -> list[tuple[str, str]]:
         return [
@@ -561,6 +692,10 @@ class AgentOsmDock(QDockWidget):
 
     def _update_query_preview(self, *_args) -> None:
         filters = self._query_filters()
+        if hasattr(self, "query_filter_status"):
+            self.query_filter_status.setText(
+                f"{len(filters)} / {MAX_ADVANCED_FILTERS} filters"
+            )
         if not filters:
             self.query_preview.clear()
             self._refresh_run_summary()
@@ -586,6 +721,20 @@ class AgentOsmDock(QDockWidget):
 
     def _interpret(self) -> None:
         intent = interpret_prompt(self.prompt.toPlainText())
+        if intent.mode == "place":
+            self.custom_check.setChecked(False)
+            self._select_preset(intent.preset_id or "administrative_places")
+            self._place_name = intent.place_name
+            self.command_place_label.setText(
+                f"Place: {intent.place_name}  ·  resolved when download starts"
+            )
+            preset = get_preset(intent.preset_id or "administrative_places")
+            self._set_status(
+                f"Place command matched {preset.processing_label}. "
+                "Review the dataset selection and download."
+            )
+            self.tabs.setCurrentWidget(self.download_tab)
+            return
         if intent.mode == "preset":
             self.custom_check.setChecked(False)
             self._select_preset(intent.preset_id)
@@ -612,6 +761,11 @@ class AgentOsmDock(QDockWidget):
         self._set_status(
             "No confident match. Choose a preset or enter key=value."
         )
+
+    def _clear_place(self) -> None:
+        self._place_name = ""
+        self.command_place_label.setText("Place: not selected")
+        self._refresh_run_summary()
 
     def _refresh_agent_connection(self) -> None:
         info = connection_info()
@@ -662,7 +816,7 @@ class AgentOsmDock(QDockWidget):
 
     def _sync_custom_fields(self, checked: bool) -> None:
         self.group_combo.setEnabled(not checked)
-        self.preset_combo.setEnabled(not checked)
+        self.dataset_list.setEnabled(not checked)
         self.key_edit.setEnabled(checked)
         self.value_edit.setEnabled(checked)
         self.geometry_combo.setEnabled(checked)
@@ -691,10 +845,17 @@ class AgentOsmDock(QDockWidget):
                 self.run_summary.setText(f"Custom tag  •  {key}={value}")
                 self.download_button.setText("Download custom tag")
             else:
-                preset_id = str(self.preset_combo.currentData() or "")
-                title = get_preset(preset_id).processing_label if preset_id else "Preset"
+                preset_ids = self._selected_preset_ids()
+                title = ", ".join(
+                    get_preset(preset_id).title for preset_id in preset_ids
+                ) or "Choose a dataset"
+                if self._place_name:
+                    title = f"{title}  ·  {self._place_name}"
                 self.run_summary.setText(f"Preset  •  {title}")
-                self.download_button.setText("Download preset")
+                self.download_button.setText(
+                    "Download place datasets" if self._place_name
+                    else "Download datasets"
+                )
 
     def _extent(self) -> Optional[QgsReferencedRectangle]:
         if self.iface is None:
@@ -782,22 +943,24 @@ class AgentOsmDock(QDockWidget):
                 f"{key}={parameters['VALUE'] or '*'}"
             )
         else:
-            algorithm_id = "zero2agentosm:download_preset"
-            preset_id = str(self.preset_combo.currentData() or "")
-            preset_index = next(
-                (
-                    index
-                    for index, preset in enumerate(PRESETS)
-                    if preset.preset_id == preset_id
-                ),
-                -1,
-            )
-            if preset_index < 0:
+            preset_ids = self._selected_preset_ids()
+            preset_indexes = [
+                index for index, preset in enumerate(PRESETS)
+                if preset.preset_id in preset_ids
+            ]
+            if not preset_indexes:
                 self._set_status("Choose a valid preset.")
                 return
-            preset = PRESETS[preset_index]
-            parameters = {"PRESET": preset_index}
-            self._current_label = preset.title
+            algorithm_id = (
+                "zero2agentosm:download_place" if self._place_name
+                else "zero2agentosm:download_preset"
+            )
+            parameters = {"PRESET": preset_indexes}
+            if self._place_name:
+                parameters["PLACE"] = self._place_name
+            self._current_label = ", ".join(
+                PRESETS[index].title for index in preset_indexes
+            )
         parameters.update(
             {
                 "EXTENT": extent,

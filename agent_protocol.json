@@ -25,11 +25,22 @@
       "id": "zero2agentosm:download_preset",
       "operation": "download_curated_osm_theme",
       "parameters": {
-        "PRESET": "enum_from_live_algorithm",
+        "PRESET": "multi_enum_from_live_algorithm",
         "EXTENT": [
           "map_extent",
           "layer_extent"
         ],
+        "OUTPUT_POINTS": "temporary_output",
+        "OUTPUT_LINES": "temporary_output",
+        "OUTPUT_POLYGONS": "temporary_output"
+      }
+    },
+    {
+      "id": "zero2agentosm:download_place",
+      "operation": "download_curated_osm_datasets_for_place",
+      "parameters": {
+        "PLACE": "validated_place_name",
+        "PRESET": "multi_enum_from_live_algorithm",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
@@ -73,6 +84,7 @@
     "network_access": "pinned_overpass_mirrors_only",
     "maximum_extent_area_km2": 100,
     "maximum_advanced_tag_filters": 4,
+    "maximum_datasets_per_request": 32,
     "advanced_match_modes": [
       "any",
       "all"

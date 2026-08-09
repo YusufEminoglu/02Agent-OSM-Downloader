@@ -86,7 +86,7 @@ PRESETS: Tuple[Preset, ...] = (
         "buildings", "morphology", "Morphology", "Buildings",
         "Building footprints for urban morphology.",
         _tags(("building", "", "polygon")),
-        ("building", "buildings", "bina", "binalar", "footprint"),
+        ("building", "buildings", "bina", "binalar", "binaları", "footprint"),
     ),
     Preset(
         "land_use", "morphology", "Morphology", "Land use",
@@ -111,7 +111,7 @@ PRESETS: Tuple[Preset, ...] = (
             ("natural", "wood", "polygon"), ("leisure", "garden", "polygon"),
             ("landuse", "grass", "polygon"),
         ),
-        ("green", "green space", "park", "forest", "yeşil", "orman"),
+        ("green", "green space", "park", "parks", "forest", "forests", "yeşil", "orman"),
     ),
     Preset(
         "blue_network", "green_blue", "Green & Blue", "Blue network",
@@ -309,6 +309,20 @@ PRESETS: Tuple[Preset, ...] = (
         ),
         ("emergency", "fire", "police", "acil", "itfaiye", "polis", "toplanma"),
     ),
+    Preset(
+        "administrative_places", "places", "Places", "Administrative places",
+        "Administrative boundaries and named place centres resolved from a command.",
+        _tags(
+            ("boundary", "administrative", "line"),
+            ("boundary", "administrative", "polygon"),
+            ("place", "", "point"),
+        ),
+        (
+            "place", "places", "location", "locations", "city", "town",
+            "district", "mahalle", "il", "ilce", "şehir", "sehir",
+            "yer", "konum", "idari sınır", "idari sinir",
+        ),
+    ),
 )
 
 PRESETS_BY_ID: Dict[str, Preset] = {item.preset_id: item for item in PRESETS}
@@ -328,6 +342,7 @@ class PromptIntent:
     key: str = ""
     value: str = ""
     geometry: str = ""
+    place_name: str = ""
     confidence: float = 0.0
 
 
@@ -382,6 +397,121 @@ def _geometry_hint(text: str, key: str) -> str:
     return "point"
 
 
+_COMMAND_WORDS = {
+    "download", "indir", "get", "fetch", "load", "al", "veri", "data",
+    "osm", "from", "for", "in", "at", "near", "within", "around",
+    "için", "icin", "içinde", "icinde", "yakınında", "yakininda",
+}
+
+
+def _best_preset(normalized: str) -> Tuple[str, float]:
+    scored = []
+    for preset in PRESETS:
+        terms: Iterable[str] = preset.keywords + (
+            preset.title, preset.group_title
+        )
+        score = sum(
+            max(1, len(_normalized(term).split()))
+            for term in terms
+            if _contains_phrase(normalized, term)
+        )
+        if score:
+            scored.append((score, preset.preset_id))
+    if not scored:
+        return "", 0.0
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    score, preset_id = scored[0]
+    return preset_id, min(1.0, 0.45 + score * 0.12)
+
+
+def _extract_place(raw: str, preset_id: str) -> str:
+    """Extract a human place phrase without pretending to geocode it locally."""
+    text = " ".join(str(raw or "").split()).strip(" ,;:-")
+    if not text:
+        return ""
+    # Turkish commands commonly put the place before “için”: “Van için
+    # toplu taşıma” and “Binaları London için indir”.
+    turkish_before = re.search(
+        r"^(.+?)\s+\b(?:için|icin)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if turkish_before:
+        candidate = turkish_before.group(1).strip(" ,;:-")
+        candidate = re.sub(
+            r"^(?:download|indir|get|fetch|load|osm|veri|data)\s+",
+            "",
+            candidate,
+            flags=re.IGNORECASE,
+        ).strip(" ,;:-")
+        if preset_id:
+            candidate = re.sub(
+                r"\b(?:bina|binalar|building|buildings|park|parks|"
+                r"ulaşım|ulasim|transport|toplu taşıma|toplu tasima)\w*\b",
+                "",
+                candidate,
+                flags=re.IGNORECASE,
+            ).strip(" ,;:-")
+        if candidate:
+            return candidate[:120]
+    # Explicit location connectors work for both command languages and allow
+    # arbitrary administrative names (including names not shipped in a list).
+    connector = re.search(
+        r"\b(?:in|at|near|within|around|for|için|icin|içinde|icinde|"
+        r"yakınında|yakininda)\b\s+(.+)$",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if connector:
+        candidate = connector.group(1).strip(" ,;:-")
+        candidate = re.split(
+            r"\b(?:download|indir|get|fetch|load|with|where|olarak)\b",
+            candidate,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0].strip(" ,;:-")
+        return candidate[:120]
+
+    if preset_id:
+        # “Konak için park” has the location before the Turkish connector.
+        before = re.search(
+            r"^(.+?)\s+\b(?:için|icin)\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if before:
+            candidate = before.group(1).strip(" ,;:-")
+            candidate = re.sub(
+                r"^(?:download|indir|get|fetch|load|osm|veri|data)\s+",
+                "",
+                candidate,
+                flags=re.IGNORECASE,
+            ).strip(" ,;:-")
+            if candidate and _normalized(candidate) not in {
+                _normalized(get_preset(preset_id).title),
+                _normalized(get_preset(preset_id).group_title),
+            }:
+                return candidate[:120]
+        return ""
+
+    candidate = re.sub(
+        r"^(?:download|indir|get|fetch|load|osm|veri|data)\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip(" ,;:-")
+    words = _normalized(candidate).split()
+    if (
+        1 <= len(words) <= 6
+        and (len(words) == 1 or any(char.isupper() for char in candidate))
+        and not any(
+            word in _COMMAND_WORDS for word in words
+        )
+    ):
+        return candidate[:120]
+    return ""
+
+
 def interpret_prompt(text: object) -> PromptIntent:
     raw = str(text or "").strip()
     if not raw:
@@ -410,19 +540,15 @@ def interpret_prompt(text: object) -> PromptIntent:
         return PromptIntent(
             "preset", preset_id="urban_context", confidence=1.0
         )
-    scored = []
-    for preset in PRESETS:
-        terms: Iterable[str] = preset.keywords + (preset.title, preset.group_title)
-        score = sum(
-            max(1, len(_normalized(term).split()))
-            for term in terms
-            if _contains_phrase(normalized, term)
+    preset_id, confidence = _best_preset(normalized)
+    place_name = _extract_place(raw, preset_id)
+    if place_name:
+        return PromptIntent(
+            "place",
+            preset_id=preset_id or "administrative_places",
+            place_name=place_name,
+            confidence=max(confidence, 0.72),
         )
-        if score:
-            scored.append((score, preset.preset_id))
-    if not scored:
+    if not preset_id:
         return PromptIntent("none")
-    scored.sort(key=lambda item: (-item[0], item[1]))
-    best_score, preset_id = scored[0]
-    confidence = min(1.0, 0.45 + best_score * 0.12)
     return PromptIntent("preset", preset_id=preset_id, confidence=confidence)
