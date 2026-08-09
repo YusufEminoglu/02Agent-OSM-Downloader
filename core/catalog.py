@@ -529,7 +529,7 @@ def _geometry_hint(text: str, key: str) -> str:
 
 _COMMAND_WORDS = {
     "download", "get", "fetch", "load", "data", "osm", "from", "for",
-    "in", "at", "near", "within", "around",
+    "in", "at", "near", "within", "around", "of",
 }
 
 
@@ -561,7 +561,7 @@ def _extract_place(raw: str, preset_id: str) -> str:
     # Explicit location connectors allow arbitrary administrative names,
     # including names not shipped in a fixed list.
     connector = re.search(
-        r"\b(?:in|at|near|within|around|for)\b\s+(.+)$",
+        r"\b(?:in|at|near|within|around|for|of)\b\s+(.+)$",
         text,
         flags=re.IGNORECASE,
     )

@@ -103,6 +103,9 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(parks.mode, "place")
         self.assertEqual(parks.preset_id, "green_spaces")
         self.assertEqual(parks.place_name, "Konak")
+        trees = interpret_prompt("Download trees of London")
+        self.assertEqual(trees.mode, "place")
+        self.assertEqual(trees.place_name, "London")
         self.assertEqual(
             interpret_prompt("Download public transport in Van").place_name,
             "Van",

@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.5.4] - 2026-08-09
+
+- Support natural-language place commands using the `of` connector, including `Download trees of London`.
+- Add a regression test for the exact trees-of-London workflow.
+
 ## [0.5.3] - 2026-08-09
 
 - Automatically resolve place-aware Command requests in the background and zoom the QGIS canvas to the matched administrative extent.
