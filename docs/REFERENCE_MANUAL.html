@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>02Agent OSM Downloader — Academic Reference Manual</title>
+<title>02Agent OSM Downloader — User &amp; Technical Reference Manual</title>
 <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 <style>
 /* ── CSS Variables (Light / Dark) ─────────────────────────────── */
@@ -327,6 +327,59 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
   font-size: 0.9rem;
 }
 
+.quickstart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 18px 0 24px 0;
+}
+
+.quickstart-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.quickstart-card .step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.quickstart-card h3 {
+  margin: 0 0 6px 0;
+  font-size: 1rem;
+}
+
+.quickstart-card p { margin-bottom: 0; font-size: 0.9rem; }
+
+.manual-hero {
+  background: linear-gradient(135deg, var(--accent-light), var(--bg-secondary));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  margin-bottom: 24px;
+}
+
+.manual-hero .eyebrow {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.manual-hero h1 { margin: 4px 0 8px 0; }
+.manual-hero p { margin-bottom: 0; }
+
 /* ── Equation container ──────────────────────────────────────── */
 .eqn-block {
   margin: 18px 0;
@@ -395,9 +448,10 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
 <!-- ════════════════════════════════════════════════════════════ -->
 <nav class="sidebar" id="sidebar">
   <h1>02Agent OSM Downloader</h1>
-  <div class="version">Reference Manual &middot; working tree &middot; 2026-08-09</div>
+  <div class="version">v0.5.1 &middot; User + Technical Reference &middot; 2026-08-09</div>
 
   <div class="toc-section">Overview</div>
+  <a href="#getting-started">Getting Started</a>
   <a href="#introduction">Introduction</a>
   <a href="#architecture">System Architecture</a>
   <a href="#osm-primitives">OSM Data Primitives</a>
@@ -411,6 +465,7 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
   <div class="toc-section">User Workflows</div>
   <a href="#dock">Dock Workflows</a>
   <a href="#places">Named Places</a>
+  <a href="#recovery">Reliability &amp; Recovery</a>
 
   <div class="toc-section">Algorithms</div>
   <a href="#algo1">Algorithm 1: Download Preset</a>
@@ -459,6 +514,24 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
   <input type="text" id="searchInput" placeholder="Search reference manual…" oninput="doSearch()">
 </div>
 <div class="search-info" id="searchInfo"></div>
+
+<section id="getting-started">
+<div class="manual-hero">
+  <div class="eyebrow">Start here</div>
+  <h1>02Agent OSM Downloader</h1>
+  <p>A practical workflow for bounded OpenStreetMap downloads in QGIS. Choose a curated theme, review the request, and keep the resulting layers temporary until the result is useful.</p>
+</div>
+
+<h2>Getting Started</h2>
+<div class="quickstart-grid">
+  <div class="quickstart-card"><span class="step-number">1</span><h3>Open the dock</h3><p>Click the 02Agent toolbar icon. The dock opens with <strong>Presets</strong> ready for a safe first request.</p></div>
+  <div class="quickstart-card"><span class="step-number">2</span><h3>Choose context</h3><p>Select a Theme, then check one or more Datasets. Use <strong>Select all</strong> or <strong>Clear</strong> when a theme has many choices.</p></div>
+  <div class="quickstart-card"><span class="step-number">3</span><h3>Set the extent</h3><p>Use the current map view or active layer extent. Add the OSM basemap if you need a visual reference before downloading.</p></div>
+  <div class="quickstart-card"><span class="step-number">4</span><h3>Review and download</h3><p>Check the summary, map style and road-width mode, then press <strong>Download</strong>. Outputs are added as temporary point, line and polygon layers.</p></div>
+</div>
+
+<div class="info-box"><strong>Recommended first command.</strong> In the Command tab, load <code>Download administrative places in Konak, Izmir, Turkey</code> or <code>Download public transport in Tokyo, Japan</code>. Press <strong>Interpret command</strong>, review the resolved place and dataset selection, then download.</div>
+</section>
 
 <!-- ════════════════════════════════════════════════════════════ -->
 <!-- INTRODUCTION                                                 -->
@@ -541,6 +614,12 @@ toilets, cafes and restaurants. The dedicated Public Transport theme provides
 the same transit domain when a narrower transport-only request is preferred.
 </p>
 
+<p>
+The selection row reports <em>n of m selected</em>. Use <em>Select all</em> to
+build a broad context request or <em>Clear</em> to start over. Clearing the
+list is safe: no network request is sent until <em>Download</em> is pressed.
+</p>
+
 <h3>Structured Query workspace</h3>
 <p>
 The Query tab provides four bounded key/value rows. Key and value fields offer
@@ -612,6 +691,26 @@ into a global download. The plugin selects the highest-ranked OSM candidate,
 reports the resolved label in the Processing feedback, and applies all normal
 extent, response, feature-count, and cancellation limits.
 </div>
+</section>
+
+<section id="recovery">
+<h2>1.3 Reliability and Recovery</h2>
+
+<p>
+Downloads use three pinned HTTPS Overpass mirrors. The plugin tries them in
+order, records the response from each attempt, and reports the active mirror,
+HTTP status and failure reason in the QGIS message bar and Processing feedback.
+If one mirror is busy or unavailable, the next mirror is tried automatically.
+</p>
+
+<div class="quickstart-grid">
+  <div class="quickstart-card"><h3>Timeout or busy server</h3><p>Wait briefly and press <strong>Download</strong> again. Reduce the map extent or choose a narrower dataset if the request is broad.</p></div>
+  <div class="quickstart-card"><h3>Area limit</h3><p>The request ceiling is 100 km<sup>2</sup>. Zoom in, use an active layer extent, or split a large city into smaller requests.</p></div>
+  <div class="quickstart-card"><h3>No features returned</h3><p>Check the theme, geometry and map extent. OSM coverage varies by place; try a broader preset or inspect the read-only Query preview.</p></div>
+  <div class="quickstart-card"><h3>Place ambiguity</h3><p>Use a fuller phrase such as <code>Konak, Izmir, Turkey</code> or <code>London, United Kingdom</code>. The resolved label is shown before the download.</p></div>
+</div>
+
+<div class="warn-box"><strong>Safe retry rule.</strong> Retrying is idempotent from the project point of view: failed requests do not add partial layers. Successful outputs are temporary and can be removed from the QGIS layer tree without changing the source data.</div>
 </section>
 
 <section id="architecture">

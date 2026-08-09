@@ -12,7 +12,7 @@ Processing registry rather than plugin UI automation.
 
 ## 📖 Documentation
 
-**[Comprehensive Academic Reference Manual](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/)** — complete documentation of every feature, parameter, and workflow. Hosted on GitHub Pages.
+**[User & Technical Reference Manual](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/)** — a practical getting-started guide, complete feature reference, parameter documentation, named-place guidance, and reliability troubleshooting. Hosted on GitHub Pages.
 
 
 ## What it provides

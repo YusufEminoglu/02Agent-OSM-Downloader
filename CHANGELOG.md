@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2] - 2026-08-09
+
+- Refresh the English reference manual with a practical Getting Started workflow.
+- Document the new multi-dataset selection controls and global Command examples.
+- Add reliability and recovery guidance for mirror failover, limits and ambiguous places.
+- Update the manual landing metadata and version presentation.
+
 ## [0.5.1] - 2026-08-09
 
 - Refine the dock hierarchy with a clearer OSM header, status badge and workflow guidance.
