@@ -158,3 +158,11 @@ the offline release gate.
 ## License
 
 GPL-3.0-or-later.
+
+## Data attribution
+
+This plugin uses OpenStreetMap data under the [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
+Keep [OpenStreetMap attribution](https://www.openstreetmap.org/copyright) with
+downloaded layers and published exports. The optional tile basemap and public
+Overpass services have additional usage conditions documented in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

@@ -33,6 +33,8 @@ def add_osm_basemap(project=None) -> tuple[QgsRasterLayer, bool]:
         raise ValueError("QGIS could not create the OpenStreetMap basemap.")
     layer.setCustomProperty(OSM_BASEMAP_PROPERTY, True)
     layer.setCustomProperty("zero2agent/attribution", OSM_ATTRIBUTION)
+    layer.setAttribution(OSM_ATTRIBUTION)
+    layer.setAttributionUrl("https://www.openstreetmap.org/copyright")
     target.addMapLayer(layer, False)
     target.layerTreeRoot().insertLayer(0, layer)
     return layer, True

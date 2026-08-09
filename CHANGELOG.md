@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.5] - 2026-08-09
+
+- Add a complete OpenStreetMap, tile-service and Overpass API third-party notice.
+- Record OpenStreetMap attribution metadata directly on the optional basemap layer.
+- Extend the reference manual with data attribution and service-use guidance.
+
 ## [0.5.4] - 2026-08-09
 
 - Support natural-language place commands using the `of` connector, including `Download trees of London`.
