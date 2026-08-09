@@ -30,12 +30,16 @@ from qgis.PyQt.QtWidgets import (
 )
 from qgis.core import (
     QgsApplication,
+    QgsCoordinateReferenceSystem,
+    QgsCoordinateTransform,
     QgsProcessingAlgRunnerTask,
     QgsProcessingContext,
     QgsProcessingFeedback,
     QgsProject,
     QgsReferencedRectangle,
+    QgsRectangle,
     QgsSettings,
+    QgsTask,
     QgsVectorLayer,
 )
 
@@ -47,6 +51,7 @@ from ..core.catalog import (
     interpret_prompt,
     presets_for_group,
 )
+from ..core.places import build_place_query, parse_place_candidates
 from ..core.basemap import add_osm_basemap
 from ..core.query import (
     MAX_ADVANCED_FILTERS,
@@ -73,6 +78,42 @@ from .theme import apply_adaptive_theme
 
 _MAP_THEME_SETTING = "zero2agent_osm_downloader/map_theme"
 _ROAD_WIDTH_SETTING = "zero2agent_osm_downloader/road_width_mode"
+
+
+class _PlaceResolveTask(QgsTask):
+    """Resolve a named place without blocking the QGIS interface."""
+
+    def __init__(self, place: str, callback) -> None:
+        super().__init__("02Agent: resolve named place", QgsTask.CanCancel)
+        self.place = place
+        self.callback = callback
+        self.candidate = None
+        self.error_text = ""
+
+    def run(self) -> bool:
+        if self.isCanceled():
+            return False
+        try:
+            from ..processing.osm_algorithms import _fetch_json
+
+            feedback = QgsProcessingFeedback()
+            payload = _fetch_json(build_place_query(self.place), feedback)
+            candidates = parse_place_candidates(payload, self.place)
+            if not candidates:
+                self.error_text = (
+                    f"No administrative place matched '{self.place}'."
+                )
+                return False
+            self.candidate = candidates[0]
+            return not self.isCanceled()
+        except Exception as error:  # noqa: BLE001 - background boundary
+            self.error_text = str(error).strip() or "Place lookup failed."
+            return False
+
+    def finished(self, result: bool) -> None:
+        callback, self.callback = self.callback, None
+        if callback is not None:
+            callback(self, bool(result))
 
 _ADVANCED_EXAMPLES = (
     (
@@ -164,6 +205,8 @@ class AgentOsmDock(QDockWidget):
         self._context = None
         self._current_label = ""
         self._place_name = ""
+        self._place_candidate = None
+        self._place_task = None
         self._theme_refreshing = False
         self._build_ui()
         self._populate_groups()
@@ -846,15 +889,17 @@ class AgentOsmDock(QDockWidget):
             self.custom_check.setChecked(False)
             self._select_preset(intent.preset_id or "administrative_places")
             self._place_name = intent.place_name
+            self._place_candidate = None
             self.command_place_label.setText(
-                f"Place: {intent.place_name}  ·  resolved when download starts"
+                f"Place: {intent.place_name}  ·  resolving map extent..."
             )
             preset = get_preset(intent.preset_id or "administrative_places")
             self._set_status(
                 f"Place command matched {preset.processing_label}. "
-                "Review the dataset selection and download."
+                "Resolving the place extent before download."
             )
             self.tabs.setCurrentWidget(self.download_tab)
+            self._resolve_place_extent(intent.place_name)
             return
         if intent.mode == "preset":
             self.custom_check.setChecked(False)
@@ -884,9 +929,70 @@ class AgentOsmDock(QDockWidget):
         )
 
     def _clear_place(self) -> None:
+        if self._place_task is not None:
+            self._place_task.cancel()
+            self._place_task = None
         self._place_name = ""
+        self._place_candidate = None
         self.command_place_label.setText("Place: not selected")
         self._refresh_run_summary()
+
+    def _resolve_place_extent(self, place: str) -> None:
+        """Resolve and zoom the canvas while keeping the dock responsive."""
+        if self._place_task is not None:
+            self._place_task.cancel()
+        task = _PlaceResolveTask(place, self._place_resolved)
+        self._place_task = task
+        if not QgsApplication.taskManager().addTask(task):
+            self._place_task = None
+            self.command_place_label.setText(
+                f"Place: {place}  ·  download-time lookup will be used"
+            )
+
+    def _place_resolved(self, task: _PlaceResolveTask, successful: bool) -> None:
+        if task is not self._place_task:
+            return
+        self._place_task = None
+        if not successful or task.candidate is None:
+            self.command_place_label.setText(
+                f"Place: {self._place_name}  ·  lookup will retry on download"
+            )
+            self._set_status(
+                f"Could not resolve {self._place_name} yet. "
+                "Review the request; download will retry the lookup."
+            )
+            return
+        self._place_candidate = task.candidate
+        self._zoom_to_place(task.candidate.bbox)
+        self.command_place_label.setText(
+            f"Place: {task.candidate.label}  ·  map view updated"
+        )
+        self._set_status(
+            f"Resolved {task.candidate.label}. Review the map extent and download."
+        )
+        self._refresh_run_summary()
+
+    def _zoom_to_place(self, bbox) -> None:
+        if self.iface is None:
+            return
+        try:
+            south, west, north, east = tuple(float(value) for value in bbox)
+            canvas = self.iface.mapCanvas()
+            rectangle = QgsRectangle(west, south, east, north)
+            destination = canvas.mapSettings().destinationCrs()
+            source = QgsCoordinateReferenceSystem("EPSG:4326")
+            if destination.isValid() and destination != source:
+                transform = QgsCoordinateTransform(
+                    source, destination, QgsProject.instance()
+                )
+                rectangle = transform.transformBoundingBox(rectangle)
+            if rectangle.isEmpty():
+                return
+            canvas.setExtent(rectangle)
+            canvas.refresh()
+        except (TypeError, ValueError, RuntimeError):
+            # A failed preview must never prevent the normal download flow.
+            return
 
     def _refresh_agent_connection(self) -> None:
         info = connection_info()
@@ -1279,6 +1385,10 @@ class AgentOsmDock(QDockWidget):
         self.status.setText(str(text))
 
     def cancel(self) -> None:
+        if self._place_task is not None:
+            with contextlib.suppress(Exception):
+                self._place_task.cancel()
+            self._place_task = None
         if self._feedback is not None:
             self._feedback.cancel()
         if self._task is not None:

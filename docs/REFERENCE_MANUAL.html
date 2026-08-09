@@ -448,7 +448,7 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
 <!-- ════════════════════════════════════════════════════════════ -->
 <nav class="sidebar" id="sidebar">
   <h1>02Agent OSM Downloader</h1>
-  <div class="version">v0.5.1 &middot; User + Technical Reference &middot; 2026-08-09</div>
+  <div class="version">v0.5.3 &middot; User + Technical Reference &middot; 2026-08-09</div>
 
   <div class="toc-section">Overview</div>
   <a href="#getting-started">Getting Started</a>
@@ -644,6 +644,13 @@ The Command tab accepts English dataset requests, safe
 interpretation, review the checked Dataset list and the resolved place label
 before pressing Download. Command text is interpreted locally; only the
 explicit download operation performs a network request.
+</p>
+<p>
+When a place-aware command is interpreted, the place resolver runs in a
+background QGIS task. Once a candidate is found, the map canvas automatically
+zooms to its administrative bounding box and the resolved label is shown in
+the dock. If the preview lookup is unavailable, the download action retries
+the same bounded lookup through the normal mirror-failover path.
 </p>
 </section>
 

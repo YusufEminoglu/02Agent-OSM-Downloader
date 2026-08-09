@@ -25,6 +25,8 @@ Processing registry rather than plugin UI automation.
   - **Query** for structured multi-tag ANY/ALL requests and a read-only preview.
   - **Command** for the English intent router, including named-place commands
     such as `Download parks in London` and `Download public transport in Van`.
+    Place-aware commands resolve in the background and automatically zoom the
+    map canvas to the matched administrative extent before download.
   - **Agent** for the SmartModeler bridge and Agent Protocol status.
 - A lighter palette-derived visual system with separated cards, selected-tab
   fills, contextual run summaries and tested text contrast in light and dark

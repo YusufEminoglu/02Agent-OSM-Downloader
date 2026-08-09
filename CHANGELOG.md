@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.3] - 2026-08-09
+
+- Automatically resolve place-aware Command requests in the background and zoom the QGIS canvas to the matched administrative extent.
+- Keep download-time place resolution and mirror failover as a safe fallback when preview resolution is unavailable.
+- Document automatic place zoom behavior in the reference manual and README.
+
 ## [0.5.2] - 2026-08-09
 
 - Refresh the English reference manual with a practical Getting Started workflow.

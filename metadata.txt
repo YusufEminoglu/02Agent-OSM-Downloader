@@ -3,7 +3,7 @@ name=02Agent OSM Downloader
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Alpha QGIS 3.28+ and QGIS 4 OSM acquisition studio with 30 curated presets, context-aware multi-dataset requests, named-place resolution, an OSM basemap action, highway-aware road styling, a structured multi-tag query builder, agent-ready Processing endpoints and bounded temporary outputs.
-version=0.5.2
+version=0.5.3
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
