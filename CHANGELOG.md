@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.0.0] - 2026-08-10
+
+This is the first stable public release and the first release prepared for
+submission to the QGIS Plugin Hub.
+
+### Added
+
+- A polished four-tab workflow for Presets, Query, Command and Agent use.
+- 30 curated OSM presets across 15 thematic groups, including named-place
+  acquisition and multi-dataset Urban Context requests.
+- Four documented Agent Protocol v1 Processing endpoints with explicit approval,
+  bounded extents and temporary-only outputs.
+- Complete user and technical reference documentation, first-run guidance and
+  third-party attribution notices.
+
+### Changed
+
+- Remove the QGIS experimental flag and replace alpha language with stable-release
+  metadata throughout the Hub-facing copy.
+- Align the About dialog, README, metadata, protocol documentation and manual on
+  the current 30-preset and four-endpoint feature set.
+- Harden malformed place-bound handling with an explicit suppression boundary so
+  the QGIS Hub security scan does not see a bare exception pass.
+
+### Compatibility
+
+- QGIS 3.28 or later, including QGIS 3.44 LTR and QGIS 4.
+- GPL-3.0-or-later; no pip dependency or API key is required.
+
 ## [0.5.5] - 2026-08-09
 
 - Add a complete OpenStreetMap, tile-service and Overpass API third-party notice.

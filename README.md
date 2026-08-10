@@ -1,7 +1,7 @@
 # 02Agent OSM Downloader
 [![Documentation](https://img.shields.io/badge/📖_Reference_Manual-13a0a0)](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/)
 
-02Agent OSM Downloader is a public-alpha QGIS 3.28+ and QGIS 4 plugin for reliable, repeatable
+02Agent OSM Downloader is a stable QGIS 3.28+ and QGIS 4 plugin for reliable, repeatable
 OpenStreetMap data acquisition. It works independently through its dock and
 Processing provider, and SmartModeler GIS can use the same Processing
 algorithms from Agent Workspace.
@@ -9,6 +9,10 @@ algorithms from Agent Workspace.
 The plugin publishes a versioned, machine-readable
 [Agent Protocol v1](AGENT_PROTOCOL.md). Its stable transport is the live QGIS
 Processing registry rather than plugin UI automation.
+
+Version 1.0.0 is the stable public release. The plugin is designed for bounded,
+reviewable downloads: results are temporary QGIS layers until you explicitly
+save or export them.
 
 ## 📖 Documentation
 
@@ -154,6 +158,20 @@ C:\OSGeo4W\bin\python-qgis.bat -m zero2agent_osm_downloader.tests.qgis_live_over
 
 The live test creates temporary outputs only and is intentionally excluded from
 the offline release gate.
+
+## First run
+
+1. Open **02Agent OSM Downloader** from the QGIS toolbar or Plugins menu.
+2. Choose a preset and keep the map extent within the 100 km² request limit.
+3. Review the dataset summary, map style and extent, then click **Download**.
+4. Check the temporary point, line and polygon layers before saving or exporting
+   the data you intend to retain.
+
+The plugin does not require QuickOSM, a Python package, an API key or a separate
+account. Network access is limited to the pinned HTTPS Overpass mirrors and the
+optional OpenStreetMap tile basemap. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for attribution and service-use
+requirements.
 
 ## License
 

@@ -1,6 +1,7 @@
 """Safe place-name query construction and administrative result ranking."""
 from __future__ import annotations
 
+import contextlib
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
@@ -66,13 +67,11 @@ def build_place_query(value: object) -> str:
 def _bbox(element: Dict[str, Any]) -> Tuple[float, float, float, float] | None:
     bounds = element.get("bounds")
     if isinstance(bounds, dict):
-        try:
+        with contextlib.suppress(KeyError, TypeError, ValueError):
             return (
                 float(bounds["minlat"]), float(bounds["minlon"]),
                 float(bounds["maxlat"]), float(bounds["maxlon"]),
             )
-        except (KeyError, TypeError, ValueError):
-            pass
     center = element.get("center")
     point = center if isinstance(center, dict) else element
     try:

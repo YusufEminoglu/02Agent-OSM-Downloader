@@ -22,8 +22,13 @@ This makes the integration independent of plugin UI labels and language. The
 stable public endpoints are:
 
 - `zero2agentosm:download_preset`
+- `zero2agentosm:download_place`
 - `zero2agentosm:download_custom_tag`
 - `zero2agentosm:download_advanced`
+
+`download_place` first resolves a validated administrative name through the
+pinned Overpass mirrors, then applies the same bounded extent and temporary
+output contract as `download_preset`.
 
 ## Output contract
 

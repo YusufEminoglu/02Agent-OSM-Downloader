@@ -67,7 +67,9 @@ class AgentProtocolTests(unittest.TestCase):
             <= tags
         )
         self.assertEqual(metadata["hasprocessingprovider"], "yes")
-        self.assertEqual(metadata["experimental"].casefold(), "true")
+        self.assertEqual(metadata["experimental"].casefold(), "false")
+        self.assertNotIn("alpha", metadata["description"].casefold())
+        self.assertNotIn("alpha", metadata["about"].casefold())
 
     def test_connections_falls_back_to_installed_smartmodeler_dialog(
         self,
