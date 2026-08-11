@@ -32,6 +32,7 @@ from qgis.core import (
     QgsApplication,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
+    QgsCsException,
     QgsProcessingAlgRunnerTask,
     QgsProcessingContext,
     QgsProcessingFeedback,
@@ -51,15 +52,18 @@ from ..core.catalog import (
     interpret_prompt,
     presets_for_group,
 )
-from ..core.places import build_place_query, parse_place_candidates
 from ..core.basemap import add_osm_basemap
 from ..core.query import (
     MAX_ADVANCED_FILTERS,
+    MAX_BBOX_AREA_KM2,
+    MAX_TILE_AREA_KM2,
     QueryError,
     advanced_specs,
+    bbox_area_km2,
     normalize_tag,
     normalized_specs,
     preview_query,
+    tile_bbox,
 )
 from ..core.map_styling import apply_map_theme
 from ..core.map_styling import ROAD_WIDTH_MODES
@@ -87,24 +91,21 @@ class _PlaceResolveTask(QgsTask):
         super().__init__("02Agent: resolve named place", QgsTask.CanCancel)
         self.place = place
         self.callback = callback
-        self.candidate = None
+        self.candidates: tuple = ()
         self.error_text = ""
 
     def run(self) -> bool:
         if self.isCanceled():
             return False
         try:
-            from ..processing.osm_algorithms import _fetch_json
+            from ..processing.osm_algorithms import resolve_place
 
-            feedback = QgsProcessingFeedback()
-            payload = _fetch_json(build_place_query(self.place), feedback)
-            candidates = parse_place_candidates(payload, self.place)
-            if not candidates:
-                self.error_text = (
-                    f"No administrative place matched '{self.place}'."
-                )
+            self.candidates = resolve_place(
+                self.place, QgsProcessingFeedback()
+            )
+            if not self.candidates:
+                self.error_text = f"No place matched '{self.place}'."
                 return False
-            self.candidate = candidates[0]
             return not self.isCanceled()
         except Exception as error:  # noqa: BLE001 - background boundary
             self.error_text = str(error).strip() or "Place lookup failed."
@@ -283,10 +284,52 @@ class AgentOsmDock(QDockWidget):
         self.extent_combo = QComboBox()
         self.extent_combo.addItem("Current map view", "map")
         self.extent_combo.addItem("Active layer extent", "active")
+        self.extent_combo.addItem("Named place (geocoded)", "place")
         self.extent_combo.setToolTip(
-            "Requests are transformed to WGS84 and limited to 100 km²."
+            "Requests are transformed to WGS84. Anything larger than "
+            f"{MAX_TILE_AREA_KM2:,.0f} km² is split into tiled requests, up to "
+            f"{MAX_BBOX_AREA_KM2:,.0f} km² in total."
         )
+        self.extent_combo.currentIndexChanged.connect(self._extent_mode_changed)
         run_form.addRow("Extent", self.extent_combo)
+
+        self.place_panel = QWidget()
+        place_layout = QVBoxLayout(self.place_panel)
+        place_layout.setContentsMargins(0, 0, 0, 0)
+        place_layout.setSpacing(4)
+        search_row = QHBoxLayout()
+        search_row.setSpacing(5)
+        self.place_edit = QLineEdit()
+        self.place_edit.setPlaceholderText("Konak, Izmir, Turkey")
+        self.place_edit.setClearButtonEnabled(True)
+        self.place_edit.setToolTip(
+            "Any place name the OpenStreetMap Nominatim geocoder understands."
+        )
+        self.place_edit.returnPressed.connect(self._search_place)
+        self.place_search_button = QPushButton("Search")
+        self.place_search_button.setObjectName("quietButton")
+        self.place_search_button.clicked.connect(self._search_place)
+        search_row.addWidget(self.place_edit, 1)
+        search_row.addWidget(self.place_search_button)
+        place_layout.addLayout(search_row)
+        self.place_combo = QComboBox()
+        self.place_combo.setToolTip("Choose which matched place to download.")
+        self.place_combo.setEnabled(False)
+        self.place_combo.currentIndexChanged.connect(self._place_selected)
+        place_layout.addWidget(self.place_combo)
+        self.place_clip_combo = QComboBox()
+        self.place_clip_combo.addItem("Exact mapped boundary", "boundary")
+        self.place_clip_combo.addItem("Rectangular extent", "rectangle")
+        self.place_clip_combo.setToolTip(
+            "An exact boundary follows the mapped administrative edge, so "
+            "neighbouring areas are not included."
+        )
+        self.place_clip_combo.currentIndexChanged.connect(
+            self._refresh_extent_note
+        )
+        place_layout.addWidget(self.place_clip_combo)
+        run_form.addRow(self.place_panel)
+        self.place_panel.setVisible(False)
 
         self.basemap_button = QPushButton("Add OSM basemap")
         self.basemap_button.setToolTip(
@@ -352,10 +395,10 @@ class AgentOsmDock(QDockWidget):
         run_form.addRow(theme_preview_column)
         self._map_theme_changed()
 
-        limits = QLabel("Temporary layers  •  maximum request area: 100 km²")
-        limits.setObjectName("mutedText")
-        limits.setWordWrap(True)
-        run_form.addRow(limits)
+        self.extent_note = QLabel()
+        self.extent_note.setObjectName("mutedText")
+        self.extent_note.setWordWrap(True)
+        run_form.addRow(self.extent_note)
 
         buttons = QHBoxLayout()
         self.download_button = QPushButton("Download")
@@ -391,6 +434,14 @@ class AgentOsmDock(QDockWidget):
         self._apply_theme()
         self._refresh_agent_connection()
         self._tab_changed(self.tabs.currentIndex())
+        if self.iface is not None:
+            # Keep the request-size estimate honest while the user pans and
+            # zooms, so an oversized extent is visible before the download.
+            with contextlib.suppress(AttributeError, RuntimeError, TypeError):
+                self.iface.mapCanvas().extentsChanged.connect(
+                    self._refresh_extent_note
+                )
+        self._refresh_extent_note()
 
     def _build_download_tab(self) -> QWidget:
         content = QWidget()
@@ -663,7 +714,11 @@ class AgentOsmDock(QDockWidget):
         place_row.addWidget(self.command_place_label, 1)
         place_row.addWidget(clear_place)
         prompt_layout.addLayout(place_row)
-        privacy = QLabel("No command text or project data leaves QGIS.")
+        privacy = QLabel(
+            "Commands are interpreted on this computer. Only a place name is "
+            "sent out, and only to resolve it; no other command text or "
+            "project data leaves QGIS."
+        )
         privacy.setObjectName("mutedText")
         privacy.setWordWrap(True)
         prompt_layout.addWidget(privacy)
@@ -683,7 +738,7 @@ class AgentOsmDock(QDockWidget):
         agent_layout.addWidget(self.agent_endpoint)
 
         intro = QLabel(
-            "SmartModeler discovers the two bounded Processing endpoints "
+            "SmartModeler discovers the four bounded Processing endpoints "
             "through QGIS. Downloads still require explicit approval."
         )
         intro.setObjectName("mutedText")
@@ -889,7 +944,11 @@ class AgentOsmDock(QDockWidget):
             self.custom_check.setChecked(False)
             self._select_preset(intent.preset_id or "administrative_places")
             self._place_name = intent.place_name
-            self._place_candidate = None
+            self._forget_place_matches()
+            self.place_edit.setText(intent.place_name)
+            place_index = self.extent_combo.findData("place")
+            if place_index >= 0:
+                self.extent_combo.setCurrentIndex(place_index)
             self.command_place_label.setText(
                 f"Place: {intent.place_name}  ·  resolving map extent..."
             )
@@ -899,6 +958,7 @@ class AgentOsmDock(QDockWidget):
                 "Resolving the place extent before download."
             )
             self.tabs.setCurrentWidget(self.download_tab)
+            self.place_search_button.setEnabled(False)
             self._resolve_place_extent(intent.place_name)
             return
         if intent.mode == "preset":
@@ -928,14 +988,62 @@ class AgentOsmDock(QDockWidget):
             "No confident match. Choose a preset or enter key=value."
         )
 
+    def _forget_place_matches(self) -> None:
+        """Drop any resolved place so a stale match cannot be downloaded.
+
+        `_current_place_candidate` reads the combo first, so leaving an old
+        entry selected while a new search is pending would quietly download the
+        previous place if that search failed.
+        """
+        self._place_candidate = None
+        self.place_combo.blockSignals(True)
+        self.place_combo.clear()
+        self.place_combo.setEnabled(False)
+        self.place_combo.blockSignals(False)
+
     def _clear_place(self) -> None:
         if self._place_task is not None:
             self._place_task.cancel()
             self._place_task = None
+        # The cancelled task's callback bails out, so nothing else would
+        # re-enable the button it disabled.
+        self.place_search_button.setEnabled(True)
         self._place_name = ""
-        self._place_candidate = None
+        self._forget_place_matches()
         self.command_place_label.setText("Place: not selected")
         self._refresh_run_summary()
+        self._refresh_extent_note()
+
+    def _extent_mode(self) -> str:
+        return str(self.extent_combo.currentData() or "map")
+
+    def _place_clip(self) -> str:
+        return str(self.place_clip_combo.currentData() or "boundary")
+
+    def _extent_mode_changed(self, *_args) -> None:
+        place_mode = self._extent_mode() == "place"
+        self.place_panel.setVisible(place_mode)
+        if place_mode and not self.place_edit.text().strip() and self._place_name:
+            self.place_edit.setText(self._place_name)
+        self._refresh_run_summary()
+        self._refresh_extent_note()
+
+    def _current_place_candidate(self):
+        data = self.place_combo.currentData()
+        return data if data is not None else self._place_candidate
+
+    def _search_place(self) -> None:
+        place = self.place_edit.text().strip()
+        if not place:
+            self.place_edit.setFocus()
+            self._set_status("Enter a place name to search.")
+            return
+        self._place_name = place
+        self._forget_place_matches()
+        self.place_search_button.setEnabled(False)
+        self._set_status(f"Searching for “{place}” …")
+        self._refresh_extent_note()
+        self._resolve_place_extent(place)
 
     def _resolve_place_extent(self, place: str) -> None:
         """Resolve and zoom the canvas while keeping the dock responsive."""
@@ -945,6 +1053,7 @@ class AgentOsmDock(QDockWidget):
         self._place_task = task
         if not QgsApplication.taskManager().addTask(task):
             self._place_task = None
+            self.place_search_button.setEnabled(True)
             self.command_place_label.setText(
                 f"Place: {place}  ·  download-time lookup will be used"
             )
@@ -953,24 +1062,132 @@ class AgentOsmDock(QDockWidget):
         if task is not self._place_task:
             return
         self._place_task = None
-        if not successful or task.candidate is None:
+        self.place_search_button.setEnabled(True)
+        if not successful or not task.candidates:
             self.command_place_label.setText(
                 f"Place: {self._place_name}  ·  lookup will retry on download"
             )
             self._set_status(
-                f"Could not resolve {self._place_name} yet. "
+                task.error_text
+                or f"Could not resolve {self._place_name} yet. "
                 "Review the request; download will retry the lookup."
             )
+            self._refresh_extent_note()
             return
-        self._place_candidate = task.candidate
-        self._zoom_to_place(task.candidate.bbox)
+
+        self.place_combo.blockSignals(True)
+        self.place_combo.clear()
+        for candidate in task.candidates:
+            label = candidate.label
+            if candidate.admin_level:
+                label = f"{label}  ·  level {candidate.admin_level}"
+            elif candidate.kind:
+                label = f"{label}  ·  {candidate.kind}"
+            self.place_combo.addItem(label, candidate)
+        self.place_combo.setEnabled(True)
+        self.place_combo.blockSignals(False)
+
+        candidate = task.candidates[0]
+        self._place_candidate = candidate
+        self._zoom_to_place(candidate.bbox)
         self.command_place_label.setText(
-            f"Place: {task.candidate.label}  ·  map view updated"
+            f"Place: {candidate.label}  ·  map view updated"
         )
+        matches = len(task.candidates)
         self._set_status(
-            f"Resolved {task.candidate.label}. Review the map extent and download."
+            f"Resolved {candidate.label}"
+            + (f" — {matches} matches, pick another if needed." if matches > 1
+               else ". Review the request and download.")
         )
         self._refresh_run_summary()
+        self._refresh_extent_note()
+
+    def _place_selected(self, *_args) -> None:
+        candidate = self._current_place_candidate()
+        if candidate is None:
+            return
+        self._place_candidate = candidate
+        self._place_name = candidate.name or self._place_name
+        self._zoom_to_place(candidate.bbox)
+        self.command_place_label.setText(f"Place: {candidate.label}")
+        self._refresh_run_summary()
+        self._refresh_extent_note()
+
+    def _uses_exact_boundary(self) -> bool:
+        """True when the pending download follows a mapped place boundary.
+
+        Only curated dataset downloads can clip to a boundary; the advanced
+        query and custom-tag endpoints take a rectangle.
+        """
+        if self._extent_mode() != "place":
+            return False
+        if self.tabs.currentWidget() is self.query_tab:
+            return False
+        if self.custom_check.isChecked():
+            return False
+        if self._place_clip() != "boundary":
+            return False
+        candidate = self._current_place_candidate()
+        return candidate is not None and candidate.area_id > 0
+
+    def _wgs_bbox(self):
+        """Return the pending request extent as WGS84 south, west, north, east."""
+        rectangle = self._extent()
+        if rectangle is None:
+            return None
+        wgs84 = QgsCoordinateReferenceSystem("EPSG:4326")
+        source = rectangle.crs()
+        if source.isValid() and source != wgs84:
+            try:
+                transform = QgsCoordinateTransform(
+                    source, wgs84, QgsProject.instance()
+                )
+                rectangle = transform.transformBoundingBox(rectangle)
+            except (QgsCsException, RuntimeError, ValueError):
+                # This runs on every canvas move to refresh a display-only
+                # estimate.  A projection that cannot represent the current
+                # view must leave the note blank, never raise a dialog.
+                return None
+        return (
+            rectangle.yMinimum(), rectangle.xMinimum(),
+            rectangle.yMaximum(), rectangle.xMaximum(),
+        )
+
+    def _refresh_extent_note(self, *_args) -> None:
+        """Show the request size before the user commits to a download."""
+        if not hasattr(self, "extent_note"):
+            return
+        bbox = self._wgs_bbox()
+        if bbox is None:
+            self.extent_note.setText(
+                "Temporary layers  •  choose an extent to see the request size."
+            )
+            return
+        area = bbox_area_km2(*bbox)
+        if self._uses_exact_boundary():
+            candidate = self._current_place_candidate()
+            note = (
+                f"Temporary layers  •  exact boundary of {candidate.name} "
+                f"inside a {area:,.0f} km² rectangle  •  1 request"
+            )
+            if area > MAX_BBOX_AREA_KM2:
+                note = (
+                    f"{candidate.name} spans about {area:,.0f} km², beyond the "
+                    f"{MAX_BBOX_AREA_KM2:,.0f} km² limit. Choose a smaller "
+                    "administrative unit."
+                )
+            self.extent_note.setText(note)
+            return
+        try:
+            tiles = len(tile_bbox(bbox))
+        except QueryError as error:
+            self.extent_note.setText(str(error))
+            return
+        plural = "s" if tiles != 1 else ""
+        self.extent_note.setText(
+            f"Temporary layers  •  {area:,.1f} km²  •  "
+            f"{tiles} bounded request{plural}"
+        )
 
     def _zoom_to_place(self, bbox) -> None:
         if self.iface is None:
@@ -1039,7 +1256,14 @@ class AgentOsmDock(QDockWidget):
             self.run_group.setVisible(
                 self.tabs.widget(index) in (self.download_tab, self.query_tab)
             )
+        if hasattr(self, "place_clip_combo"):
+            # Boundary clipping applies to curated dataset downloads; an
+            # advanced query always uses the place rectangle.
+            self.place_clip_combo.setEnabled(
+                self.tabs.widget(index) is not self.query_tab
+            )
         self._refresh_run_summary()
+        self._refresh_extent_note()
 
     def _sync_custom_fields(self, checked: bool) -> None:
         self.group_combo.setEnabled(not checked)
@@ -1076,18 +1300,33 @@ class AgentOsmDock(QDockWidget):
                 title = ", ".join(
                     get_preset(preset_id).title for preset_id in preset_ids
                 ) or "Choose a dataset"
-                if self._place_name:
-                    title = f"{title}  ·  {self._place_name}"
+                candidate = (
+                    self._current_place_candidate()
+                    if self._extent_mode() == "place" else None
+                )
+                if candidate is not None:
+                    title = f"{title}  ·  {candidate.name}"
                 self.run_summary.setText(f"Preset  •  {title}")
                 self.download_button.setText(
-                    "Download place datasets" if self._place_name
+                    "Download place datasets" if candidate is not None
                     else "Download datasets"
                 )
 
     def _extent(self) -> Optional[QgsReferencedRectangle]:
+        """Return the map or layer extent behind the current selection."""
+        mode = self._extent_mode()
+        if mode == "place":
+            candidate = self._current_place_candidate()
+            if candidate is None:
+                return None
+            south, west, north, east = candidate.bbox
+            return QgsReferencedRectangle(
+                QgsRectangle(west, south, east, north),
+                QgsCoordinateReferenceSystem("EPSG:4326"),
+            )
         if self.iface is None:
             return None
-        if self.extent_combo.currentData() == "active":
+        if mode == "active":
             layer = self.iface.activeLayer()
             if layer is None:
                 return None
@@ -1108,9 +1347,21 @@ class AgentOsmDock(QDockWidget):
             QMessageBox.warning(
                 self,
                 "02Agent OSM Downloader",
-                "Select an active layer or use the current map view.",
+                "Search for a place first."
+                if self._extent_mode() == "place"
+                else "Select an active layer or use the current map view.",
             )
             return
+        boundary_download = self._uses_exact_boundary()
+        wgs_bbox = self._wgs_bbox()
+        if wgs_bbox is not None and not boundary_download:
+            try:
+                tile_bbox(wgs_bbox)
+            except QueryError as error:
+                QMessageBox.warning(
+                    self, "02Agent OSM Downloader", str(error)
+                )
+                return
         if self.tabs.currentWidget() is self.query_tab:
             algorithm_id = "zero2agentosm:download_advanced"
             filters = self._query_filters()
@@ -1191,16 +1442,33 @@ class AgentOsmDock(QDockWidget):
                     f"{error} Select fewer related datasets and try again.",
                 )
                 return
-            algorithm_id = (
-                "zero2agentosm:download_place" if self._place_name
-                else "zero2agentosm:download_preset"
+            candidate = (
+                self._current_place_candidate()
+                if self._extent_mode() == "place" else None
             )
-            parameters = {"PRESET": preset_indexes}
-            if self._place_name:
-                parameters["PLACE"] = self._place_name
+            if boundary_download and candidate is not None:
+                # Only the boundary path needs the place endpoint, and it is
+                # handed the already-resolved area so it does not geocode the
+                # name a second time and land on a different match.
+                algorithm_id = "zero2agentosm:download_place"
+                parameters = {
+                    "PRESET": preset_indexes,
+                    "PLACE": candidate.name,
+                    "CLIP": 0,
+                    "AREA_ID": str(candidate.area_id),
+                }
+            else:
+                # A rectangle needs no name at all: the extent below already
+                # is the place the user confirmed on the map.
+                algorithm_id = "zero2agentosm:download_preset"
+                parameters = {"PRESET": preset_indexes}
             self._current_label = ", ".join(
                 PRESETS[index].title for index in preset_indexes
             )
+            if candidate is not None:
+                self._current_label = (
+                    f"{self._current_label} — {candidate.name}"
+                )
         parameters.update(
             {
                 "EXTENT": extent,

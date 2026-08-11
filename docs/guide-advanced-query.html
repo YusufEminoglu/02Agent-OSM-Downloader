@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Build structured multi-tag OpenStreetMap queries in QGIS with 02Agent: ANY or ALL matching, geometry scope, and a read-only Overpass preview.">
+<title>Guide 4 — Build a structured query · 02Agent OSM Downloader</title>
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+<div class="wrap">
+
+<nav class="topbar">
+  <span class="mark">02</span>
+  <a href="index.html">Documentation</a>
+  <span>›</span>
+  <strong>Guide 4 — Build a structured query</strong>
+  <span class="spacer"></span>
+  <a href="REFERENCE_MANUAL.html">Reference manual</a>
+</nav>
+
+<p class="eyebrow">Guide 4 of 5</p>
+<h1>Build a structured query</h1>
+<p class="lead">
+  When no preset says quite what you mean — schools that are wheelchair
+  accessible, parks that also contain a playground — the Query tab lets you say it
+  in tags, see exactly what will be sent, and run it against the same bounded,
+  tiled download engine.
+</p>
+
+<div class="step">
+  <div>
+    <div class="step-head"><span class="step-number">1</span><h3>Start from an example</h3></div>
+    <p>
+      Open the <strong>Query</strong> tab and pick one of the fourteen worked examples,
+      then press <strong>Load example</strong>. It fills the match mode, the geometry
+      scope and the tag filters at once, which is the quickest way to learn the shape
+      of a query.
+    </p>
+    <p>
+      Examples include accessible schools, protected cycleways, public green space,
+      named transit stops, hospitals with emergency access, EV charging, historic
+      monuments, pedestrian-friendly streets and buildings that carry height data.
+    </p>
+    <p>
+      Edit any of it afterwards — the examples are starting points, not templates you
+      are locked into.
+    </p>
+  </div>
+  <figure>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="images/dark_query.png">
+      <img src="images/light_query.png" alt="The Query tab with the example list, match mode, geometry scope and four pairs of OSM key and value fields.">
+    </picture>
+    <figcaption>The Query tab. Two of four filter slots are in use; the counter tracks how many are active.</figcaption>
+  </figure>
+</div>
+
+<div class="step wide">
+  <div>
+    <div class="step-head"><span class="step-number">2</span><h3>Choose how the tags combine</h3></div>
+    <p>
+      <strong>Match</strong> decides the logic, and it is the single most important
+      choice on the tab:
+    </p>
+    <ul>
+      <li>
+        <strong>Match any tag (OR)</strong> — a feature qualifies if it carries at
+        least one of your tags. Use it to gather a family of related things:
+        <code>leisure=park</code> OR <code>leisure=garden</code> OR
+        <code>landuse=grass</code>.
+      </li>
+      <li>
+        <strong>Match all tags (AND)</strong> — a feature must carry every tag. Use it
+        to narrow: <code>amenity=school</code> AND <code>wheelchair=yes</code> returns
+        only the accessible schools.
+      </li>
+    </ul>
+    <p>
+      <strong>Geometry</strong> scopes the request to points, lines, polygons, or all
+      three. Narrowing it makes the query faster and avoids irrelevant empty layers —
+      a query about buildings has no business asking for nodes.
+    </p>
+    <div class="note">
+      <p><strong>One key, once, in ALL mode</strong>
+        <code>amenity=school</code> AND <code>amenity=hospital</code> can never match
+        anything, because a feature has one <code>amenity</code> value. The plugin
+        refuses that combination instead of running a query guaranteed to return
+        nothing. Use ANY matching for it.</p>
+    </div>
+  </div>
+</div>
+
+<div class="step">
+  <div>
+    <div class="step-head"><span class="step-number">3</span><h3>Fill the tag filters</h3></div>
+    <p>
+      Up to four key/value pairs. The key is an OpenStreetMap tag name
+      (<code>amenity</code>, <code>building</code>, <code>highway</code>,
+      <code>leisure</code>, <code>historic</code>…); both fields autocomplete from
+      common values.
+    </p>
+    <p>
+      Leave the value blank or type <code>*</code> to match <em>any</em> value of that
+      key — <code>building=*</code> means every building regardless of type. That is
+      usually what you want when the key alone identifies the thing.
+    </p>
+    <p>
+      Keys and values are validated as you type. Characters that would change the
+      meaning of the generated query are rejected outright, which is why there is no
+      free-text query box anywhere in the plugin.
+    </p>
+  </div>
+  <figure>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="images/dark_query_expanded.png">
+      <img src="images/light_query_expanded.png" alt="The Query tab with the preview expanded, showing the generated Overpass query for amenity=school and wheelchair=yes as ways and relations.">
+    </picture>
+    <figcaption>Preview expanded. The extent is a placeholder until the download starts.</figcaption>
+  </figure>
+</div>
+
+<div class="step wide">
+  <div>
+    <div class="step-head"><span class="step-number">4</span><h3>Read the generated query, then run it</h3></div>
+    <p>
+      <strong>Show preview</strong> reveals the exact Overpass query your choices
+      produce. It is read-only and it is the truth: there is no second, hidden query.
+      For the AND example above it becomes
+    </p>
+<pre><code>[out:json][timeout:45];
+(
+  way["amenity"="school"]["wheelchair"="yes"](&lt;selected extent&gt;);
+  relation["amenity"="school"]["wheelchair"="yes"](&lt;selected extent&gt;);
+);
+out body geom;</code></pre>
+    <p>
+      Note <code>&lt;selected extent&gt;</code>. The real coordinates are substituted
+      only when you press Download, which is why the preview stays stable while you
+      pan the map. If the extent is wide, that one query becomes one query per tile
+      (<a href="guide-wide-area.html">Guide 3</a>).
+    </p>
+    <p>
+      The run panel stays visible on this tab and the button reads <strong>Run
+      advanced query</strong>. Extent, map style and road width all work exactly as
+      they do for presets.
+    </p>
+  </div>
+</div>
+
+<h2>Reading the results</h2>
+<p>
+  Every downloaded feature records what matched it. <code>query_key</code> and
+  <code>query_value</code> hold the first matching selector, and
+  <code>matched_tags</code> holds all of them as JSON — so after an ANY query you can
+  tell which branch each feature came from, and filter or style on it in QGIS.
+</p>
+<p>
+  The full original tag set is preserved in <code>tags_json</code>, so nothing
+  OpenStreetMap knew about a feature is lost just because it had no dedicated column.
+</p>
+
+<div class="warn">
+  <p><strong>What the Query tab deliberately does not do</strong>
+    There is no raw Overpass editor, no custom endpoint field, no output path and no
+    scripting hook. Everything reaching the network is assembled from validated tag
+    fields against pinned hosts. That boundary is what makes the plugin safe to expose
+    to an automation agent — see <a href="guide-command-and-agent.html">Guide 5</a>.</p>
+</div>
+
+<div class="pager">
+  <a href="guide-wide-area.html">← Guide 3 — Cover a whole district or city</a>
+  <a href="guide-command-and-agent.html">Guide 5 — Commands, styling and agents →</a>
+</div>
+
+<footer class="legal">
+  <p>Map data © OpenStreetMap contributors, available under the Open Database License.
+     Screenshots are real captures of the plugin's dock.</p>
+</footer>
+
+</div>
+</body>
+</html>

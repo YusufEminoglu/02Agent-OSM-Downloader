@@ -16,10 +16,21 @@ OVERPASS_ENDPOINTS: Tuple[str, ...] = (
 OVERPASS_TIMEOUT_SECONDS = 45
 MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 MAX_FEATURES = 150_000
-MAX_BBOX_AREA_KM2 = 100.0
+# One Overpass request stays small enough to be a polite, reliable request.
+# Anything larger is split into a grid of these tiles rather than refused, so a
+# whole district or city can be acquired without ever sending a heavy query.
+MAX_TILE_AREA_KM2 = 100.0
+# Ceiling for a complete tiled job.  Past this the honest answer is that the
+# user wants a regional extract, not an Overpass download.
+MAX_BBOX_AREA_KM2 = 2_500.0
+MAX_TILES = 40
+# Merged across every tile.  A single response is still capped at MAX_FEATURES.
+MAX_TOTAL_FEATURES = 400_000
 MAX_SELECTORS = 32
 MAX_ADVANCED_FILTERS = 4
 MATCH_MODES = ("any", "all")
+
+_KM_PER_DEGREE = 111.32
 
 _KEY_RE = re.compile(r"^[A-Za-z0-9_:.~-]{1,80}$")
 _UNSAFE_VALUE_RE = re.compile(r"[\x00-\x1f\x7f\"\\;\[\]\(\){}]")
@@ -41,9 +52,40 @@ def normalize_tag(key: object, value: object = "") -> Tuple[str, str]:
     return key_text, value_text
 
 
-def validate_bbox(
+def _widest_longitude_scale(south: float, north: float) -> float:
+    """Return the largest km-per-degree-of-longitude factor inside the box.
+
+    Longitude degrees are widest nearest the equator, so the honest worst case
+    for an area estimate is the latitude edge closest to it.  Using the mean
+    latitude instead under-reports a tall box and lets an oversized tile
+    through.
+    """
+    if south <= 0 <= north:
+        return 1.0
+    closest_to_equator = min(abs(south), abs(north))
+    return max(0.01, math.cos(math.radians(closest_to_equator)))
+
+
+def bbox_area_km2(
+    south: object, west: object, north: object, east: object
+) -> float:
+    """Return the worst-case planar area of a WGS84 box in km²."""
+    south_f, west_f, north_f, east_f = (
+        float(item) for item in (south, west, north, east)
+    )
+    return (
+        (north_f - south_f)
+        * _KM_PER_DEGREE
+        * (east_f - west_f)
+        * _KM_PER_DEGREE
+        * _widest_longitude_scale(south_f, north_f)
+    )
+
+
+def _checked_bbox(
     south: object, west: object, north: object, east: object
 ) -> Tuple[float, float, float, float]:
+    """Validate WGS84 sanity only, without applying any area ceiling."""
     try:
         values = tuple(float(item) for item in (south, west, north, east))
     except (TypeError, ValueError) as exc:
@@ -56,20 +98,81 @@ def validate_bbox(
         and -180 <= west_f < east_f <= 180
     ):
         raise QueryError("The selected extent is outside WGS84 bounds.")
-    mean_lat = math.radians((south_f + north_f) / 2)
-    area = (
-        (north_f - south_f)
-        * 111.32
-        * (east_f - west_f)
-        * 111.32
-        * max(0.01, abs(math.cos(mean_lat)))
-    )
-    if area <= 0 or area > MAX_BBOX_AREA_KM2:
+    return values
+
+
+def validate_bbox(
+    south: object, west: object, north: object, east: object
+) -> Tuple[float, float, float, float]:
+    """Validate an extent that must fit in a single Overpass request."""
+    values = _checked_bbox(south, west, north, east)
+    area = bbox_area_km2(*values)
+    if area <= 0 or area > MAX_TILE_AREA_KM2:
         raise QueryError(
-            f"The selected extent is {area:,.1f} km²; zoom below "
-            f"{MAX_BBOX_AREA_KM2:,.0f} km²."
+            f"The selected extent is {area:,.1f} km²; a single OSM request is "
+            f"limited to {MAX_TILE_AREA_KM2:,.0f} km²."
         )
     return values
+
+
+def validate_job_bbox(
+    south: object, west: object, north: object, east: object
+) -> Tuple[float, float, float, float]:
+    """Validate an extent that may be split across several tiled requests."""
+    values = _checked_bbox(south, west, north, east)
+    area = bbox_area_km2(*values)
+    if area <= 0:
+        raise QueryError("The selected extent has no area.")
+    if area > MAX_BBOX_AREA_KM2:
+        raise QueryError(
+            f"The selected extent is {area:,.0f} km²; this downloader covers "
+            f"up to {MAX_BBOX_AREA_KM2:,.0f} km². Zoom in, or download the "
+            "area in parts."
+        )
+    return values
+
+
+def tile_bbox(
+    bbox: Tuple[object, object, object, object],
+    max_tile_km2: float = MAX_TILE_AREA_KM2,
+) -> Tuple[Tuple[float, float, float, float], ...]:
+    """Split an extent into a grid of boxes that each fit one OSM request.
+
+    Tiles are kept close to square so no single request degenerates into a
+    long thin strip, which Overpass answers far more slowly than a compact
+    box of the same area.
+    """
+    south, west, north, east = validate_job_bbox(*bbox)
+    limit = max(1.0, float(max_tile_km2))
+    area = bbox_area_km2(south, west, north, east)
+    if area <= limit:
+        return ((south, west, north, east),)
+
+    scale = _widest_longitude_scale(south, north)
+    height_km = (north - south) * _KM_PER_DEGREE
+    width_km = (east - west) * _KM_PER_DEGREE * scale
+    side_km = math.sqrt(limit)
+    rows = max(1, math.ceil(height_km / side_km))
+    columns = max(1, math.ceil(width_km / side_km))
+    if rows * columns > MAX_TILES:
+        raise QueryError(
+            f"The selected extent needs {rows * columns} OSM requests; the "
+            f"limit is {MAX_TILES}. Zoom in, or download the area in parts."
+        )
+
+    latitude_step = (north - south) / rows
+    longitude_step = (east - west) / columns
+    tiles = []
+    for row in range(rows):
+        tile_south = south + row * latitude_step
+        tile_north = north if row == rows - 1 else tile_south + latitude_step
+        for column in range(columns):
+            tile_west = west + column * longitude_step
+            tile_east = (
+                east if column == columns - 1 else tile_west + longitude_step
+            )
+            tiles.append((tile_south, tile_west, tile_north, tile_east))
+    return tuple(tiles)
 
 
 def normalized_specs(specs: Iterable[TagSpec]) -> Tuple[TagSpec, ...]:
@@ -140,9 +243,16 @@ def advanced_specs(
 
 def _render_query(
     safe_specs: Tuple[TagSpec, ...],
-    box: str,
+    scope: str,
     match_mode: str,
+    preamble: str = "",
 ) -> str:
+    """Render the bounded request.
+
+    `scope` is the complete Overpass filter suffix appended to every selector,
+    already parenthesised — one bounding box, or an area filter followed by a
+    bounding box.
+    """
     mode = str(match_mode or "").strip().casefold()
     if mode not in MATCH_MODES:
         raise QueryError("The query match mode is not valid.")
@@ -156,13 +266,13 @@ def _render_query(
                 else f'["{spec.key}"]'
             )
             if spec.geometry == "point":
-                selectors.append(f"  node{tag}({box});")
+                selectors.append(f"  node{tag}{scope};")
             elif spec.geometry == "line":
-                selectors.append(f"  way{tag}({box});")
-                selectors.append(f"  relation{tag}({box});")
+                selectors.append(f"  way{tag}{scope};")
+                selectors.append(f"  relation{tag}{scope};")
             else:
-                selectors.append(f"  way{tag}({box});")
-                selectors.append(f"  relation{tag}({box});")
+                selectors.append(f"  way{tag}{scope};")
+                selectors.append(f"  relation{tag}{scope};")
     else:
         for geometry in GEOMETRY_KINDS:
             geometry_specs = tuple(
@@ -177,19 +287,27 @@ def _render_query(
                 for spec in geometry_specs
             )
             if geometry == "point":
-                selectors.append(f"  node{tags}({box});")
+                selectors.append(f"  node{tags}{scope};")
             elif geometry == "line":
-                selectors.append(f"  way{tags}({box});")
-                selectors.append(f"  relation{tags}({box});")
+                selectors.append(f"  way{tags}{scope};")
+                selectors.append(f"  relation{tags}{scope};")
             else:
-                selectors.append(f"  way{tags}({box});")
-                selectors.append(f"  relation{tags}({box});")
+                selectors.append(f"  way{tags}{scope};")
+                selectors.append(f"  relation{tags}{scope};")
 
     return (
-        f"[out:json][timeout:{OVERPASS_TIMEOUT_SECONDS}];\n(\n"
+        f"[out:json][timeout:{OVERPASS_TIMEOUT_SECONDS}];\n"
+        + (f"{preamble}\n" if preamble else "")
+        + "(\n"
         + "\n".join(dict.fromkeys(selectors))
         + "\n);\nout body geom;"
     )
+
+
+def _box_scope(bbox: Tuple[float, float, float, float]) -> str:
+    """Return a bounding-box filter, parenthesised and ready to append."""
+    south, west, north, east = bbox
+    return f"({south:.7f},{west:.7f},{north:.7f},{east:.7f})"
 
 
 def build_query(
@@ -197,10 +315,70 @@ def build_query(
     bbox: Tuple[object, object, object, object],
     match_mode: str = "any",
 ) -> str:
+    """Build the single bounded request for an extent that fits one tile."""
     safe_specs = normalized_specs(specs)
-    south, west, north, east = validate_bbox(*bbox)
-    box = f"{south:.7f},{west:.7f},{north:.7f},{east:.7f}"
-    return _render_query(safe_specs, box, match_mode)
+    return _render_query(
+        safe_specs, _box_scope(validate_bbox(*bbox)), match_mode
+    )
+
+
+def build_queries(
+    specs: Iterable[TagSpec],
+    bbox: Tuple[object, object, object, object],
+    match_mode: str = "any",
+    max_tile_km2: float = MAX_TILE_AREA_KM2,
+) -> Tuple[str, ...]:
+    """Build one bounded request per tile covering the whole extent."""
+    safe_specs = normalized_specs(specs)
+    return tuple(
+        _render_query(safe_specs, _box_scope(tile), match_mode)
+        for tile in tile_bbox(bbox, max_tile_km2)
+    )
+
+
+def validate_area_id(value: object) -> int:
+    """Validate an Overpass area identifier derived from an OSM object id.
+
+    Overpass derives area ids from OSM ids: a relation becomes
+    3600000000 + id and a way becomes 2400000000 + id.  Only those two ranges
+    are accepted, so no other numeric text can reach the query.
+    """
+    try:
+        area_id = int(value)
+    except (TypeError, ValueError) as exc:
+        raise QueryError("The place area identifier is not valid.") from exc
+    relation_area = 3_600_000_000 <= area_id < 3_700_000_000
+    way_area = 2_400_000_000 <= area_id < 2_500_000_000
+    if not (relation_area or way_area):
+        raise QueryError("The place area identifier is out of range.")
+    return area_id
+
+
+def build_area_query(
+    specs: Iterable[TagSpec],
+    area_id: object,
+    bbox: Tuple[object, object, object, object],
+    match_mode: str = "any",
+) -> str:
+    """Build a request clipped to a real administrative boundary.
+
+    An area filter follows the mapped boundary itself, so a district download
+    stops at the district edge instead of at the corners of its bounding box.
+
+    The extent is applied as well, and is not optional.  An area carries no
+    size of its own, so without a second bounding filter a caller could hand in
+    the area id of an entire country and issue an unbounded request; requiring
+    the box means every area request is still covered by the job ceiling.
+    """
+    safe_specs = normalized_specs(specs)
+    checked_id = validate_area_id(area_id)
+    box = _box_scope(validate_job_bbox(*bbox))
+    return _render_query(
+        safe_specs,
+        f"(area.searchArea){box}",
+        match_mode,
+        preamble=f"area({checked_id})->.searchArea;",
+    )
 
 
 def preview_query(
@@ -208,7 +386,9 @@ def preview_query(
     match_mode: str = "any",
 ) -> str:
     """Return a display-only query with a non-executable extent placeholder."""
-    return _render_query(normalized_specs(specs), "<selected extent>", match_mode)
+    return _render_query(
+        normalized_specs(specs), "(<selected extent>)", match_mode
+    )
 
 
 def validate_payload(payload: Any) -> Dict[str, Any]:
@@ -224,6 +404,29 @@ def validate_payload(payload: Any) -> Dict[str, Any]:
     if any(not isinstance(item, dict) for item in elements):
         raise QueryError("The OSM response contains an invalid element.")
     return payload
+
+
+def merge_elements(payloads: Iterable[Any]) -> Dict[str, Any]:
+    """Merge tiled Overpass responses into one de-duplicated payload.
+
+    Overpass returns any object whose geometry touches the requested box, so
+    a road or building crossing a tile seam comes back from both tiles.
+    Keeping the first copy of each (type, id) leaves exactly one feature.
+    """
+    merged: Dict[Tuple[str, str], Any] = {}
+    for payload in payloads:
+        data = validate_payload(payload)
+        elements = data.get("elements", [])
+        for element in elements:
+            key = (str(element.get("type", "")), str(element.get("id", "")))
+            if key not in merged:
+                merged[key] = element
+        if len(merged) > MAX_TOTAL_FEATURES:
+            raise QueryError(
+                f"The request returned more than {MAX_TOTAL_FEATURES:,} OSM "
+                "objects. Reduce the extent or select fewer datasets."
+            )
+    return {"elements": list(merged.values())}
 
 
 def compact_tags(tags: object) -> str:

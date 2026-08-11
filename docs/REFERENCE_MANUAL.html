@@ -448,7 +448,15 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
 <!-- ════════════════════════════════════════════════════════════ -->
 <nav class="sidebar" id="sidebar">
   <h1>02Agent OSM Downloader</h1>
-  <div class="version">v1.0.0 &middot; Stable User + Technical Reference &middot; 2026-08-10</div>
+  <div class="version">v1.1.0 &middot; Stable User + Technical Reference &middot; 2026-08-11</div>
+
+  <div class="toc-section">Illustrated guides</div>
+  <a href="index.html">All task guides</a>
+  <a class="sub" href="guide-first-download.html">1 &middot; Your first download</a>
+  <a class="sub" href="guide-place-boundary.html">2 &middot; Download a named place</a>
+  <a class="sub" href="guide-wide-area.html">3 &middot; Whole district or city</a>
+  <a class="sub" href="guide-advanced-query.html">4 &middot; Structured query</a>
+  <a class="sub" href="guide-command-and-agent.html">5 &middot; Commands &amp; agents</a>
 
   <div class="toc-section">Overview</div>
   <a href="#getting-started">Getting Started</a>
@@ -572,12 +580,15 @@ detect-secrets) while remaining compatible with Qt6 / QGIS 4 environments.
 <div class="info-box">
 <strong>Key design constraints.</strong> The catalogue contains 30 curated
 presets in 15 thematic groups. Maximum response size: 64 MB.
-Maximum extent: 100 km<sup>2</sup>. Maximum features per response: 150,000.
+Maximum extent per request: 100 km<sup>2</sup>; a wider extent is tiled, up to
+2,500 km<sup>2</sup> and 40 requests per job, merged to at most 400,000
+features. Maximum features per response: 150,000.
 Maximum tag selectors per request: 32; advanced queries accept four validated
-filters. Overpass timeout: 45 seconds. Three hard-coded JSON-only endpoints
-with automatic failover. Named-place lookup returns at most 25 candidates and
-uses the best administrative relation/way or named place. No raw query, URL,
-path, or external dependency accepted.
+filters. Overpass timeout: 45 seconds. Three hard-coded JSON-only Overpass
+endpoints with automatic failover, plus the Nominatim geocoder: four fixed
+hosts in total. Named-place lookup returns at most 25 ranked candidates and the
+user chooses among them. No raw query, URL, path, or external dependency
+accepted.
 </div>
 </section>
 
@@ -687,9 +698,12 @@ administrative level, and available parent context. Thus a short command such
 as <code>Konak</code> can resolve to the OSM administrative Konak relation,
 while a fuller phrase such as <code>Izmir Konak</code> can use the final name
 token and retain the supplied parent context in the displayed label. The
-resolved bounding box is then used for the selected datasets. The normal
-100 km<sup>2</sup> limit still applies; a large result such as London may need
-to be narrowed before download.
+resolved place is then used for the selected datasets, either as its exact
+mapped boundary or as its rectangle. A rectangle wider than one request is
+tiled automatically; the 2,500 km<sup>2</sup> job ceiling still applies, so a
+large result such as London may need to be narrowed to a borough before
+download. See the illustrated
+<a href="guide-place-boundary.html">named-place guide</a>.
 </p>
 
 <div class="warn-box">
@@ -712,7 +726,7 @@ If one mirror is busy or unavailable, the next mirror is tried automatically.
 
 <div class="quickstart-grid">
   <div class="quickstart-card"><h3>Timeout or busy server</h3><p>Wait briefly and press <strong>Download</strong> again. Reduce the map extent or choose a narrower dataset if the request is broad.</p></div>
-  <div class="quickstart-card"><h3>Area limit</h3><p>The request ceiling is 100 km<sup>2</sup>. Zoom in, use an active layer extent, or split a large city into smaller requests.</p></div>
+  <div class="quickstart-card"><h3>Area limit</h3><p>One request covers 100 km<sup>2</sup>; wider extents are tiled automatically, up to 2,500 km<sup>2</sup> per job. Past that, zoom in or download the area in parts. The line above the button always states the size and request count first.</p></div>
   <div class="quickstart-card"><h3>No features returned</h3><p>Check the theme, geometry and map extent. OSM coverage varies by place; try a broader preset or inspect the read-only Query preview.</p></div>
   <div class="quickstart-card"><h3>Place ambiguity</h3><p>Use a fuller phrase such as <code>Konak, Izmir, Turkey</code> or <code>London, United Kingdom</code>. The resolved label is shown before the download.</p></div>
 </div>
@@ -788,6 +802,7 @@ configure parallel algorithm runs with independent parameter state.
 <tr><td>1</td><td><code>https://overpass-api.de/api/interpreter</code></td><td>overpass-api.de</td></tr>
 <tr><td>2</td><td><code>https://overpass.kumi.systems/api/interpreter</code></td><td>overpass.kumi.systems</td></tr>
 <tr><td>3</td><td><code>https://overpass.private.coffee/api/interpreter</code></td><td>overpass.private.coffee</td></tr>
+<tr><td>G</td><td><code>https://nominatim.openstreetmap.org/search</code></td><td>nominatim.openstreetmap.org</td></tr>
 </tbody>
 </table>
 
@@ -797,6 +812,16 @@ The failover strategy is sequential, not parallel: if the primary endpoint
 second is attempted, then the third. Only if all three fail is an exception
 raised. A successful response from any endpoint is cached and returned
 immediately, skipping remaining mirrors.
+</p>
+
+<p>
+The fourth host is used only for place search. The request carries the place
+name and nothing else, the host is fixed, and every parameter is
+percent-encoded, so a name can never redirect the request elsewhere. Calls are
+spaced at least one second apart to respect the Nominatim usage policy, and the
+plugin identifies itself with a versioned User-Agent as that policy requires.
+If Nominatim is unreachable, place resolution falls back to an Overpass search
+for administrative boundaries whose name tags match.
 </p>
 </section>
 
@@ -1274,28 +1299,41 @@ $$
 \begin{aligned}
 &\text{Bounds: } -90^\circ \leq \phi_{\text{south}} < \phi_{\text{north}} \leq 90^\circ,\;
    -180^\circ \leq \lambda_{\text{west}} < \lambda_{\text{east}} \leq 180^\circ \\[4pt]
-&\text{Area estimation (spherical approximation): } \\[4pt]
+&\text{Area estimation (worst-case spherical approximation): } \\[4pt]
 A &\approx (\phi_n - \phi_s) \times 111.32 \times
-      (\lambda_e - \lambda_w) \times 111.32 \times
-      \max(0.01,\; |\cos(\bar{\phi})|) \\[4pt]
-\bar{\phi} &= \frac{\phi_n + \phi_s}{2} \quad \text{(mean latitude in radians)} \\[4pt]
-A &\leq A_{\max} = 100\ \text{km}^2
+      (\lambda_e - \lambda_w) \times 111.32 \times s(\phi_s, \phi_n) \\[4pt]
+s(\phi_s, \phi_n) &= \begin{cases}
+   1 & \text{if } \phi_s \leq 0 \leq \phi_n \\
+   \max\!\left(0.01,\; \cos\!\left(\min(|\phi_s|, |\phi_n|)\right)\right) & \text{otherwise}
+\end{cases} \\[4pt]
+A &\leq A_{\text{tile}} = 100\ \text{km}^2 \quad \text{(one request)} \\[4pt]
+A &\leq A_{\max} = 2{,}500\ \text{km}^2 \quad \text{(one tiled job)}
 \end{aligned}
 $$
 </div>
 
 <p>
 The constant 111.32 km/degree is the approximate length of one degree of
-latitude (or one degree of longitude at the equator). The cosine factor
-accounts for meridian convergence at higher latitudes. The lower bound of
-0.01 on the cosine prevents degenerate behaviour near the poles.
+latitude (or one degree of longitude at the equator). The scale factor
+\(s\) accounts for meridian convergence at higher latitudes, and the lower
+bound of 0.01 prevents degenerate behaviour near the poles.
+</p>
+
+<p>
+Note that \(s\) is evaluated at the latitude edge <em>closest to the
+equator</em>, not at the mean latitude, because a degree of longitude is widest
+there. Using the mean under-reports a tall box, which would let an oversized
+tile through the per-request gate. A box straddling the equator contains the
+widest case outright, so its factor is 1. The estimate is therefore an upper
+bound on the true area — deliberately pessimistic, so the limits are never
+exceeded in practice.
 </p>
 
 <h3>9.2 Haversine Distance</h3>
 
 <p>
 While the plugin uses the simplified rectangular approximation above for
-area estimation (sufficient for the 100 km&sup2; extent gate), the
+area estimation (sufficient for the extent gates above), the
 theoretically correct great-circle distance between two WGS84 points is
 given by the Haversine formula:
 </p>
@@ -1489,7 +1527,7 @@ with empty value strings indicating wildcard matching for that key.
 </thead>
 <tbody>
 <tr><td><code>PRESET</code></td><td>Multi-enum</td><td>One or more thematic selections from the PRESETS catalogue. Labels follow the pattern "<em>Group Title</em> &mdash; <em>Preset Title</em>" (e.g., "Urban Context &mdash; Roads, buildings &amp; trees"). Duplicate TagSpecs are removed before query construction.</td></tr>
-<tr><td><code>EXTENT</code></td><td>QgsProcessingParameterExtent</td><td>Geographic extent defining the download bounding box. Must be within 100 km&sup2;. Automatically transformed to WGS84 for Overpass querying.</td></tr>
+<tr><td><code>EXTENT</code></td><td>QgsProcessingParameterExtent</td><td>Geographic extent defining the download bounding box. Automatically transformed to WGS84 for Overpass querying, and split into tiled requests when it exceeds 100 km&sup2;. Refused above 2,500 km&sup2; or 40 tiles.</td></tr>
 <tr><td><code>OUTPUT_POINTS</code></td><td>QgsProcessingParameterFeatureSink</td><td>Destination sink for point features (QgsWkbTypes.Point).</td></tr>
 <tr><td><code>OUTPUT_LINES</code></td><td>QgsProcessingParameterFeatureSink</td><td>Destination sink for line features (QgsWkbTypes.LineString).</td></tr>
 <tr><td><code>OUTPUT_POLYGONS</code></td><td>QgsProcessingParameterFeatureSink</td><td>Destination sink for polygon features (QgsWkbTypes.MultiPolygon).</td></tr>
@@ -1552,9 +1590,12 @@ contains the following 22 fields (all of type <code>QString</code>):
   <code>building=yes</code> and <code>amenity=school</code> would appear
   as a polygon in both the Buildings and Education presets if downloaded
   separately). The <code>osm_id</code> field enables cross-layer deduplication.</li>
-  <li><strong>Extent limits:</strong> The 100 km&sup2; maximum extent is
-  designed to keep response sizes manageable and respect Overpass API fair-use
-  policies. For larger areas, download multiple adjacent extents and merge.</li>
+  <li><strong>Extent limits:</strong> The 100 km&sup2; ceiling per request keeps
+  response sizes manageable and respects Overpass API fair-use policies. Larger
+  extents are no longer refused: they are split into a grid of tiles that each
+  satisfy that ceiling, fetched sequentially with a pause between them, and
+  merged by OSM identity, up to 2,500 km&sup2; and 40 requests per job. See the
+  <a href="guide-wide-area.html">wide-area guide</a>.</li>
 </ul>
 
 <h4>10.4.1 References</h4>
@@ -1721,7 +1762,7 @@ other two layers will be empty.
   <li><strong>Key-only queries:</strong> When the value field is blank,
   the algorithm retrieves all elements with that key. For high-frequency
   keys like <code>building</code> or <code>highway</code>, this can return
-  very large result sets even within the 100 km&sup2; extent. Consider
+  very large result sets even within a single 100 km&sup2; request. Consider
   specifying a value to narrow results.</li>
   <li><strong>Tag frequency analysis:</strong> Use the <code>tags_json</code>
   field to analyse the distribution of values for a given key, supporting
@@ -1997,7 +2038,9 @@ classification, output-sink, caching, and cancellation pipeline as
 <table>
 <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td><code>PLACE</code></td><td>String</td><td>Place or administrative name, maximum 120 characters. It is escaped as a name value and cannot contain raw Overpass syntax.</td></tr>
+<tr><td><code>PLACE</code></td><td>String</td><td>Place or administrative name, maximum 120 characters. Resolved by the Nominatim geocoder, with an Overpass administrative search as the fallback. It is escaped as a name value and cannot contain raw Overpass syntax.</td></tr>
+<tr><td><code>CLIP</code></td><td>Enum</td><td><code>0</code> — download the exact mapped boundary of the place using an Overpass area filter. <code>1</code> — download its rectangular extent, tiled if wide. A place with no mapped area falls back to its rectangle and reports doing so.</td></tr>
+<tr><td><code>AREA_ID</code></td><td>String, optional</td><td>An already resolved Overpass area id. When supplied, the name is not geocoded again, so a caller that has shown the user a specific match cannot end up downloading a different place. Only the relation range (3600000000–3699999999) and way range (2400000000–2499999999) are accepted; anything else is refused. An area query is filtered by <code>EXTENT</code> as well, because an area carries no size of its own and the job ceiling has to apply to something.</td></tr>
 <tr><td><code>PRESET</code></td><td>Multi-enum</td><td>One or more curated datasets. The dock exposes datasets belonging to the selected Theme as checkable items.</td></tr>
 <tr><td><code>OUTPUT_POINTS</code></td><td>FeatureSink</td><td>Temporary point output layer.</td></tr>
 <tr><td><code>OUTPUT_LINES</code></td><td>FeatureSink</td><td>Temporary line output layer.</td></tr>
@@ -2023,8 +2066,9 @@ and administrative level when available.
   <code>Izmir Konak</code> queries the full phrase and the final name token,
   retaining the supplied parent context for a useful display label.</li>
   <li><strong>Large boundaries:</strong> A valid match can still be rejected
-  if its bounding box exceeds 100 km<sup>2</sup>. This prevents a place name
-  from bypassing the normal request-area guard.</li>
+  if its bounding box exceeds 2,500 km<sup>2</sup>. This applies to boundary
+  downloads as well as rectangles, so a country-sized relation cannot bypass the
+  request-area guard by having no extent of its own.</li>
   <li><strong>Failure handling:</strong> No match, malformed place text,
   network failure, oversized response, timeout, and cancellation all produce
   an actionable Processing error without creating partial output layers.</li>
@@ -2134,8 +2178,9 @@ validation. The following design decisions enforce this:
   semicolons, brackets, parentheses, and braces — all characters with
   special meaning in Overpass QL or JSON.</li>
   <li><strong>Extent validation:</strong> Geographic bounds check (-90 to 90
-  latitude, -180 to 180 longitude), finiteness check, area limit (100 km&sup2;),
-  and non-degenerate extent check (south &lt; north, west &lt; east).</li>
+  latitude, -180 to 180 longitude), finiteness check, area limits (100 km&sup2;
+  per request, 2,500 km&sup2; per job), and non-degenerate extent check
+  (south &lt; north, west &lt; east).</li>
   <li><strong>Response validation:</strong> Type check (must be dict),
   remark check (server timeout indicator), elements list existence, element
   count limit (150,000), and per-element type check.</li>
@@ -2172,12 +2217,15 @@ validation. The following design decisions enforce this:
 <tbody>
 <tr><td>Response size</td><td>64 MB</td><td><code>MAX_RESPONSE_BYTES</code> in <code>core/query.py</code></td></tr>
 <tr><td>Feature count</td><td>150,000</td><td><code>MAX_FEATURES</code> in <code>validate_payload()</code></td></tr>
-<tr><td>Extent area</td><td>100 km&sup2;</td><td><code>MAX_BBOX_AREA_KM2</code> in <code>validate_bbox()</code></td></tr>
+<tr><td>Extent area, one request</td><td>100 km&sup2;</td><td><code>MAX_TILE_AREA_KM2</code> in <code>validate_bbox()</code></td></tr>
+<tr><td>Extent area, one job</td><td>2,500 km&sup2;</td><td><code>MAX_BBOX_AREA_KM2</code> in <code>validate_job_bbox()</code></td></tr>
+<tr><td>Requests per job</td><td>40</td><td><code>MAX_TILES</code> in <code>tile_bbox()</code></td></tr>
+<tr><td>Merged features</td><td>400,000</td><td><code>MAX_TOTAL_FEATURES</code> in <code>merge_elements()</code></td></tr>
 <tr><td>Tag selectors</td><td>32</td><td><code>MAX_SELECTORS</code> in <code>normalized_specs()</code></td></tr>
 <tr><td>Advanced filters</td><td>4</td><td><code>MAX_ADVANCED_FILTERS</code> in <code>advanced_specs()</code></td></tr>
 <tr><td>Place candidates</td><td>25</td><td><code>MAX_PLACE_RESULTS</code> in <code>core/places.py</code></td></tr>
 <tr><td>Overpass timeout</td><td>45 s</td><td><code>OVERPASS_TIMEOUT_SECONDS</code> in query rendering</td></tr>
-<tr><td>Cache entries</td><td>8</td><td><code>_CACHE_LIMIT</code> in <code>osm_algorithms.py</code></td></tr>
+<tr><td>Cache entries</td><td>24</td><td><code>_CACHE_LIMIT</code> in <code>osm_algorithms.py</code></td></tr>
 <tr><td>Cache TTL</td><td>900 s</td><td><code>_CACHE_TTL_SECONDS</code> in <code>osm_algorithms.py</code></td></tr>
 <tr><td>Tags JSON limit</td><td>~16 KB</td><td><code>compact_tags()</code> truncation</td></tr>
 </tbody>

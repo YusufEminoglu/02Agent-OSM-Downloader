@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Download OpenStreetMap data for a whole district or city in QGIS: 02Agent splits wide extents into bounded tiled requests and merges them automatically.">
+<title>Guide 3 — Cover a whole district or city · 02Agent OSM Downloader</title>
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+<div class="wrap">
+
+<nav class="topbar">
+  <span class="mark">02</span>
+  <a href="index.html">Documentation</a>
+  <span>›</span>
+  <strong>Guide 3 — Cover a whole district or city</strong>
+  <span class="spacer"></span>
+  <a href="REFERENCE_MANUAL.html">Reference manual</a>
+</nav>
+
+<p class="eyebrow">Guide 3 of 5</p>
+<h1>Cover a whole district or city</h1>
+<p class="lead">
+  One enormous Overpass query is the reliable way to get a timeout. 02Agent takes
+  the opposite approach: it keeps every individual request small and polite, and
+  covers a wide area by sending several of them in sequence, then merging the
+  answers back into single layers.
+</p>
+
+<div class="step">
+  <div>
+    <div class="step-head"><span class="step-number">1</span><h3>Frame the area and read the plan</h3></div>
+    <p>
+      Set the extent to whatever you actually want — the map view, a layer's extent,
+      or a geocoded place. The line above the Download button states the plan before
+      anything is sent.
+    </p>
+    <p>
+      In the screenshot the extent is Amsterdam's rectangle. The estimate reads
+      <strong>406.2 km² · 6 bounded requests</strong>: four times the size of a single
+      permitted request, handled as six of them.
+    </p>
+    <p>
+      That line is live. Zoom out and the request count climbs; zoom in and it drops
+      back to one. You always know the cost of a download before you start it.
+    </p>
+  </div>
+  <figure>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="images/dark_tiled.png">
+      <img src="images/light_tiled.png" alt="The run panel with Amsterdam selected as a rectangular extent, showing the estimate 406.2 square kilometres and 6 bounded requests.">
+    </picture>
+    <figcaption>A 406 km² extent, planned as six bounded requests. The estimate updates as you pan and zoom.</figcaption>
+  </figure>
+</div>
+
+<div class="step wide">
+  <div>
+    <div class="step-head"><span class="step-number">2</span><h3>What happens during the download</h3></div>
+    <p>
+      The extent is divided into a grid of roughly square tiles, each small enough to
+      be a well-behaved request. Compact tiles matter: Overpass answers a square far
+      faster than a long thin strip of the same area.
+    </p>
+    <p>
+      Tiles are then fetched one after another, never in parallel, with a pause
+      between them — a courtesy to the volunteer-run servers that makes the whole job
+      more likely to succeed. The Processing log names each tile as it starts, the
+      progress bar advances per tile, and <strong>Cancel</strong> stops the job
+      between tiles.
+    </p>
+    <p>
+      Tiles already held in the session cache are reused and skip both the network and
+      the pause, so adjusting a style and downloading the same area again is quick.
+    </p>
+  </div>
+</div>
+
+<div class="step wide">
+  <div>
+    <div class="step-head"><span class="step-number">3</span><h3>Why you do not see the seams</h3></div>
+    <p>
+      Overpass returns any object that touches a requested box, so a road, river or
+      route crossing a tile edge comes back from every tile it touches. Left alone
+      that would produce duplicated features along invisible grid lines — the classic
+      artefact of hand-rolled tiled downloads.
+    </p>
+    <p>
+      02Agent merges the responses by OpenStreetMap identity before building any
+      geometry, keeping exactly one copy of each object. A motorway spanning six tiles
+      arrives as one feature with its full geometry, not six clipped fragments. The
+      log reports the merged object count so you can see the deduplication happen.
+    </p>
+  </div>
+</div>
+
+<h2>The limits, and why they exist</h2>
+
+<div class="scroll-x">
+<table>
+  <thead><tr><th>Limit</th><th>Value</th><th>Reason</th></tr></thead>
+  <tbody>
+    <tr><td>One request</td><td>100 km²</td><td>Keeps every query well inside what a shared public Overpass instance answers comfortably.</td></tr>
+    <tr><td>One download job</td><td>2,500 km²</td><td>Past this you want a regional extract (Geofabrik and similar), not an API. The plugin says so rather than trying.</td></tr>
+    <tr><td>Requests per job</td><td>40</td><td>A hard stop on how much load one button press can generate.</td></tr>
+    <tr><td>Features per response</td><td>150,000</td><td>Guards against a single query returning an unusable amount of data.</td></tr>
+    <tr><td>Merged features per job</td><td>400,000</td><td>Guards the merge stage, so a wide request cannot exhaust memory.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Every refusal states the measured number, so it is clear how far over the line you
+  are and whether zooming in a little is enough.
+</p>
+
+<div class="note">
+  <p><strong>Practical advice for large areas</strong>
+    Ask for fewer datasets. Six tiles of "roads only" is a fast, reliable job; six
+    tiles of every urban dataset at once is a slow one. If you need everything, run
+    it as several themed downloads — they land in separate, clearly named groups.</p>
+</div>
+
+<div class="warn">
+  <p><strong>Be a good neighbour</strong>
+    The Overpass API is run by volunteers and shared by everyone. The pacing, the
+    caching and the ceilings above exist so this plugin stays a welcome client. Do not
+    loop wide downloads unattended.</p>
+</div>
+
+<div class="pager">
+  <a href="guide-place-boundary.html">← Guide 2 — Download a named place</a>
+  <a href="guide-advanced-query.html">Guide 4 — Build a structured query →</a>
+</div>
+
+<footer class="legal">
+  <p>Map data © OpenStreetMap contributors, available under the Open Database License.
+     Screenshots are real captures of the plugin's dock.</p>
+</footer>
+
+</div>
+</body>
+</html>

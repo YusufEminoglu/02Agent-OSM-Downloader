@@ -40,11 +40,19 @@
       "operation": "download_curated_osm_datasets_for_place",
       "parameters": {
         "PLACE": "validated_place_name",
+        "CLIP": "enum_from_live_algorithm",
+        "AREA_ID": "validated_osm_area_id_or_blank",
         "PRESET": "multi_enum_from_live_algorithm",
+        "EXTENT": [
+          "map_extent",
+          "layer_extent",
+          "resolved_place_extent"
+        ],
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
-      }
+      },
+      "notes": "PLACE is resolved with the OpenStreetMap Nominatim geocoder. CLIP 0 follows the mapped boundary, CLIP 1 uses the rectangular extent. AREA_ID accepts an already resolved Overpass area id so a chosen place is not geocoded a second time. EXTENT is required in every case: an area carries no size of its own, so a boundary request is filtered by the extent as well and the job area ceiling applies to it. When AREA_ID is blank the name is geocoded and EXTENT is replaced by the resolved place's rectangle."
     },
     {
       "id": "zero2agentosm:download_custom_tag",
@@ -81,8 +89,17 @@
     }
   ],
   "safety": {
-    "network_access": "pinned_overpass_mirrors_only",
-    "maximum_extent_area_km2": 100,
+    "network_access": "pinned_overpass_mirrors_and_nominatim_only",
+    "network_hosts": [
+      "overpass-api.de",
+      "overpass.kumi.systems",
+      "overpass.private.coffee",
+      "nominatim.openstreetmap.org"
+    ],
+    "maximum_extent_area_km2": 2500,
+    "maximum_single_request_area_km2": 100,
+    "maximum_requests_per_download": 40,
+    "maximum_merged_features": 400000,
     "maximum_advanced_tag_filters": 4,
     "maximum_datasets_per_request": 32,
     "advanced_match_modes": [

@@ -35,30 +35,51 @@ from ..core.catalog import (
     PRESETS,
     TagSpec,
 )
-from ..core.places import build_place_query, parse_place_candidates
+from ..core.geocoding import (
+    NOMINATIM_MIN_INTERVAL_SECONDS,
+    GeocodeError,
+    build_search_url,
+    parse_geocode_results,
+)
+from ..core.places import (
+    PlaceCandidate,
+    build_place_query,
+    parse_place_candidates,
+)
+from ..core.schema import FIELD_NAMES, feature_attributes
 from ..core.query import (
     MAX_ADVANCED_FILTERS,
+    MAX_BBOX_AREA_KM2,
     MAX_RESPONSE_BYTES,
+    MAX_TILE_AREA_KM2,
+    MAX_TILES,
     OVERPASS_ENDPOINTS,
     OVERPASS_TIMEOUT_SECONDS,
     QueryError,
     advanced_specs,
-    build_query,
-    compact_tags,
+    bbox_area_km2,
+    build_area_query,
+    build_queries,
     matching_specs,
+    merge_elements,
     normalize_tag,
     normalized_specs,
+    validate_area_id,
     validate_payload,
 )
 
 USER_AGENT = (
-    "02Agent-OSM-Downloader-QGIS/0.4.0 "
+    "02Agent-OSM-Downloader-QGIS/1.1.0 "
     "(https://github.com/YusufEminoglu/02Agent-OSM-Downloader)"
 )
 _CACHE: Dict[str, Tuple[float, Dict]] = {}
 _CACHE_LOCK = threading.RLock()
 _CACHE_TTL_SECONDS = 15 * 60
-_CACHE_LIMIT = 8
+_CACHE_LIMIT = 24
+# Overpass asks clients to leave a gap between consecutive requests.  A tiled
+# job is the only path here that issues several in a row, so it pauses between
+# tiles instead of hammering one mirror.
+_TILE_PAUSE_SECONDS = 1.0
 
 
 def _known_header(name: str):
@@ -75,17 +96,23 @@ def _status_attribute():
     return QNetworkRequest.HttpStatusCodeAttribute
 
 
-def _fetch_json(query: str, feedback) -> Dict:
+def _cached(query: str) -> Optional[Dict]:
+    """Return a live cache entry for this exact query, dropping stale ones."""
     with _CACHE_LOCK:
-        cached = _CACHE.get(query)
-        if cached is not None and (
-            time.monotonic() - cached[0] > _CACHE_TTL_SECONDS
-        ):
+        entry = _CACHE.get(query)
+        if entry is None:
+            return None
+        if time.monotonic() - entry[0] > _CACHE_TTL_SECONDS:
             _CACHE.pop(query, None)
-            cached = None
+            return None
+        return entry[1]
+
+
+def _fetch_json(query: str, feedback) -> Dict:
+    cached = _cached(query)
     if cached is not None:
         feedback.pushInfo("Using the in-session OSM cache.")
-        return cached[1]
+        return cached
 
     encoded = QUrlQuery()
     encoded.addQueryItem("data", query)
@@ -170,6 +197,129 @@ def _fetch_json(query: str, feedback) -> Dict:
         "All pinned OSM mirrors failed. Reduce the map extent or retry shortly. "
         f"Details: {detail}"
     )
+
+
+_NOMINATIM_LOCK = threading.RLock()
+_NOMINATIM_LAST_REQUEST = 0.0
+
+
+def _prepared_request(url: str) -> QNetworkRequest:
+    request = QNetworkRequest(QUrl(url))
+    if hasattr(request, "setTransferTimeout"):
+        request.setTransferTimeout((OVERPASS_TIMEOUT_SECONDS + 5) * 1000)
+    request.setRawHeader(b"Accept", b"application/json")
+    request.setRawHeader(b"User-Agent", USER_AGENT.encode("ascii"))
+    return request
+
+
+def _reply_status(reply) -> int:
+    try:
+        return int(reply.attribute(_status_attribute()))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _geocode(place: str, feedback) -> Tuple[PlaceCandidate, ...]:
+    """Look a place up with Nominatim, honouring its one-request-per-second rule."""
+    global _NOMINATIM_LAST_REQUEST
+
+    url = build_search_url(place)
+    with _NOMINATIM_LOCK:
+        elapsed = time.monotonic() - _NOMINATIM_LAST_REQUEST
+        if elapsed < NOMINATIM_MIN_INTERVAL_SECONDS:
+            time.sleep(NOMINATIM_MIN_INTERVAL_SECONDS - elapsed)
+        _NOMINATIM_LAST_REQUEST = time.monotonic()
+
+    client = QgsBlockingNetworkRequest()
+    code = client.get(_prepared_request(url), False, feedback)
+    if code != QgsBlockingNetworkRequest.NoError:
+        detail = "network request failed"
+        error_message = getattr(client, "errorMessage", None)
+        if callable(error_message):
+            detail = str(error_message()).strip() or detail
+        raise GeocodeError(f"Nominatim did not answer ({detail}).")
+    reply = client.reply()
+    status = _reply_status(reply)
+    if status and not 200 <= status < 300:
+        raise GeocodeError(f"Nominatim returned HTTP {status}.")
+    content = bytes(reply.content())
+    if len(content) > MAX_RESPONSE_BYTES:
+        raise GeocodeError("The Nominatim response was unexpectedly large.")
+    try:
+        payload = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise GeocodeError("Nominatim returned an unreadable response.") from exc
+    return parse_geocode_results(payload, place)
+
+
+def resolve_place(place: str, feedback) -> Tuple[PlaceCandidate, ...]:
+    """Resolve a place name, preferring Nominatim over the Overpass search.
+
+    Nominatim understands free-form text and ranks worldwide results, so it
+    is tried first.  The original Overpass administrative search stays as the
+    fallback, which keeps place resolution working whenever the geocoder is
+    unreachable or rate-limits the client.
+    """
+    try:
+        candidates = _geocode(place, feedback)
+        if candidates:
+            feedback.pushInfo(
+                f"Nominatim matched {len(candidates)} place(s) for '{place}'."
+            )
+            return candidates
+        feedback.pushInfo(
+            f"Nominatim found no match for '{place}'; "
+            "falling back to the OSM administrative search."
+        )
+    except (GeocodeError, ValueError) as error:
+        feedback.pushInfo(
+            f"{error} Falling back to the OSM administrative search."
+        )
+    payload = _fetch_json(build_place_query(place), feedback)
+    return parse_place_candidates(payload, place)
+
+
+def _fetch_all(
+    queries: Tuple[str, ...],
+    feedback,
+    start_progress: float = 5.0,
+    end_progress: float = 40.0,
+) -> Dict:
+    """Run every tile of a request and merge the responses.
+
+    A single-tile request behaves exactly as before.  A tiled request reports
+    per-tile progress, stays cancellable between tiles, and merges the
+    responses so an object straddling a seam appears once.
+    """
+    total = len(queries)
+    if total == 1:
+        return _fetch_json(queries[0], feedback)
+
+    feedback.pushInfo(
+        f"The extent needs {total} bounded OSM requests. "
+        "Downloading them in sequence."
+    )
+    payloads = []
+    for index, query in enumerate(queries):
+        if feedback.isCanceled():
+            raise QgsProcessingException("The OSM download was canceled.")
+        feedback.pushInfo(f"Tile {index + 1} of {total} ...")
+        payloads.append(_fetch_json(query, feedback))
+        feedback.setProgress(
+            start_progress
+            + (end_progress - start_progress) * (index + 1) / total
+        )
+        # Only pause before a tile that will actually hit the network.
+        if index + 1 < total and _cached(queries[index + 1]) is None:
+            time.sleep(_TILE_PAUSE_SECONDS)
+    try:
+        merged = merge_elements(payloads)
+    except QueryError as exc:
+        raise QgsProcessingException(str(exc)) from exc
+    feedback.pushInfo(
+        f"Merged {total} tiles into {len(merged['elements']):,} OSM objects."
+    )
+    return merged
 
 
 def _points(coordinates: object) -> List[QgsPointXY]:
@@ -349,7 +499,14 @@ def _geometry(element: Dict, kind: str) -> Optional[QgsGeometry]:
         if element.get("type") == "relation":
             return _relation_line(element)
         points = _points(element.get("geometry"))
-        return QgsGeometry.fromPolylineXY(points) if len(points) >= 2 else None
+        if len(points) < 2:
+            return None
+        geometry = QgsGeometry.fromPolylineXY(points)
+        # Route relations join into a multi-part line, so the line sink is
+        # MultiLineString.  A single-part way must be promoted to match it or
+        # the provider silently refuses the geometry.
+        geometry.convertToMultiType()
+        return geometry
     if element.get("type") == "relation":
         return _relation_polygon(element)
     ring = _closed_ring(element.get("geometry"))
@@ -362,42 +519,9 @@ def _geometry(element: Dict, kind: str) -> Optional[QgsGeometry]:
 
 def _fields() -> QgsFields:
     fields = QgsFields()
-    for name in (
-        "osm_id", "osm_type", "name", "preset_id", "theme",
-        "query_key", "query_value", "building", "highway", "amenity",
-        "landuse", "leisure", "natural", "railway", "public_transport",
-        "route", "tourism", "sport", "height", "building_levels", "tags_json",
-        "matched_tags",
-    ):
+    for name in FIELD_NAMES:
         fields.append(QgsField(name, QMetaType.Type.QString))
     return fields
-
-
-def _attributes(
-    element: Dict,
-    preset_id: str,
-    theme: str,
-    matches: Tuple[TagSpec, ...],
-) -> List[str]:
-    tags = element.get("tags") if isinstance(element.get("tags"), dict) else {}
-    first_match = matches[0]
-    matched_tags = {
-        match.key: str(tags.get(match.key, match.value))
-        for match in matches
-    }
-    return [
-        str(element.get("id", "")), str(element.get("type", "")),
-        str(tags.get("name", "")), preset_id, theme, first_match.key,
-        str(tags.get(first_match.key, first_match.value)), str(tags.get("building", "")),
-        str(tags.get("highway", "")), str(tags.get("amenity", "")),
-        str(tags.get("landuse", "")), str(tags.get("leisure", "")),
-        str(tags.get("natural", "")), str(tags.get("railway", "")),
-        str(tags.get("public_transport", "")), str(tags.get("tourism", "")),
-        str(tags.get("route", "")), str(tags.get("sport", "")),
-        str(tags.get("height", "")),
-        str(tags.get("building:levels", "")), compact_tags(tags),
-        json.dumps(matched_tags, ensure_ascii=False, sort_keys=True),
-    ]
 
 
 class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
@@ -444,8 +568,11 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
     def shortHelpString(self) -> str:
         return (
             "Downloads a bounded OSM request through three pinned Overpass "
-            "mirrors. The extent is limited to 100 km². No raw query, URL, "
-            "path, API key, or external dependency is accepted."
+            f"mirrors. One request covers {MAX_TILE_AREA_KM2:,.0f} km²; a wider "
+            "extent is split into tiled requests and merged, up to "
+            f"{MAX_BBOX_AREA_KM2:,.0f} km² and {MAX_TILES} requests per "
+            "download. No raw query, URL, path, API key, or external "
+            "dependency is accepted."
         )
 
     def _add_common_parameters(self) -> None:
@@ -473,6 +600,23 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
     ) -> Tuple[str, str, Tuple[TagSpec, ...], str]:
         raise NotImplementedError
 
+    def _build_queries(
+        self,
+        specs: Tuple[TagSpec, ...],
+        bbox: Tuple[float, float, float, float],
+        match_mode: str,
+        feedback,
+    ) -> Tuple[str, ...]:
+        """Return every bounded request needed to cover the extent."""
+        area = bbox_area_km2(*bbox)
+        queries = build_queries(specs, bbox, match_mode)
+        feedback.pushInfo(
+            f"Request extent: {area:,.1f} km² "
+            f"({len(queries)} bounded OSM request"
+            f"{'s' if len(queries) != 1 else ''})."
+        )
+        return queries
+
     def processAlgorithm(self, parameters, context, feedback):
         preset_id, theme, specs, match_mode = self._request(parameters, context)
         extent = self.parameterAsExtent(parameters, self.EXTENT, context)
@@ -497,7 +641,7 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
                 wgs_extent.yMinimum(), wgs_extent.xMinimum(),
                 wgs_extent.yMaximum(), wgs_extent.xMaximum(),
             )
-            query = build_query(specs, bbox, match_mode)
+            queries = self._build_queries(specs, bbox, match_mode, feedback)
         except QueryError as exc:
             raise QgsProcessingException(str(exc)) from exc
 
@@ -507,7 +651,7 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
                 self.OUTPUT_POINTS, QgsWkbTypes.Type.Point,
             ),
             "line": (
-                self.OUTPUT_LINES, QgsWkbTypes.Type.LineString,
+                self.OUTPUT_LINES, QgsWkbTypes.Type.MultiLineString,
             ),
             "polygon": (
                 self.OUTPUT_POLYGONS, QgsWkbTypes.Type.MultiPolygon,
@@ -527,7 +671,7 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
             destinations[name] = destination
 
         feedback.setProgress(5)
-        payload = _fetch_json(query, feedback)
+        payload = _fetch_all(queries, feedback)
         feedback.setProgress(40)
         to_target = (
             QgsCoordinateTransform(
@@ -551,7 +695,7 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
             feature = QgsFeature(fields)
             feature.setGeometry(geometry)
             feature.setAttributes(
-                _attributes(element, preset_id, theme, matches)
+                feature_attributes(element, preset_id, theme, matches)
             )
             if not sinks[kind].addFeature(
                 feature, QgsFeatureSink.Flag.FastInsert
@@ -567,6 +711,14 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
             f"{counts['point']:,} points, {counts['line']:,} lines and "
             f"{counts['polygon']:,} polygons."
         )
+        if not any(counts.values()):
+            # An empty result is a successful request, so say why it can
+            # happen rather than handing back three blank layers in silence.
+            feedback.pushInfo(
+                "The request succeeded but matched nothing. Either this area "
+                "has none of these tags mapped, or the boundary used for the "
+                "request covers no data."
+            )
         feedback.setProgress(100)
         return destinations
 
@@ -603,8 +755,18 @@ class DownloadPresetAlgorithm(_BaseDownloadAlgorithm):
 
 class DownloadPlaceAlgorithm(DownloadPresetAlgorithm):
     PLACE = "PLACE"
+    CLIP = "CLIP"
+    AREA_ID = "AREA_ID"
     ALGORITHM_NAME = "download_place"
     DISPLAY_NAME = "Download curated OSM datasets for a named place"
+    CLIP_OPTIONS = (
+        "Exact mapped boundary of the place",
+        "Rectangular extent of the place",
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._area_id = 0
 
     def initAlgorithm(self, _configuration=None) -> None:
         self.addParameter(
@@ -613,33 +775,99 @@ class DownloadPlaceAlgorithm(DownloadPresetAlgorithm):
                 "Place or administrative name",
             )
         )
+        self.addParameter(
+            QgsProcessingParameterEnum(
+                self.CLIP,
+                "Download boundary",
+                options=list(self.CLIP_OPTIONS),
+                defaultValue=0,
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterString(
+                self.AREA_ID,
+                "Resolved OSM area id (leave blank to geocode the name)",
+                defaultValue="",
+                optional=True,
+            )
+        )
         super().initAlgorithm(_configuration)
+
+    def shortHelpString(self) -> str:
+        return (
+            "Resolves a place name with the OpenStreetMap Nominatim geocoder "
+            "and downloads the selected datasets for it. When the place is a "
+            "mapped boundary, the request follows that boundary instead of a "
+            "rectangle; otherwise the rectangular extent is split into "
+            "bounded tiles as needed."
+        )
+
+    def _build_queries(self, specs, bbox, match_mode, feedback):
+        if not self._area_id:
+            return super()._build_queries(specs, bbox, match_mode, feedback)
+        # An area carries no size of its own, so the request is filtered by the
+        # extent as well.  `build_area_query` enforces the job ceiling on that
+        # extent, which is what stops a caller pairing a country-sized area id
+        # with a tiny extent and issuing an unbounded request.
+        feedback.pushInfo(
+            "Clipping the request to the mapped boundary of the place "
+            f"({bbox_area_km2(*bbox):,.0f} km² extent, one boundary request)."
+        )
+        return (build_area_query(specs, self._area_id, bbox, match_mode),)
 
     def processAlgorithm(self, parameters, context, feedback):
         place = self.parameterAsString(parameters, self.PLACE, context).strip()
         if not place:
             raise QgsProcessingException("Enter a place or administrative name.")
-        try:
-            payload = _fetch_json(build_place_query(place), feedback)
-            candidates = parse_place_candidates(payload, place)
-        except (QueryError, ValueError) as exc:
-            raise QgsProcessingException(str(exc)) from exc
-        if not candidates:
-            raise QgsProcessingException(
-                f"No administrative place matched '{place}'. Try a fuller name."
-            )
-        candidate = candidates[0]
-        south, west, north, east = candidate.bbox
-        feedback.pushInfo(
-            f"Resolved place: {candidate.label}"
-            + (f" (admin level {candidate.admin_level})" if candidate.admin_level else "")
-        )
+        clip_index = self.parameterAsEnum(parameters, self.CLIP, context)
+        if clip_index < 0 or clip_index >= len(self.CLIP_OPTIONS):
+            raise QgsProcessingException("The download boundary is not valid.")
+        resolved = self.parameterAsString(
+            parameters, self.AREA_ID, context
+        ).strip()
         working = dict(parameters)
-        working[self.EXTENT] = QgsReferencedRectangle(
-            QgsRectangle(west, south, east, north),
-            QgsCoordinateReferenceSystem("EPSG:4326"),
-        )
-        return super().processAlgorithm(working, context, feedback)
+
+        if resolved:
+            # The caller already chose a specific place, so re-geocoding the
+            # name could silently pick a different one.
+            try:
+                self._area_id = (
+                    validate_area_id(resolved) if clip_index == 0 else 0
+                )
+            except QueryError as exc:
+                raise QgsProcessingException(str(exc)) from exc
+            feedback.pushInfo(f"Using the boundary already resolved for '{place}'.")
+        else:
+            try:
+                candidates = resolve_place(place, feedback)
+            except (QueryError, ValueError) as exc:
+                raise QgsProcessingException(str(exc)) from exc
+            if not candidates:
+                raise QgsProcessingException(
+                    f"No place matched '{place}'. Try a fuller name, for "
+                    "example 'Konak, Izmir, Turkey'."
+                )
+            candidate = candidates[0]
+            south, west, north, east = candidate.bbox
+            detail = f"Resolved place: {candidate.label}"
+            if candidate.admin_level:
+                detail = f"{detail} (admin level {candidate.admin_level})"
+            feedback.pushInfo(f"{detail} — via {candidate.source}.")
+            self._area_id = candidate.area_id if clip_index == 0 else 0
+            if not self._area_id and clip_index == 0:
+                feedback.pushInfo(
+                    "This place has no mapped boundary; using its rectangular "
+                    "extent instead."
+                )
+            working[self.EXTENT] = QgsReferencedRectangle(
+                QgsRectangle(west, south, east, north),
+                QgsCoordinateReferenceSystem("EPSG:4326"),
+            )
+
+        try:
+            return super().processAlgorithm(working, context, feedback)
+        finally:
+            self._area_id = 0
 
 
 class DownloadCustomTagAlgorithm(_BaseDownloadAlgorithm):

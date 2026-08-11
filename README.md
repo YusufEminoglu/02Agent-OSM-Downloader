@@ -10,13 +10,23 @@ The plugin publishes a versioned, machine-readable
 [Agent Protocol v1](AGENT_PROTOCOL.md). Its stable transport is the live QGIS
 Processing registry rather than plugin UI automation.
 
-Version 1.0.0 is the stable public release. The plugin is designed for bounded,
-reviewable downloads: results are temporary QGIS layers until you explicitly
-save or export them.
+The plugin is designed for bounded, reviewable downloads: results are temporary
+QGIS layers until you explicitly save or export them.
 
 ## 📖 Documentation
 
-**[User & Technical Reference Manual](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/)** — a practical getting-started guide, complete feature reference, parameter documentation, named-place guidance, and reliability troubleshooting. Hosted on GitHub Pages.
+**[Documentation site](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/)** —
+five illustrated task guides built from real screenshots of the dock, plus the
+complete user and technical reference manual.
+
+| Guide | What it covers |
+| --- | --- |
+| [Your first download](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/guide-first-download.html) | Theme, datasets, extent, results |
+| [Download a named place](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/guide-place-boundary.html) | Geocoder matches and exact boundaries |
+| [Cover a whole district or city](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/guide-wide-area.html) | Tiled requests, merging and limits |
+| [Build a structured query](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/guide-advanced-query.html) | ANY/ALL matching and the query preview |
+| [Commands, styling and agents](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/guide-command-and-agent.html) | English commands, 16 map styles, Processing endpoints |
+| [Reference manual](https://yusufeminoglu.github.io/02Agent-OSM-Downloader/REFERENCE_MANUAL.html) | Query grammar, tag semantics, cache and security model |
 
 
 ## What it provides
@@ -70,17 +80,33 @@ save or export them.
 - A four-filter advanced builder with ANY/OR and ALL/AND matching, mixed or
   geometry-specific requests, loadable examples, key/value suggestions,
   filter clearing, a live filter count and an exact query preview.
-- A place-aware Processing endpoint that resolves administrative names through
-  pinned Overpass mirrors and uses the best administrative boundary returned by
-  OSM. The normal 100 km² request ceiling still applies.
-- Current-map and active-layer extent modes.
+- **Nominatim place search.** Type any place name the OpenStreetMap geocoder
+  understands. Every match is listed with its address context and administrative
+  level, selecting one zooms the canvas, and the match you confirm is the one
+  that downloads. If the geocoder is unreachable the original Overpass
+  administrative search takes over.
+- **Exact administrative-boundary downloads.** When the chosen place has a mapped
+  boundary, the request is filtered by that OSM area rather than a rectangle, so
+  a district download stops at the district edge instead of pulling in the
+  corners of its bounding box. Places with no mapped area fall back to their
+  rectangle and say so.
+- **Tiled wide extents.** Anything larger than one bounded request is split into
+  a grid of roughly square tiles, downloaded in sequence with per-tile progress
+  and cancellation, then merged by OSM identity so a road crossing a tile seam
+  stays one feature. One job covers up to 2,500 km² in at most 40 requests.
+- A live request estimate above the Download button — the area in km² and the
+  number of bounded requests — updated as you pan and zoom, so an oversized
+  extent is visible before you start rather than after a failure.
+- Current-map, active-layer and geocoded-place extent modes.
 - Separate temporary point, line and polygon result layers.
 - A single compound Overpass request per preset, rather than one request per
   tag.
-  - Three pinned HTTPS Overpass mirrors with per-mirror diagnostics and automatic
-    failover, QGIS proxy support, cancellation, a
-  15-minute session cache, a 100 km² area ceiling, a 64 MB response ceiling and
-  a 150,000-element ceiling.
+- Three pinned HTTPS Overpass mirrors with per-mirror diagnostics and automatic
+  failover, plus the Nominatim geocoder — four fixed hosts and no way to point
+  the plugin anywhere else. QGIS proxy support, cancellation, a 15-minute
+  session cache, a 100 km² ceiling per request and 2,500 km² per job, a 64 MB
+  response ceiling, a 150,000-element response ceiling and a 400,000-feature
+  merge ceiling.
 
 No raw Overpass QL, arbitrary URL, user path, API key, pip package or QuickOSM
 installation is accepted or required.

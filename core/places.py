@@ -19,6 +19,32 @@ class PlaceCandidate:
     kind: str
     admin_level: str
     bbox: Tuple[float, float, float, float]
+    osm_type: str = ""
+    osm_id: int = 0
+    source: str = "overpass"
+    has_area: bool = False
+
+    @property
+    def area_id(self) -> int:
+        """Return this place's Overpass area id, or 0 when it has none.
+
+        Overpass derives an area from the OSM object that describes the
+        boundary, which lets a download follow the real administrative edge
+        instead of the corners of a bounding box.
+
+        `has_area` matters as much as the object type.  Overpass only builds
+        areas for boundary and place polygons, so a river or route relation
+        would otherwise produce an in-range id that matches nothing — and an
+        area query that matches nothing returns an empty download with no
+        error to explain it.
+        """
+        if self.osm_id <= 0 or not self.has_area:
+            return 0
+        if self.osm_type == "relation":
+            return 3_600_000_000 + self.osm_id
+        if self.osm_type == "way":
+            return 2_400_000_000 + self.osm_id
+        return 0
 
 
 def normalize_place_name(value: object) -> str:
@@ -138,6 +164,10 @@ def parse_place_candidates(payload: object, requested: object) -> Tuple[PlaceCan
         if bbox is None or key in seen:
             continue
         seen.add(key)
+        try:
+            osm_id = int(element.get("id") or 0)
+        except (TypeError, ValueError):
+            osm_id = 0
         candidates.append(
             (
                 _score(tags, name, element),
@@ -147,6 +177,13 @@ def parse_place_candidates(payload: object, requested: object) -> Tuple[PlaceCan
                     "administrative" if tags.get("boundary") == "administrative" else str(tags.get("place") or "place"),
                     str(tags.get("admin_level") or ""),
                     bbox,
+                    str(element.get("type") or ""),
+                    osm_id,
+                    "overpass",
+                    # This query only ever asks for administrative ways and
+                    # relations, plus place nodes; only the former have areas.
+                    tags.get("boundary") == "administrative"
+                    and element.get("type") in ("relation", "way"),
                 ),
             )
         )

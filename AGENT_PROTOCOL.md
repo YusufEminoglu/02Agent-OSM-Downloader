@@ -26,9 +26,20 @@ stable public endpoints are:
 - `zero2agentosm:download_custom_tag`
 - `zero2agentosm:download_advanced`
 
-`download_place` first resolves a validated administrative name through the
-pinned Overpass mirrors, then applies the same bounded extent and temporary
-output contract as `download_preset`.
+`download_place` resolves a validated place name through the OpenStreetMap
+Nominatim geocoder, falling back to a pinned-Overpass administrative search,
+then applies the same bounded extent and temporary output contract as
+`download_preset`. Two extra parameters control how the place is used:
+
+- `CLIP` — `0` filters the request by the place's exact mapped boundary using
+  an Overpass area, so results stop at the administrative edge. `1` uses the
+  place's rectangular extent instead. A place with no mapped area falls back to
+  its rectangle and reports doing so.
+- `AREA_ID` — an already resolved Overpass area id, optional. When supplied the
+  name is not geocoded a second time, so a caller that has shown the user a
+  specific match cannot end up downloading a different place. Only the relation
+  range (3600000000–3699999999) and the way range (2400000000–2499999999) are
+  accepted.
 
 ## Output contract
 
@@ -38,9 +49,14 @@ the dock, while Processing callers receive the declared sinks.
 
 ## Safety contract
 
-- Extents come only from the current map or an existing project layer.
-- Download area is limited to 100 square kilometres.
-- Network requests use pinned Overpass mirrors.
+- Extents come only from the current map, an existing project layer, or a
+  geocoded place name.
+- One request covers at most 100 square kilometres. A wider extent is split
+  into tiled requests, bounded at 2,500 square kilometres, 40 requests and
+  400,000 merged features per download.
+- Network requests reach four fixed hosts and no others: the three pinned
+  Overpass mirrors and the Nominatim geocoder. Geocoding sends only the place
+  name, percent-encoded, no more than once per second.
 - Raw query text, arbitrary URLs, file paths and API keys are not parameters.
 - Advanced requests expose at most four validated key/value rows, a fixed
   ANY/ALL enum and a fixed geometry-scope enum.

@@ -621,7 +621,7 @@ def interpret_prompt(text: object) -> PromptIntent:
         word.startswith("tree") for word in words
     )
     preset_id, confidence = _best_preset(normalized)
-    if has_road and has_building:
+    if has_road and (has_building or has_tree):
         preset_id, confidence = "urban_context", 1.0
     place_name = _extract_place(raw, preset_id)
     if place_name:

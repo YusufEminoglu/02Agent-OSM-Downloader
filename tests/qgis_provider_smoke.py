@@ -71,10 +71,25 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             dock_color_tokens,
             dock_stylesheet,
         )
+        from zero2agent_osm_downloader.processing import osm_algorithms
         from zero2agent_osm_downloader.processing.osm_algorithms import (
             _CACHE,
             _relation_polygon,
         )
+
+        # This test seeds every response it needs.  Without this guard a cache
+        # key that quietly stops matching turns a deterministic check into a
+        # live Overpass download that appears to hang; make it fail instead.
+        def _cache_only(query, _feedback):
+            payload = osm_algorithms._cached(query)
+            if payload is None:
+                raise RuntimeError(
+                    "A smoke-test query was not seeded into the cache:\n"
+                    f"{query}"
+                )
+            return payload
+
+        osm_algorithms._fetch_json = _cache_only
         from qgis.PyQt.QtGui import QColor, QPalette
         from qgis.PyQt.QtWidgets import QProgressBar
 
@@ -469,12 +484,252 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             raise RuntimeError(
                 f"Unexpected advanced output counts: {advanced_counts}"
             )
+
+        tiled = self._check_wide_extent_tiling(context, feedback)
+        boundary = self._check_place_boundary_download(context, feedback)
         return {
             "RESULT": (
-                "Urban form produced 1/1/1 and advanced ALL filtering "
-                "produced 0/0/1."
+                "Urban form produced 1/1/1, advanced ALL filtering produced "
+                f"0/0/1, {tiled}, and {boundary}."
             )
         }
+
+    @staticmethod
+    def _route_relation(identifier: int, offset: float) -> dict:
+        """A route relation split across two member ways, as Overpass sends it."""
+        return {
+            "type": "relation",
+            "id": identifier,
+            "tags": {"route": "bus", "name": f"Line {identifier}"},
+            "members": [
+                {
+                    "type": "way",
+                    "role": "",
+                    "geometry": [
+                        {"lat": 38.4100 + offset, "lon": 27.1100},
+                        {"lat": 38.4100 + offset, "lon": 27.1150},
+                    ],
+                },
+                {
+                    "type": "way",
+                    "role": "",
+                    "geometry": [
+                        {"lat": 38.4100 + offset, "lon": 27.2500},
+                        {"lat": 38.4100 + offset, "lon": 27.2550},
+                    ],
+                },
+            ],
+        }
+
+    def _check_wide_extent_tiling(self, context, feedback) -> str:
+        """A city-scale extent must tile, merge and keep multi-part lines."""
+        import processing
+
+        from zero2agent_osm_downloader.core.catalog import PRESETS, get_preset
+        from zero2agent_osm_downloader.core.query import build_queries
+        from zero2agent_osm_downloader.processing.osm_algorithms import _CACHE
+
+        wide_bbox = (38.40, 27.10, 38.55, 27.30)
+        specs = get_preset("urban_transit").tags
+        queries = build_queries(specs, wide_bbox)
+        if len(queries) < 4:
+            raise RuntimeError(
+                f"A {len(queries)}-tile plan does not exercise tiling."
+            )
+        # The same relation is returned by every tile it touches; each tile
+        # also carries one stop of its own.
+        shared_relation = self._route_relation(500, 0.0)
+        for index, query in enumerate(queries):
+            _CACHE[query] = (
+                time.monotonic(),
+                {
+                    "elements": [
+                        dict(shared_relation),
+                        {
+                            "type": "node",
+                            "id": 600 + index,
+                            "lat": 38.4100,
+                            "lon": 27.1100,
+                            "tags": {
+                                "highway": "bus_stop",
+                                "name": f"Stop {index}",
+                            },
+                        },
+                    ]
+                },
+            )
+
+        results = processing.run(
+            "zero2agentosm:download_preset",
+            {
+                "PRESET": [
+                    index
+                    for index, preset in enumerate(PRESETS)
+                    if preset.preset_id == "urban_transit"
+                ],
+                "EXTENT": QgsReferencedRectangle(
+                    QgsRectangle(27.10, 38.40, 27.30, 38.55),
+                    QgsCoordinateReferenceSystem.fromEpsgId(4326),
+                ),
+                "OUTPUT_POINTS": "TEMPORARY_OUTPUT",
+                "OUTPUT_LINES": "TEMPORARY_OUTPUT",
+                "OUTPUT_POLYGONS": "TEMPORARY_OUTPUT",
+            },
+            context=context,
+            feedback=feedback,
+            is_child_algorithm=True,
+        )
+        points = QgsProcessingUtils.mapLayerFromString(
+            results["OUTPUT_POINTS"], context, True
+        )
+        lines = QgsProcessingUtils.mapLayerFromString(
+            results["OUTPUT_LINES"], context, True
+        )
+        if points is None or lines is None:
+            raise RuntimeError("The tiled download produced no layers.")
+        if points.featureCount() != len(queries):
+            raise RuntimeError(
+                f"Expected one stop per tile, got {points.featureCount()} "
+                f"from {len(queries)} tiles."
+            )
+        # The relation appears in every tile and must survive as one feature.
+        if lines.featureCount() != 1:
+            raise RuntimeError(
+                f"Tile seams duplicated a relation into "
+                f"{lines.featureCount()} features."
+            )
+        feature = next(lines.getFeatures())
+        geometry = feature.geometry()
+        if geometry.isEmpty() or not geometry.isMultipart():
+            raise RuntimeError(
+                "A multi-part route relation did not reach the line sink."
+            )
+        if len(geometry.asMultiPolyline()) != 2:
+            raise RuntimeError(
+                "The disjoint parts of a route relation were dropped."
+            )
+        if feature["route"] != "bus" or feature["tourism"] != "":
+            raise RuntimeError(
+                f"Attribute columns are misaligned: route={feature['route']!r} "
+                f"tourism={feature['tourism']!r}."
+            )
+        return (
+            f"a {len(queries)}-tile extent merged to "
+            f"{points.featureCount()} stops and 1 multi-part route"
+        )
+
+    def _check_place_boundary_download(self, context, feedback) -> str:
+        """A resolved place must download through an area filter, not a box."""
+        import processing
+
+        from zero2agent_osm_downloader.core.catalog import PRESETS, get_preset
+        from zero2agent_osm_downloader.core.query import build_area_query
+        from zero2agent_osm_downloader.processing.osm_algorithms import _CACHE
+
+        area_id = 3_600_223_474
+        place_bbox = (38.4100, 27.1200, 38.4160, 27.1260)
+        query = build_area_query(
+            get_preset("urban_form").tags, area_id, place_bbox
+        )
+        if "area(3600223474)->.searchArea;" not in query:
+            raise RuntimeError("The boundary query lost its area filter.")
+        if "(area.searchArea)(38.4100000," not in query:
+            raise RuntimeError(
+                "The boundary query is not also bounded by the extent."
+            )
+        _CACHE[query] = (
+            time.monotonic(),
+            {
+                "elements": [
+                    {
+                        "type": "way",
+                        "id": 900,
+                        "tags": {"building": "yes", "name": "Inside boundary"},
+                        "geometry": [
+                            {"lat": 38.4130, "lon": 27.1230},
+                            {"lat": 38.4130, "lon": 27.1240},
+                            {"lat": 38.4140, "lon": 27.1240},
+                            {"lat": 38.4140, "lon": 27.1230},
+                            {"lat": 38.4130, "lon": 27.1230},
+                        ],
+                    }
+                ]
+            },
+        )
+        results = processing.run(
+            "zero2agentosm:download_place",
+            {
+                "PLACE": "Konak, Izmir",
+                "CLIP": 0,
+                # Pre-resolved, so the run must not call the geocoder at all.
+                "AREA_ID": str(area_id),
+                "PRESET": [
+                    index
+                    for index, preset in enumerate(PRESETS)
+                    if preset.preset_id == "urban_form"
+                ],
+                "EXTENT": QgsReferencedRectangle(
+                    QgsRectangle(27.1200, 38.4100, 27.1260, 38.4160),
+                    QgsCoordinateReferenceSystem.fromEpsgId(4326),
+                ),
+                "OUTPUT_POINTS": "TEMPORARY_OUTPUT",
+                "OUTPUT_LINES": "TEMPORARY_OUTPUT",
+                "OUTPUT_POLYGONS": "TEMPORARY_OUTPUT",
+            },
+            context=context,
+            feedback=feedback,
+            is_child_algorithm=True,
+        )
+        polygons = QgsProcessingUtils.mapLayerFromString(
+            results["OUTPUT_POLYGONS"], context, True
+        )
+        if polygons is None or polygons.featureCount() != 1:
+            raise RuntimeError(
+                "The pre-resolved boundary download produced no polygon."
+            )
+        if next(polygons.getFeatures())["name"] != "Inside boundary":
+            raise RuntimeError("The boundary download returned the wrong feature.")
+
+        # An area carries no size of its own, so the extent ceiling must still
+        # apply when one is supplied. Otherwise any caller could pair a
+        # country-sized area id with a small extent and escape every limit.
+        from qgis.core import QgsProcessingException
+
+        refused = False
+        try:
+            processing.run(
+                "zero2agentosm:download_place",
+                {
+                    "PLACE": "Oversized",
+                    "CLIP": 0,
+                    "AREA_ID": str(area_id),
+                    "PRESET": [
+                        index
+                        for index, preset in enumerate(PRESETS)
+                        if preset.preset_id == "urban_form"
+                    ],
+                    "EXTENT": QgsReferencedRectangle(
+                        QgsRectangle(20.0, 30.0, 24.0, 34.0),
+                        QgsCoordinateReferenceSystem.fromEpsgId(4326),
+                    ),
+                    "OUTPUT_POINTS": "TEMPORARY_OUTPUT",
+                    "OUTPUT_LINES": "TEMPORARY_OUTPUT",
+                    "OUTPUT_POLYGONS": "TEMPORARY_OUTPUT",
+                },
+                context=context,
+                feedback=feedback,
+                is_child_algorithm=True,
+            )
+        except QgsProcessingException:
+            refused = True
+        if not refused:
+            raise RuntimeError(
+                "An oversized boundary request bypassed the extent ceiling."
+            )
+        return (
+            "a pre-resolved boundary download produced 1 polygon and an "
+            "oversized one was refused"
+        )
 
 
 def main() -> bool:

@@ -1,5 +1,67 @@
 # Changelog
 
+## [1.1.0] - 2026-08-11
+
+### Added
+
+- **Wide extents.** A request larger than one bounded query is split into a grid
+  of tiles, downloaded in sequence with per-tile progress and cancellation, then
+  merged by OpenStreetMap identity so an object crossing a tile seam stays one
+  feature. A single download now reaches 2,500 km², up from 100 km².
+- **Nominatim place search.** Place names are resolved by the OpenStreetMap
+  geocoder, which understands free-form text worldwide. Every match is listed
+  with its address context and administrative level, and selecting one zooms the
+  canvas; the previous Overpass administrative search remains the fallback.
+- **Exact boundary downloads.** When a place has a mapped boundary, the request
+  is filtered by that area instead of a rectangle, so a district download stops
+  at the district edge. `download_place` gains `CLIP` and `AREA_ID` parameters,
+  and the dock passes the match you chose rather than geocoding the name twice.
+- A live request estimate above the Download button, reporting the area in km²
+  and how many bounded requests it needs, updated as the map is panned and
+  zoomed.
+- Five illustrated task guides on the documentation site, built from real
+  screenshots of the dock, plus a documentation landing page.
+
+### Fixed
+
+- **The `route` and `tourism` attribute columns held each other's values.** Every
+  downloaded feature was affected, which broke transit-route and tourism map
+  styling. The field list and the value list are now generated from one table so
+  they cannot drift apart again.
+- **Multi-part route relations could be lost.** The line output declared
+  `LineString` while joined route relations produce `MultiLineString`; the output
+  is now `MultiLineString` and single-part ways are promoted to match.
+- The Command tab claimed no data ever leaves QGIS, which stopped being true for
+  place lookups; it now states exactly what is sent. The Agent tab said two
+  Processing endpoints where there are four.
+- A command naming roads and trees without buildings no longer misses the Urban
+  Context preset.
+- A boundary request is now filtered by the extent as well as the area, so a
+  caller cannot pair a country-sized area id with a small extent and escape the
+  area ceiling. An area carries no size of its own, so the extent is required.
+- A place chosen from the match list is no longer re-resolved when its
+  rectangle is used, which could silently download a different place of the
+  same name.
+- A place with a mapped object that Overpass has no area for — a river or route
+  relation, for instance — falls back to its rectangle instead of running a
+  boundary query that matches nothing. A request that returns no features now
+  explains why rather than adding three empty layers in silence.
+- Starting a new place search clears the previous match, so a failed search can
+  no longer leave the earlier place armed for download.
+- Cancelling a place search no longer leaves the Search button disabled for the
+  rest of the session.
+- A project CRS that cannot represent the current view no longer raises a
+  transform error on every pan while the request estimate refreshes.
+
+### Changed
+
+- Extent area is measured at its worst case rather than at the mean latitude, so
+  a tall box can no longer slip an oversized tile past the limit.
+- The session response cache holds 24 entries instead of 8, and a tiled job skips
+  its politeness pause for tiles already cached.
+- `agent_protocol.json` declares every host the plugin contacts and the real
+  limits, and the test suite asserts the manifest against the enforced values.
+
 ## [1.0.0] - 2026-08-10
 
 This is the first stable public release and the first release prepared for

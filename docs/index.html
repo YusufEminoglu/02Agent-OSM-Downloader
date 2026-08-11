@@ -1,1 +1,109 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="description" content="02Agent OSM Downloader user and technical reference manual"><meta http-equiv="refresh" content="0;url=REFERENCE_MANUAL.html"><title>02Agent OSM Downloader — User &amp; Technical Manual</title></head><body><p>Redirecting to <a href="REFERENCE_MANUAL.html">02Agent OSM Downloader — User &amp; Technical Manual</a>…</p></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="02Agent OSM Downloader for QGIS — illustrated task guides and the full user and technical reference manual.">
+<title>02Agent OSM Downloader — Documentation</title>
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+<div class="wrap">
+
+<nav class="topbar">
+  <span class="mark">02</span>
+  <strong>02Agent OSM Downloader</strong>
+  <span class="spacer"></span>
+  <a href="REFERENCE_MANUAL.html">Reference manual</a>
+  <a href="https://github.com/YusufEminoglu/02Agent-OSM-Downloader">GitHub</a>
+  <a href="https://plugins.qgis.org/plugins/zero2agent_osm_downloader/">QGIS Hub</a>
+</nav>
+
+<p class="eyebrow">Documentation</p>
+<h1>Get OpenStreetMap into QGIS, without writing a query</h1>
+<p class="lead">
+  02Agent turns an area of interest into styled QGIS layers. Pick a theme, pick an
+  extent, download. Every screenshot below is a real capture of the plugin's dock,
+  not a mock-up, and the place names in them were resolved by the live geocoder.
+</p>
+
+<h2>Task guides</h2>
+<p>
+  Five short, illustrated walkthroughs. Start with the first if you have never used
+  the plugin; the rest stand alone.
+</p>
+
+<div class="cards">
+  <a class="card" href="guide-first-download.html">
+    <span class="num">Guide 1</span>
+    <h3>Your first download</h3>
+    <p>Open the dock, choose a theme and its datasets, and get styled point, line and
+      polygon layers from the current map view.</p>
+  </a>
+  <a class="card" href="guide-place-boundary.html">
+    <span class="num">Guide 2</span>
+    <h3>Download a named place</h3>
+    <p>Type a place name, pick from the ranked geocoder matches, and clip the download
+      to the real administrative boundary instead of a rectangle.</p>
+  </a>
+  <a class="card" href="guide-wide-area.html">
+    <span class="num">Guide 3</span>
+    <h3>Cover a whole district or city</h3>
+    <p>Extents larger than one polite request are split into a grid of bounded
+      requests, downloaded in sequence and merged back into single layers.</p>
+  </a>
+  <a class="card" href="guide-advanced-query.html">
+    <span class="num">Guide 4</span>
+    <h3>Build a structured query</h3>
+    <p>Combine up to four OSM tags with ANY or ALL matching, scope the geometry, and
+      read the generated Overpass query before you run it.</p>
+  </a>
+  <a class="card" href="guide-command-and-agent.html">
+    <span class="num">Guide 5</span>
+    <h3>Commands, styling and agents</h3>
+    <p>Describe a request in plain English, restyle results with 16 map themes, and
+      expose the download endpoints to SmartModeler GIS.</p>
+  </a>
+  <a class="card" href="REFERENCE_MANUAL.html">
+    <span class="num">Reference</span>
+    <h3>User &amp; technical manual</h3>
+    <p>The complete manual: query grammar, tag-matching semantics, multipolygon
+      assembly, cache design, security model and every algorithm's parameters.</p>
+  </a>
+</div>
+
+<h2>What it does at a glance</h2>
+
+<div class="scroll-x">
+<table>
+  <thead>
+    <tr><th>Capability</th><th>Detail</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Curated presets</td><td>30 presets across 15 thematic groups — networks, buildings, land use, green and blue, transit, healthcare, education, heritage and more. Several can run as one request.</td></tr>
+    <tr><td>Place search</td><td>OpenStreetMap Nominatim geocoding with ranked matches; a mapped boundary can be used as the download area itself.</td></tr>
+    <tr><td>Wide extents</td><td>Up to 100 km² in one request, and up to 2,500 km² by splitting into at most 40 bounded requests that are merged automatically.</td></tr>
+    <tr><td>Structured queries</td><td>Up to four validated key/value tag filters, ANY or ALL matching, geometry scope, and a read-only preview of the generated query.</td></tr>
+    <tr><td>Cartography</td><td>16 persistent map styles with native categorized QGIS renderers, plus OSM-highway-aware road widths and a one-click OSM basemap.</td></tr>
+    <tr><td>Automation</td><td>Four stable QGIS Processing algorithms, discoverable by SmartModeler GIS under Agent Protocol v1 with explicit user approval.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note">
+  <p><strong>Requirements</strong>
+    QGIS 3.28 or newer, including QGIS 4. No pip packages, no API keys, no
+    configuration files. Install from the QGIS Plugin Hub and open the dock from the
+    02Agent toolbar button.</p>
+</div>
+
+<footer class="legal">
+  <p>Map data © OpenStreetMap contributors, available under the Open Database License.
+     Geocoding by the OpenStreetMap Nominatim service; queries are served by public
+     Overpass API instances. Screenshots show the plugin's own interface.</p>
+  <p>02Agent OSM Downloader is released under the GPL-3 licence.</p>
+</footer>
+
+</div>
+</body>
+</html>

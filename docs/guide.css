@@ -1,0 +1,343 @@
+/* Shared styling for the 02Agent OSM Downloader task guides.
+   Palette follows REFERENCE_MANUAL.html so the whole site reads as one book. */
+
+:root {
+  --bg-primary: #fafbfc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0f2f5;
+  --text-primary: #1a1a2e;
+  --text-secondary: #4a4a5a;
+  --text-muted: #6b7280;
+  --border: #d1d5db;
+  --border-light: #e5e7eb;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-light: #dbeafe;
+  --brand: #2f7d5b;
+  --brand-light: #e6f2ec;
+  --code-bg: #f1f5f9;
+  --code-text: #0f172a;
+  --table-header-bg: #eef2ff;
+  --table-header-text: #1e3a5f;
+  --table-stripe: #f8fafc;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.09);
+  --radius: 6px;
+  --radius-lg: 12px;
+  --shot-frame: #e5e7eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-primary: #0f1117;
+    --bg-secondary: #161822;
+    --bg-tertiary: #1e2030;
+    --text-primary: #e2e4e9;
+    --text-secondary: #b0b3bd;
+    --text-muted: #8b8f9c;
+    --border: #2d3040;
+    --border-light: #252838;
+    --accent: #60a5fa;
+    --accent-hover: #93bbfd;
+    --accent-light: #1e293b;
+    --brand: #4dad7a;
+    --brand-light: #16281f;
+    --code-bg: #1e2235;
+    --code-text: #e2e8f0;
+    --table-header-bg: #1e2440;
+    --table-header-text: #bfd9fe;
+    --table-stripe: #1a1d2b;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.45);
+    --shot-frame: #2d3040;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg-primary: #0f1117;
+  --bg-secondary: #161822;
+  --bg-tertiary: #1e2030;
+  --text-primary: #e2e4e9;
+  --text-secondary: #b0b3bd;
+  --text-muted: #8b8f9c;
+  --border: #2d3040;
+  --border-light: #252838;
+  --accent: #60a5fa;
+  --accent-hover: #93bbfd;
+  --accent-light: #1e293b;
+  --brand: #4dad7a;
+  --brand-light: #16281f;
+  --code-bg: #1e2235;
+  --code-text: #e2e8f0;
+  --table-header-bg: #1e2440;
+  --table-header-text: #bfd9fe;
+  --table-stripe: #1a1d2b;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.45);
+  --shot-frame: #2d3040;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.7;
+  font-size: 16px;
+}
+
+.wrap {
+  max-width: 1020px;
+  margin: 0 auto;
+  padding: 28px 24px 90px;
+}
+
+/* ── Navigation ─────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 18px;
+  margin-bottom: 30px;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.86rem;
+}
+
+.topbar a { color: var(--accent); text-decoration: none; }
+.topbar a:hover { color: var(--accent-hover); text-decoration: underline; }
+.topbar .spacer { flex: 1; }
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex: none;
+}
+
+/* ── Headings ───────────────────────────────────────────────── */
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--brand);
+  margin: 0 0 6px;
+}
+
+h1 { font-size: 2.05rem; line-height: 1.2; margin: 0 0 12px; }
+h2 {
+  font-size: 1.3rem;
+  margin: 46px 0 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-light);
+}
+h3 { font-size: 1.03rem; margin: 26px 0 8px; }
+
+.lead {
+  font-size: 1.06rem;
+  color: var(--text-secondary);
+  margin: 0 0 8px;
+  max-width: 72ch;
+}
+
+p { max-width: 72ch; }
+
+a { color: var(--accent); }
+
+/* ── Step layout: prose beside a real screenshot ────────────── */
+.step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 400px);
+  gap: 30px;
+  align-items: start;
+  margin: 30px 0;
+  padding: 22px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.step.wide { grid-template-columns: minmax(0, 1fr); }
+
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.82rem;
+  flex: none;
+}
+
+.step-head h3 { margin: 0; font-size: 1.06rem; }
+.step p:last-child { margin-bottom: 0; }
+
+figure { margin: 0; }
+
+figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--shot-frame);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  background: var(--bg-tertiary);
+}
+
+figcaption {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+/* ── Cards on the hub page ──────────────────────────────────── */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+  gap: 16px;
+  margin: 26px 0;
+}
+
+.card {
+  display: block;
+  padding: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  text-decoration: none;
+  color: inherit;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--brand);
+}
+
+.card .num {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.card h3 { margin: 6px 0 6px; font-size: 1.05rem; }
+.card p { margin: 0; font-size: 0.88rem; color: var(--text-secondary); }
+
+/* ── Callouts ───────────────────────────────────────────────── */
+.note, .warn {
+  border-left: 4px solid var(--accent);
+  background: var(--accent-light);
+  padding: 14px 18px;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin: 20px 0;
+  max-width: 72ch;
+}
+
+.warn { border-left-color: #d97706; background: rgba(217, 119, 6, 0.11); }
+.note p, .warn p { margin: 0; max-width: none; font-size: 0.92rem; }
+.note strong, .warn strong { display: block; margin-bottom: 3px; }
+
+/* ── Tables and code ────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 20px 0;
+  font-size: 0.89rem;
+}
+
+thead th {
+  background: var(--table-header-bg);
+  color: var(--table-header-text);
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--border);
+}
+
+tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: top;
+}
+
+tbody tr:nth-child(even) { background: var(--table-stripe); }
+
+.scroll-x { overflow-x: auto; }
+
+code, kbd {
+  font-family: "Cascadia Code", Consolas, monospace;
+  background: var(--code-bg);
+  color: var(--code-text);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.87em;
+}
+
+pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  overflow-x: auto;
+  border: 1px solid var(--border-light);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+pre code { background: none; padding: 0; }
+
+ul, ol { max-width: 72ch; padding-left: 22px; }
+li { margin: 5px 0; }
+
+/* ── Footer ─────────────────────────────────────────────────── */
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 50px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-light);
+  font-size: 0.9rem;
+}
+
+footer.legal {
+  margin-top: 40px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-light);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+footer.legal p { max-width: none; margin: 4px 0; }
+
+@media (max-width: 820px) {
+  .step { grid-template-columns: minmax(0, 1fr); }
+  h1 { font-size: 1.7rem; }
+}

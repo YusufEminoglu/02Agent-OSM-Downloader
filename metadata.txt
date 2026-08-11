@@ -2,16 +2,16 @@
 name=02Agent OSM Downloader
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
-description=QGIS 3.28+ and QGIS 4 OpenStreetMap acquisition studio with 30 curated presets, named-place resolution, structured multi-tag queries, safe Processing endpoints and bounded temporary outputs.
-version=1.0.0
+description=QGIS 3.28+ and QGIS 4 OpenStreetMap acquisition studio with 30 curated presets, Nominatim place search, exact administrative-boundary downloads, tiled wide extents, structured multi-tag queries and safe Processing endpoints.
+version=1.1.0
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
 about=
     02Agent OSM Downloader is a stable QGIS 3.28+ and QGIS 4 acquisition studio for OpenStreetMap. Its 15 thematic groups and 30 curated presets cover urban context, street and rail networks, morphology, buildings, land use, green-blue systems, public transport, religion, tourism, heritage, sport, cycling, cars, traffic, healthcare, education, emergency services and administrative places. Urban Context connects street network, built form, trees, public transport and public-realm datasets, and datasets within a theme can be combined in one bounded request.
-    The four-tab dock provides Presets, Query, Command and Agent workflows. The English Command panel resolves dataset requests and named administrative places through pinned Overpass mirrors. A standard OpenStreetMap XYZ basemap can be added from the dock, while downloaded line layers can use OSM highway categories for distinct widths or one uniform width. The structured advanced-query panel combines up to four validated OSM tags with ANY or ALL matching, selectable geometry scope, examples, key/value suggestions and a read-only Overpass preview.
+    The four-tab dock provides Presets, Query, Command and Agent workflows. Place names are resolved by the OpenStreetMap Nominatim geocoder, which lists every match with its address context and administrative level; when the chosen place has a mapped boundary the download follows that boundary instead of a rectangle, so a district stops at the district edge. An extent wider than one bounded request is split into a grid of tiled requests, downloaded in sequence and merged so an object crossing a tile seam stays one feature, letting a single job cover up to 2,500 square kilometres. A live estimate above the Download button reports the request area and how many requests it needs. A standard OpenStreetMap XYZ basemap can be added from the dock, while downloaded line layers can use OSM highway categories for distinct widths or one uniform width. The structured advanced-query panel combines up to four validated OSM tags with ANY or ALL matching, selectable geometry scope, examples, key/value suggestions and a read-only Overpass preview.
     Sixteen persistent map styles provide live palette previews and native categorized QGIS renderers for buildings, roads, rail, transit, water, green space, trees and common points of interest. Agent Protocol v1 exposes four stable QGIS Processing endpoints that SmartModeler GIS can discover, inspect and run only after a validated proposal and explicit user approval. API keys remain in SmartModeler's process memory or encrypted QGIS vault and are never copied into this plugin.
-    Downloads use the current map or active-layer extent, three pinned Overpass mirrors with diagnostic failover, strict area, response and feature limits, cancellation, session caching and temporary point, line and polygon outputs. The plugin accepts no editable raw Overpass query, arbitrary URL, user path, API key or pip dependency. Online User Manual and Documentation: https://yusufeminoglu.github.io/02Agent-OSM-Downloader/
+    Downloads use the current map extent, the active-layer extent or a geocoded place, three pinned Overpass mirrors with diagnostic failover, strict area, request, response and feature limits, cancellation, session caching and temporary point, line and polygon outputs. Only four fixed hosts are ever contacted: the three Overpass mirrors and the Nominatim geocoder. The plugin accepts no editable raw Overpass query, arbitrary URL, user path, API key or pip dependency. Illustrated task guides and the full manual: https://yusufeminoglu.github.io/02Agent-OSM-Downloader/
 
 tracker=https://github.com/YusufEminoglu/02Agent-OSM-Downloader/issues
 repository=https://github.com/YusufEminoglu/02Agent-OSM-Downloader
@@ -27,6 +27,7 @@ hasProcessingProvider=yes
 license=GPL-3
 
 changelog=
+    1.1.0 - Add Nominatim place search with ranked matches, exact administrative-boundary downloads, tiled wide extents up to 2,500 km2 with automatic merging, a live request-size estimate and five illustrated task guides. Fix the route and tourism attribute columns holding each other's values, and preserve multi-part route relations.
     1.0.0 - Stable public release: remove the experimental flag, align Hub metadata, publish the complete user and technical documentation, and verify both QGIS runtime smoke suites.
     0.5.5 - Add OpenStreetMap, tile-service and Overpass API notices and preserve attribution metadata on the optional basemap.
     0.5.4 - Support natural-language place commands using the of connector.

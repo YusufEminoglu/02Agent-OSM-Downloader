@@ -7,8 +7,9 @@ from pathlib import Path
 import sys
 import types
 import unittest
+from urllib.parse import urlsplit
 
-from zero2agent_osm_downloader.core import smartmodeler_bridge
+from zero2agent_osm_downloader.core import geocoding, query, smartmodeler_bridge
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -45,13 +46,55 @@ class AgentProtocolTests(unittest.TestCase):
             (PLUGIN_ROOT / "agent_protocol.json").read_text(encoding="utf-8")
         )
         safety = manifest["safety"]
-        self.assertEqual(safety["maximum_extent_area_km2"], 100)
-        self.assertEqual(safety["maximum_advanced_tag_filters"], 4)
+        # The manifest is what an agent reads before proposing a run, so it
+        # must state the limits the code actually enforces.
+        self.assertEqual(
+            safety["maximum_extent_area_km2"], query.MAX_BBOX_AREA_KM2
+        )
+        self.assertEqual(
+            safety["maximum_single_request_area_km2"],
+            query.MAX_TILE_AREA_KM2,
+        )
+        self.assertEqual(
+            safety["maximum_requests_per_download"], query.MAX_TILES
+        )
+        self.assertEqual(
+            safety["maximum_merged_features"], query.MAX_TOTAL_FEATURES
+        )
+        self.assertEqual(
+            safety["maximum_advanced_tag_filters"],
+            query.MAX_ADVANCED_FILTERS,
+        )
         self.assertEqual(safety["advanced_match_modes"], ["any", "all"])
         self.assertFalse(safety["raw_query_input"])
         self.assertFalse(safety["arbitrary_url_input"])
         self.assertFalse(safety["file_path_input"])
         self.assertFalse(safety["api_key_input"])
+
+    def test_manifest_lists_every_host_the_plugin_contacts(self) -> None:
+        manifest = json.loads(
+            (PLUGIN_ROOT / "agent_protocol.json").read_text(encoding="utf-8")
+        )
+        hosts = set(manifest["safety"]["network_hosts"])
+        overpass_hosts = {
+            urlsplit(item).hostname for item in query.OVERPASS_ENDPOINTS
+        }
+        self.assertTrue(overpass_hosts <= hosts)
+        self.assertIn(geocoding.NOMINATIM_HOST, hosts)
+        # Nothing may contact a host the manifest does not declare.
+        self.assertEqual(hosts, overpass_hosts | {geocoding.NOMINATIM_HOST})
+
+    def test_place_endpoint_documents_the_boundary_parameters(self) -> None:
+        manifest = json.loads(
+            (PLUGIN_ROOT / "agent_protocol.json").read_text(encoding="utf-8")
+        )
+        place = next(
+            item for item in manifest["algorithms"]
+            if item["id"] == "zero2agentosm:download_place"
+        )
+        self.assertIn("CLIP", place["parameters"])
+        self.assertIn("AREA_ID", place["parameters"])
+        self.assertIn("Nominatim", place["notes"])
 
     def test_hub_metadata_has_rich_discovery_fields(self) -> None:
         parser = configparser.ConfigParser(interpolation=None)

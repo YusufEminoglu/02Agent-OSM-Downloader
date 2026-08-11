@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Search a place by name with Nominatim in 02Agent for QGIS and clip the OpenStreetMap download to its real administrative boundary.">
+<title>Guide 2 — Download a named place · 02Agent OSM Downloader</title>
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+<div class="wrap">
+
+<nav class="topbar">
+  <span class="mark">02</span>
+  <a href="index.html">Documentation</a>
+  <span>›</span>
+  <strong>Guide 2 — Download a named place</strong>
+  <span class="spacer"></span>
+  <a href="REFERENCE_MANUAL.html">Reference manual</a>
+</nav>
+
+<p class="eyebrow">Guide 2 of 5</p>
+<h1>Download a named place</h1>
+<p class="lead">
+  Framing a district by hand on the canvas always includes a little of its
+  neighbours and misses a little of itself. Search the place by name instead and
+  let the download follow the boundary that is actually mapped in OpenStreetMap.
+</p>
+
+<div class="step">
+  <div>
+    <div class="step-head"><span class="step-number">1</span><h3>Switch the extent to a named place</h3></div>
+    <p>
+      In <strong>Run download</strong>, set <strong>Extent</strong> to
+      <em>Named place (geocoded)</em>. A search field, a results list and a boundary
+      selector appear underneath.
+    </p>
+    <p>
+      Type any name the OpenStreetMap geocoder understands and press
+      <kbd>Enter</kbd> or <strong>Search</strong>. Free-form text is fine —
+      <code>Konak, Izmir, Turkey</code>, <code>Old Town, Prague</code>,
+      <code>Ward 5, Toronto</code>. The lookup runs in the background, so the dock
+      stays responsive.
+    </p>
+    <p>
+      The screenshot shows a real result: searching
+      <code>Konak, Izmir, Turkey</code> returned <em>Konak, Izmir, Aegean Region,
+      Turkey</em> at administrative level 6.
+    </p>
+  </div>
+  <figure>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="images/dark_place.png">
+      <img src="images/light_place.png" alt="The run panel with the extent set to Named place, the search field containing Konak Izmir Turkey, the matched result at admin level 6, and the boundary mode set to Exact mapped boundary.">
+    </picture>
+    <figcaption>A real geocoder result. The estimate reads “exact boundary of Konak inside a 68 km² rectangle · 1 request”.</figcaption>
+  </figure>
+</div>
+
+<div class="step wide">
+  <div>
+    <div class="step-head"><span class="step-number">2</span><h3>Pick the right match — you decide, not the plugin</h3></div>
+    <p>
+      Place names are ambiguous, so every match is listed rather than the first one
+      being chosen for you. Each entry shows its full address context and, where it
+      exists, its <strong>administrative level</strong> — the number that tells a
+      country from a province from a district.
+    </p>
+    <p>
+      Selecting a match zooms the canvas to it immediately, which is the fastest way
+      to confirm you have the right place before downloading anything. Boundary
+      results are ranked above streets and businesses of the same name, because a
+      download almost always wants the area.
+    </p>
+    <div class="note">
+      <p><strong>Common admin levels</strong>
+        4 is typically a state or province, 6 a county or district, 8 a municipality
+        or city, 9–10 a borough or neighbourhood. They vary by country — the value
+        comes straight from OpenStreetMap.</p>
+    </div>
+  </div>
+</div>
+
+<div class="step wide">
+  <div>
+    <div class="step-head"><span class="step-number">3</span><h3>Choose how the boundary is used</h3></div>
+    <p>
+      The last control decides what "the place" means for the request:
+    </p>
+    <ul>
+      <li>
+        <strong>Exact mapped boundary</strong> — the request is filtered by the
+        OpenStreetMap area itself, within the place's extent. Features stop at the
+        district edge, so a coastal or irregular boundary does not drag in half the
+        neighbouring town. This runs as a single request no matter how convoluted
+        the shape is.
+      </li>
+      <li>
+        <strong>Rectangular extent</strong> — the place's bounding box is used
+        instead, and is tiled if it is large (<a href="guide-wide-area.html">Guide
+        3</a>). Choose this when you deliberately want the surroundings too, or when
+        the place has no mapped boundary.
+      </li>
+    </ul>
+    <p>
+      Some places have no area to filter by — a village recorded only as a point, or
+      a name whose best match is a river or a route rather than a polygon. The plugin
+      says so in the log and falls back to the rectangle rather than running a
+      boundary query that would quietly match nothing.
+    </p>
+  </div>
+</div>
+
+<div class="step wide">
+  <div>
+    <div class="step-head"><span class="step-number">4</span><h3>Download</h3></div>
+    <p>
+      The button reads <strong>Download place datasets</strong> and the summary line
+      names the place, so there is no doubt about what will run. Results are grouped
+      and named after both the datasets and the place.
+    </p>
+    <p>
+      The match you picked is passed straight to the download. The name is not looked
+      up a second time, so the download cannot quietly resolve to a different place
+      than the one you confirmed on the map.
+    </p>
+  </div>
+</div>
+
+<h2>How the lookup works</h2>
+<p>
+  Names are resolved by the OpenStreetMap <strong>Nominatim</strong> service, the same
+  geocoder behind openstreetmap.org's search box. The plugin sends only the place name
+  you typed, to that one fixed host, at no more than one request per second in line
+  with the service's usage policy.
+</p>
+<p>
+  If Nominatim is unreachable or returns nothing, the plugin falls back to its original
+  method: a direct Overpass search for administrative boundaries whose name tags match.
+  Place search therefore keeps working even when the geocoder does not.
+</p>
+
+<div class="warn">
+  <p><strong>Very large places still have a ceiling</strong>
+    A boundary download is one request, but a whole province is still too much data
+    for a public Overpass instance. Places whose extent exceeds 2,500 km² are refused
+    with the measured figure, so pick a smaller administrative unit.</p>
+</div>
+
+<div class="pager">
+  <a href="guide-first-download.html">← Guide 1 — Your first download</a>
+  <a href="guide-wide-area.html">Guide 3 — Cover a whole district or city →</a>
+</div>
+
+<footer class="legal">
+  <p>Map data © OpenStreetMap contributors, available under the Open Database License.
+     Geocoding by the OpenStreetMap Nominatim service. Screenshots are real captures of
+     the plugin's dock, showing results the live geocoder returned.</p>
+</footer>
+
+</div>
+</body>
+</html>

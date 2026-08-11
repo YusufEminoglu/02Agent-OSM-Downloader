@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Use plain-English commands, 16 map styles and the Agent Protocol v1 Processing endpoints of 02Agent OSM Downloader for QGIS.">
+<title>Guide 5 — Commands, styling and agents · 02Agent OSM Downloader</title>
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+<div class="wrap">
+
+<nav class="topbar">
+  <span class="mark">02</span>
+  <a href="index.html">Documentation</a>
+  <span>›</span>
+  <strong>Guide 5 — Commands, styling and agents</strong>
+  <span class="spacer"></span>
+  <a href="REFERENCE_MANUAL.html">Reference manual</a>
+</nav>
+
+<p class="eyebrow">Guide 5 of 5</p>
+<h1>Commands, styling and agents</h1>
+<p class="lead">
+  Three things that make the plugin faster to live with: describing a request in
+  plain English, getting results that are already readable on the map, and letting
+  an assistant drive the same downloads under your approval.
+</p>
+
+<div class="step">
+  <div>
+    <div class="step-head"><span class="step-number">1</span><h3>Say what you want in English</h3></div>
+    <p>
+      The <strong>Command</strong> tab takes a sentence and turns it into a request
+      you can review. <em>Download public transport in Tokyo, Japan</em> selects the
+      transit datasets and starts resolving Tokyo; <em>building=* polygon</em> sets up
+      a custom tag download.
+    </p>
+    <p>
+      Press <strong>Interpret command</strong> and the dock switches to the Presets
+      tab with everything filled in. Nothing downloads until you press Download —
+      interpretation is a suggestion, never an action.
+    </p>
+    <p>
+      The seventeen worked examples cover every continent, which doubles as a hint
+      about phrasing: a dataset word plus <em>in</em> plus a place name is all the
+      router needs.
+    </p>
+  </div>
+  <figure>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="images/dark_command.png">
+      <img src="images/light_command.png" alt="The Command tab with the sentence Download public transport in Tokyo Japan entered, the global examples list and the Interpret command button.">
+    </picture>
+    <figcaption>The command router runs on your computer. Only the place name is sent out, and only to resolve it.</figcaption>
+  </figure>
+</div>
+
+<div class="step wide">
+  <div>
+    <div class="step-head"><span class="step-number">2</span><h3>Results that are already readable</h3></div>
+    <p>
+      Downloads are styled as they arrive, using native QGIS categorized renderers —
+      real, editable symbology, not a flat colour you have to redo.
+    </p>
+    <p>
+      <strong>Map style</strong> offers 16 palettes, previewed by the swatch strip
+      under the control. Each one styles the whole scene coherently: buildings split
+      by function (residential, commercial, industrial, civic, worship), roads by
+      OpenStreetMap highway class, plus rail, transit routes, water, green space,
+      trees and common points of interest.
+    </p>
+    <p>
+      <strong>Road width</strong> either scales line width by highway category — so
+      motorways read as motorways and service roads recede — or draws every road at
+      one width when you want an even network diagram. Both settings persist between
+      sessions and apply to every later download.
+    </p>
+    <p>
+      <strong>Add OSM basemap</strong> inserts the standard OpenStreetMap tile layer
+      at the bottom of the layer tree, with attribution set. Pressing it again reveals
+      the existing layer rather than stacking duplicates.
+    </p>
+  </div>
+</div>
+
+<div class="step">
+  <div>
+    <div class="step-head"><span class="step-number">3</span><h3>Let an agent run the downloads</h3></div>
+    <p>
+      The <strong>Agent</strong> tab exposes the plugin's four Processing algorithms
+      under Agent Protocol v1, so <a href="https://plugins.qgis.org/plugins/planx_smartmodeler/">SmartModeler
+      GIS</a> can discover, inspect and run them.
+    </p>
+    <p>
+      The safety model is the point. An agent can only call the same bounded endpoints
+      you use, every run needs your explicit approval, and outputs are temporary QGIS
+      layers. There is no raw query, no arbitrary URL, no file path and no API key
+      anywhere in the interface.
+    </p>
+    <p>
+      API keys stay in SmartModeler's own process memory or the encrypted QGIS
+      Authentication Database. This plugin never reads them. If SmartModeler is not
+      installed the tab says so and everything else keeps working.
+    </p>
+  </div>
+  <figure>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="images/dark_agent.png">
+      <img src="images/light_agent.png" alt="The Agent tab showing the Agent Protocol v1 endpoint badge, the SmartModeler connection status, and the AI Connections and Agent Workspace buttons.">
+    </picture>
+    <figcaption>The Agent tab, with SmartModeler not installed — it explains how to add it instead of failing silently.</figcaption>
+  </figure>
+</div>
+
+<h2>The four Processing algorithms</h2>
+<p>
+  They also work on their own, from the QGIS Processing toolbox, inside models and in
+  batch mode. Look under <strong>02Agent OSM &rsaquo; OSM acquisition</strong>.
+</p>
+
+<div class="scroll-x">
+<table>
+  <thead><tr><th>Algorithm</th><th>Key parameters</th><th>Use it for</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>download_preset</code></td>
+      <td>Preset (multi-select), Extent</td>
+      <td>Curated thematic datasets over any extent, tiled automatically when wide.</td>
+    </tr>
+    <tr>
+      <td><code>download_place</code></td>
+      <td>Place, Download boundary, Area id, Preset, Extent</td>
+      <td>Datasets for a named place, optionally clipped to its mapped boundary.</td>
+    </tr>
+    <tr>
+      <td><code>download_custom_tag</code></td>
+      <td>Key, Value, Geometry, Extent</td>
+      <td>A single OpenStreetMap key/value pair.</td>
+    </tr>
+    <tr>
+      <td><code>download_advanced</code></td>
+      <td>Match mode, Geometry scope, Key 1–4, Value 1–4, Extent</td>
+      <td>Structured multi-tag queries, the toolbox equivalent of the Query tab.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  All four produce the same three outputs — <code>OUTPUT_POINTS</code>,
+  <code>OUTPUT_LINES</code> and <code>OUTPUT_POLYGONS</code> — with the same attribute
+  schema, so a model built on one works with another.
+</p>
+
+<div class="note">
+  <p><strong>Batch downloads</strong>
+    Right-click an algorithm and choose <em>Execute as Batch Process</em> to run a list
+    of places or extents in one go. Keep the list modest and remember every row is a
+    real request to a shared public server.</p>
+</div>
+
+<h2>Where the plugin connects</h2>
+<p>
+  Four fixed hosts, and no way to point it anywhere else: three Overpass API mirrors
+  (<code>overpass-api.de</code>, <code>overpass.kumi.systems</code>,
+  <code>overpass.private.coffee</code>), tried in turn with per-mirror diagnostics,
+  and <code>nominatim.openstreetmap.org</code> for place search. Responses are cached
+  for the session so repeating a request costs nothing.
+</p>
+
+<div class="pager">
+  <a href="guide-advanced-query.html">← Guide 4 — Build a structured query</a>
+  <a href="REFERENCE_MANUAL.html">Full reference manual →</a>
+</div>
+
+<footer class="legal">
+  <p>Map data © OpenStreetMap contributors, available under the Open Database License.
+     Geocoding by the OpenStreetMap Nominatim service. Screenshots are real captures of
+     the plugin's dock.</p>
+</footer>
+
+</div>
+</body>
+</html>

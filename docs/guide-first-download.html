@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Your first OpenStreetMap download with 02Agent for QGIS: choose a theme, select datasets, set the extent and get styled layers.">
+<title>Guide 1 — Your first download · 02Agent OSM Downloader</title>
+<link rel="stylesheet" href="guide.css">
+</head>
+<body>
+<div class="wrap">
+
+<nav class="topbar">
+  <span class="mark">02</span>
+  <a href="index.html">Documentation</a>
+  <span>›</span>
+  <strong>Guide 1 — Your first download</strong>
+  <span class="spacer"></span>
+  <a href="REFERENCE_MANUAL.html">Reference manual</a>
+</nav>
+
+<p class="eyebrow">Guide 1 of 5</p>
+<h1>Your first download</h1>
+<p class="lead">
+  Three choices and one button: a theme, the datasets inside it, and the area to
+  cover. You end up with styled point, line and polygon layers grouped in the
+  QGIS layer tree, ready to analyse.
+</p>
+
+<div class="step">
+  <div>
+    <div class="step-head"><span class="step-number">1</span><h3>Open the dock and pick a theme</h3></div>
+    <p>
+      Click the 02Agent toolbar button. The dock opens on the <strong>Presets</strong>
+      tab with the <em>Urban Context</em> theme already selected — the usual starting
+      point, because it combines the street network, built form and street trees.
+    </p>
+    <p>
+      The <strong>Theme</strong> list holds 15 groups covering networks, morphology,
+      buildings, land use, green and blue systems, public transport, healthcare,
+      education, emergency services, heritage, tourism, sport, cycling and
+      administrative places.
+    </p>
+    <p>
+      Under the theme, the grey line tells you what that theme is <em>for</em> and
+      which other themes pair well with it, so you are not guessing from names alone.
+    </p>
+  </div>
+  <figure>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="images/dark_presets.png">
+      <img src="images/light_presets.png" alt="The 02Agent dock on the Presets tab, showing the Urban Context theme with its three datasets and the Run download panel below.">
+    </picture>
+    <figcaption>The Presets tab. Theme guidance and the dataset description update as you choose.</figcaption>
+  </figure>
+</div>
+
+<div class="step wide">
+  <div>
+    <div class="step-head"><span class="step-number">2</span><h3>Select one or more datasets</h3></div>
+    <p>
+      Datasets are checkboxes, not a single choice. Ticking several inside one theme
+      builds <em>one</em> bounded request rather than several — so asking for streets,
+      buildings and transit together costs one download, not three.
+    </p>
+    <p>
+      <strong>Select all</strong> and <strong>Clear</strong> act on the visible theme,
+      and the pill on the left keeps count. The counter matters: a request is limited
+      to 32 tag selectors in total, and the plugin tells you plainly if a combination
+      exceeds that instead of silently truncating it.
+    </p>
+  </div>
+</div>
+
+<div class="step">
+  <div>
+    <div class="step-head"><span class="step-number">3</span><h3>Set the extent and read the estimate</h3></div>
+    <p>
+      In <strong>Run download</strong>, the <strong>Extent</strong> list offers the
+      current map view, the active layer's extent, or a geocoded place name
+      (<a href="guide-place-boundary.html">Guide 2</a>).
+    </p>
+    <p>
+      Below the style controls, one line always states what is about to happen: the
+      area in km² and how many bounded requests it needs. It updates live as you pan
+      and zoom, so an oversized area is visible <em>before</em> you press Download,
+      not after a failure.
+    </p>
+    <p>
+      <strong>Map style</strong> and <strong>Road width</strong> decide how results are
+      drawn; the swatch strip previews the palette. Both settings persist between
+      sessions. <strong>Add OSM basemap</strong> drops in the standard OpenStreetMap
+      tile layer for context.
+    </p>
+  </div>
+  <figure>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="images/dark_place.png">
+      <img src="images/light_place.png" alt="The Run download panel with the extent list, place search, map style, road width, palette preview, the live request estimate and the Download button.">
+    </picture>
+    <figcaption>The run panel. The line above the button reads the request size and count before you commit.</figcaption>
+  </figure>
+</div>
+
+<div class="step wide">
+  <div>
+    <div class="step-head"><span class="step-number">4</span><h3>Download, then read the results</h3></div>
+    <p>
+      Press <strong>Download</strong>. The request runs as a background QGIS task, so
+      the interface stays usable and <strong>Cancel</strong> works at any point. The
+      progress bar advances through the download and the feature-building stage.
+    </p>
+    <p>
+      Results arrive as three temporary layers — points, lines and polygons — inside a
+      new layer-tree group named after your request. Empty layers are dropped rather
+      than added as confusing blanks, and the status line reports the feature count of
+      each layer that survived.
+    </p>
+    <p>
+      Every feature carries its identity and provenance: <code>osm_id</code>,
+      <code>osm_type</code>, <code>name</code>, the preset and theme it came from, the
+      matched <code>query_key</code>/<code>query_value</code>, a set of common tag
+      columns such as <code>building</code>, <code>highway</code> and
+      <code>route</code>, and the complete original tag set as
+      <code>tags_json</code>.
+    </p>
+  </div>
+</div>
+
+<div class="note">
+  <p><strong>Temporary means temporary</strong>
+    Downloaded layers live in memory. To keep them, right-click a layer and choose
+    <em>Make Permanent</em>, or export it to GeoPackage before closing the project.</p>
+</div>
+
+<h2>If something goes wrong</h2>
+
+<div class="scroll-x">
+<table>
+  <thead><tr><th>Message</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr><td>The extent is beyond the limit</td><td>Zoom in, or split the area. See <a href="guide-wide-area.html">Guide 3</a> for how far a single job can reach.</td></tr>
+    <tr><td>The OSM server timed out</td><td>The public Overpass instances are shared and get busy. Reduce the extent or the number of datasets and retry; the plugin tries three mirrors in turn before giving up.</td></tr>
+    <tr><td>Finished — no matching features</td><td>The request succeeded but that area genuinely has none of those tags mapped. Try a broader dataset or a different area.</td></tr>
+    <tr><td>Too many combined dataset selectors</td><td>You ticked more datasets than one request allows. Select fewer, or download them in two passes.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="pager">
+  <a href="index.html">← All guides</a>
+  <a href="guide-place-boundary.html">Guide 2 — Download a named place →</a>
+</div>
+
+<footer class="legal">
+  <p>Map data © OpenStreetMap contributors, available under the Open Database License.
+     Screenshots are real captures of the plugin's dock.</p>
+</footer>
+
+</div>
+</body>
+</html>
