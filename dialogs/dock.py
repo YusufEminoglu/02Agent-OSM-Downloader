@@ -738,7 +738,7 @@ class AgentOsmDock(QDockWidget):
         agent_layout.addWidget(self.agent_endpoint)
 
         intro = QLabel(
-            "SmartModeler discovers the four bounded Processing endpoints "
+            "02Agent Smart Modeler discovers the four bounded Processing endpoints "
             "through QGIS. Downloads still require explicit approval."
         )
         intro.setObjectName("mutedText")
@@ -756,14 +756,14 @@ class AgentOsmDock(QDockWidget):
         self.ai_connections_button = QPushButton("AI Connections")
         self.ai_connections_button.setObjectName("primaryButton")
         self.ai_connections_button.setToolTip(
-            "Open SmartModeler's shared, secret-safe provider profiles."
+            "Open 02Agent Smart Modeler's shared, secret-safe provider profiles."
         )
         self.ai_connections_button.clicked.connect(
             self._open_ai_connections
         )
         self.agent_workspace_button = QPushButton("Agent Workspace")
         self.agent_workspace_button.setToolTip(
-            "Open SmartModeler's supervised agent dock."
+            "Open 02Agent Smart Modeler's supervised agent dock."
         )
         self.agent_workspace_button.clicked.connect(
             self._open_agent_workspace
@@ -772,7 +772,7 @@ class AgentOsmDock(QDockWidget):
         agent_layout.addWidget(self.agent_workspace_button)
 
         security = QLabel(
-            "API keys stay in SmartModeler's process memory or the encrypted "
+            "API keys stay in 02Agent Smart Modeler's process memory or the encrypted "
             "QGIS Authentication Database. This plugin never reads them."
         )
         security.setObjectName("mutedText")
@@ -1221,8 +1221,8 @@ class AgentOsmDock(QDockWidget):
             self.agent_connection.setText(
                 error
                 or (
-                    "SmartModeler GIS is not loaded. Open Plugins > Manage and "
-                    "Install Plugins, search for “SmartModeler GIS”, install "
+                    "02Agent Smart Modeler is not loaded. Open Plugins > Manage and "
+                    "Install Plugins, search for “02Agent Smart Modeler”, install "
                     "and enable it, then reopen this tab. The offline command "
                     "router remains available without it."
                 )
@@ -1231,7 +1231,7 @@ class AgentOsmDock(QDockWidget):
         profile = str(info.get("profile_name") or "Unnamed")
         provider = str(info.get("provider_name") or "Unknown provider")
         model = str(info.get("model") or "").strip()
-        detail = f"SmartModeler profile: {profile}  ·  {provider}"
+        detail = f"02Agent Smart Modeler profile: {profile}  ·  {provider}"
         if model:
             detail = f"{detail}  ·  {model}"
         if not info.get("agent_chat_enabled"):

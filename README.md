@@ -3,7 +3,7 @@
 
 02Agent OSM Downloader is a stable QGIS 3.28+ and QGIS 4 plugin for reliable, repeatable
 OpenStreetMap data acquisition. It works independently through its dock and
-Processing provider, and SmartModeler GIS can use the same Processing
+Processing provider, and 02Agent Smart Modeler can use the same Processing
 algorithms from Agent Workspace.
 
 The plugin publishes a versioned, machine-readable
@@ -41,7 +41,7 @@ complete user and technical reference manual.
     such as `Download parks in London` and `Download public transport in Van`.
     Place-aware commands resolve in the background and automatically zoom the
     map canvas to the matched administrative extent before download.
-  - **Agent** for the SmartModeler bridge and Agent Protocol status.
+  - **Agent** for the 02Agent Smart Modeler bridge and Agent Protocol status.
 - A lighter palette-derived visual system with separated cards, selected-tab
   fills, contextual run summaries and tested text contrast in light and dark
   QGIS themes.
@@ -129,35 +129,35 @@ JSON document or raw query. `MATCH_MODE` chooses ANY/OR or ALL/AND semantics and
 `GEOMETRY` limits the request to all geometries, points, lines or polygons.
 Unused optional rows are omitted.
 
-## SmartModeler GIS integration
+## 02Agent Smart Modeler integration
 
-When both plugins are enabled, SmartModeler can discover and run the curated,
+When both plugins are enabled, 02Agent Smart Modeler can discover and run the curated,
 custom-tag and structured advanced algorithms under the same explicit approval
-model as its own bounded OSM downloader. SmartModeler remains usable without
-this plugin, and this plugin remains usable without SmartModeler.
+model as its own bounded OSM downloader. 02Agent Smart Modeler remains usable without
+this plugin, and this plugin remains usable without 02Agent Smart Modeler.
 
 The connection handshake is:
 
 1. `plugin.capabilities` confirms package and provider ownership.
 2. `processing.search` discovers the stable algorithm ID.
 3. `processing.describe` returns the live signature and a fresh context token.
-4. SmartModeler submits a validated `processing_run` proposal.
+4. 02Agent Smart Modeler submits a validated `processing_run` proposal.
 5. The download starts only after the user clicks **Run**.
 
 The formal contract and safety boundary are documented in
 [`AGENT_PROTOCOL.md`](AGENT_PROTOCOL.md) and
 [`agent_protocol.json`](agent_protocol.json).
 
-The downloader dock also shows the active SmartModeler provider/profile and
+The downloader dock also shows the active 02Agent Smart Modeler provider/profile and
 provides **AI Connections** and **Agent Workspace** buttons. Connection profiles
-and API secrets remain owned by SmartModeler: keys are kept in process memory
+and API secrets remain owned by 02Agent Smart Modeler: keys are kept in process memory
 or the encrypted QGIS authentication vault and are never copied to this plugin.
-The local command router remains usable when SmartModeler is disabled or its
-active profile is Offline. If the SmartModeler package is installed but its
+The local command router remains usable when 02Agent Smart Modeler is disabled or its
+active profile is Offline. If the 02Agent Smart Modeler package is installed but its
 plugin dock has not initialized, **AI Connections** opens the shared settings
 dialog directly instead of becoming a disabled or silent action. If it is not
 installed, the Connections tab directs the user to **Plugins > Manage and
-Install Plugins**, where they can search for, install and enable SmartModeler
+Install Plugins**, where they can search for, install and enable 02Agent Smart Modeler
 GIS.
 
 Example Agent request:

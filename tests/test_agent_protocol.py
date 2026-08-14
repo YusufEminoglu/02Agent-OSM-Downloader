@@ -118,10 +118,10 @@ class AgentProtocolTests(unittest.TestCase):
         self,
     ) -> None:
         module_names = (
-            "planx_smartmodeler",
-            "planx_smartmodeler.gui",
-            "planx_smartmodeler.gui.ai_settings_dialog",
-            "planx_smartmodeler.gui.theme",
+            "zero2smartmodeler",
+            "zero2smartmodeler.gui",
+            "zero2smartmodeler.gui.ai_settings_dialog",
+            "zero2smartmodeler.gui.theme",
         )
         previous = {
             name: sys.modules.get(name)
@@ -139,15 +139,15 @@ class AgentProtocolTests(unittest.TestCase):
             def exec(self) -> None:
                 opened.append(True)
 
-        package = types.ModuleType("planx_smartmodeler")
+        package = types.ModuleType("zero2smartmodeler")
         package.__path__ = []
-        gui = types.ModuleType("planx_smartmodeler.gui")
+        gui = types.ModuleType("zero2smartmodeler.gui")
         gui.__path__ = []
         dialog_module = types.ModuleType(
-            "planx_smartmodeler.gui.ai_settings_dialog"
+            "zero2smartmodeler.gui.ai_settings_dialog"
         )
         dialog_module.AiSettingsDialog = FakeDialog
-        theme_module = types.ModuleType("planx_smartmodeler.gui.theme")
+        theme_module = types.ModuleType("zero2smartmodeler.gui.theme")
         theme_module.STUDIO_STYLE = ""
 
         original_loader = smartmodeler_bridge.loaded_plugin
@@ -169,7 +169,7 @@ class AgentProtocolTests(unittest.TestCase):
         self.assertEqual(opened, [True])
 
     def test_missing_smartmodeler_message_explains_installation(self) -> None:
-        module_name = "planx_smartmodeler.gui.ai_settings_dialog"
+        module_name = "zero2smartmodeler.gui.ai_settings_dialog"
         previous = sys.modules.get(module_name)
         original_loader = smartmodeler_bridge.loaded_plugin
         try:
@@ -184,7 +184,7 @@ class AgentProtocolTests(unittest.TestCase):
                 sys.modules[module_name] = previous
         self.assertFalse(result.ok)
         self.assertIn("Manage and Install Plugins", result.message)
-        self.assertIn("search for “SmartModeler GIS”", result.message)
+        self.assertIn("search for “02Agent Smart Modeler”", result.message)
         self.assertIn("install it", result.message)
         self.assertIn("enable it", result.message)
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.1] - 2026-08-14
+
+### Follow the companion plugin's rename
+
+SmartModeler GIS is now [02Agent Smart Modeler](https://github.com/YusufEminoglu/02Agent-Smart-Modeler)
+(package `planx_smartmodeler` → `zero2smartmodeler`). The AI Connections bridge
+(`core/smartmodeler_bridge.py`) now looks up the companion plugin under its new
+package name and every user-facing message uses the new display name. No
+functional change for users who update both plugins together; users who only
+update this one will simply see the old lookup fail closed until they also
+update 02Agent Smart Modeler, exactly as it already behaved when the companion
+plugin was absent.
+
 ## [1.1.0] - 2026-08-11
 
 ### Added

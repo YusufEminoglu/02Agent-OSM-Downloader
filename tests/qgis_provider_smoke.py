@@ -189,8 +189,8 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
                 self.workspace_opened += 1
 
         bridge = _SmartModelerBridgeStub()
-        previous_bridge = plugins.get("planx_smartmodeler")
-        plugins["planx_smartmodeler"] = bridge
+        previous_bridge = plugins.get("zero2smartmodeler")
+        plugins["zero2smartmodeler"] = bridge
         try:
             dock = AgentOsmDock(None)
             initial_map_theme = dock.current_map_theme()
@@ -249,20 +249,20 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
                 raise RuntimeError("Command tab exposes an unrelated download action.")
             if "DeepSeek API" not in dock.agent_connection.text():
                 raise RuntimeError(
-                    "SmartModeler profile is not visible in the dock."
+                    "02Agent Smart Modeler profile is not visible in the dock."
                 )
             dock._open_ai_connections()
             dock._open_agent_workspace()
             if (bridge.connections_opened, bridge.workspace_opened) != (1, 1):
-                raise RuntimeError("SmartModeler public bridge buttons did not run.")
+                raise RuntimeError("02Agent Smart Modeler public bridge buttons did not run.")
             initial_index = dock.map_theme_combo.findData(initial_map_theme)
             dock.map_theme_combo.setCurrentIndex(max(0, initial_index))
             dock.deleteLater()
         finally:
             if previous_bridge is None:
-                plugins.pop("planx_smartmodeler", None)
+                plugins.pop("zero2smartmodeler", None)
             else:
-                plugins["planx_smartmodeler"] = previous_bridge
+                plugins["zero2smartmodeler"] = previous_bridge
 
         basemap_project = QgsProject()
         basemap, added = add_osm_basemap(basemap_project)

@@ -108,7 +108,7 @@ class AgentOsmDownloaderPlugin:
                 "<code>download_place</code>, "
                 "<code>download_custom_tag</code> and "
                 "<code>download_advanced</code></p>"
-                "<p>SmartModeler GIS discovers these endpoints through the live "
+                "<p>02Agent Smart Modeler discovers these endpoints through the live "
                 "QGIS Processing registry, validates their signatures, and runs "
                 "them only after an explicit approval card.</p>"
                 "<p>GPL-3.0-or-later &bull; Yusuf Eminoglu</p>"

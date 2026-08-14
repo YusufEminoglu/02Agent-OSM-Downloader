@@ -1,7 +1,7 @@
-"""Defensive, secret-safe bridge to SmartModeler GIS.
+"""Defensive, secret-safe bridge to 02Agent Smart Modeler.
 
 The downloader never reads or stores AI credentials.  It only asks the loaded
-SmartModeler plugin for display metadata and public UI entry points.  When the
+02Agent Smart Modeler plugin for display metadata and public UI entry points.  When the
 plugin package is installed but disabled, the shared Connections dialog can
 still be opened directly so the button never becomes a silent dead end.
 """
@@ -18,12 +18,12 @@ class BridgeResult:
 
 
 def loaded_plugin() -> Optional[Any]:
-    """Return a compatible loaded SmartModeler instance, if available."""
+    """Return a compatible loaded 02Agent Smart Modeler instance, if available."""
     try:
         from qgis.utils import plugins
     except Exception:  # noqa: BLE001 - optional plugin boundary
         return None
-    plugin = plugins.get("planx_smartmodeler")
+    plugin = plugins.get("zero2smartmodeler")
     if plugin is None:
         return None
     required = (
@@ -71,7 +71,7 @@ def connection_info() -> Dict[str, object]:
 
 
 def open_connections(parent=None) -> BridgeResult:
-    """Open SmartModeler's shared connection editor through the safest path."""
+    """Open 02Agent Smart Modeler's shared connection editor through the safest path."""
     plugin = loaded_plugin()
     if plugin is not None:
         try:
@@ -79,23 +79,23 @@ def open_connections(parent=None) -> BridgeResult:
         except Exception as error:  # noqa: BLE001 - optional plugin boundary
             return BridgeResult(
                 False,
-                "SmartModeler could not open Connections: "
+                "02Agent Smart Modeler could not open Connections: "
                 f"{_safe_error(error)}",
             )
         if opened is not False:
             return BridgeResult(True)
 
     # The package can be installed but currently disabled.  Opening its
-    # secret-safe settings dialog directly still writes only to SmartModeler's
+    # secret-safe settings dialog directly still writes only to 02Agent Smart Modeler's
     # QGIS settings/vault namespace; no key enters this plugin.
     try:
-        from planx_smartmodeler.gui.ai_settings_dialog import AiSettingsDialog
-        from planx_smartmodeler.gui.theme import STUDIO_STYLE
+        from zero2smartmodeler.gui.ai_settings_dialog import AiSettingsDialog
+        from zero2smartmodeler.gui.theme import STUDIO_STYLE
     except Exception:  # noqa: BLE001 - optional plugin boundary
         return BridgeResult(
             False,
-            "SmartModeler GIS is required for AI connections. Open Plugins > "
-            "Manage and Install Plugins, search for “SmartModeler GIS”, "
+            "02Agent Smart Modeler is required for AI connections. Open Plugins > "
+            "Manage and Install Plugins, search for “02Agent Smart Modeler”, "
             "install it, then enable it and reopen this tab.",
         )
     try:
@@ -116,7 +116,7 @@ def open_workspace() -> BridgeResult:
     if plugin is None:
         return BridgeResult(
             False,
-            "Enable SmartModeler GIS to use its supervised Agent Workspace.",
+            "Enable 02Agent Smart Modeler to use its supervised Agent Workspace.",
         )
     try:
         opened = plugin.open_agent_workspace()
@@ -128,7 +128,7 @@ def open_workspace() -> BridgeResult:
     if opened is False:
         return BridgeResult(
             False,
-            "SmartModeler Agent Workspace is not available yet.",
+            "02Agent Smart Modeler Agent Workspace is not available yet.",
         )
     return BridgeResult(True)
 

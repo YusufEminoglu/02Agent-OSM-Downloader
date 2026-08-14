@@ -8,7 +8,7 @@ The machine-readable contract is [`agent_protocol.json`](agent_protocol.json).
 
 ## Discovery handshake
 
-SmartModeler GIS performs the following bounded handshake:
+02Agent Smart Modeler performs the following bounded handshake:
 
 1. Inspect package `zero2agent_osm_downloader` with `plugin.capabilities`.
 2. Find provider `zero2agentosm` through the live QGIS Processing registry.
@@ -60,7 +60,7 @@ the dock, while Processing callers receive the declared sinks.
 - Raw query text, arbitrary URLs, file paths and API keys are not parameters.
 - Advanced requests expose at most four validated key/value rows, a fixed
   ANY/ALL enum and a fixed geometry-scope enum.
-- Live algorithm signatures are checked against SmartModeler's reviewed policy.
+- Live algorithm signatures are checked against 02Agent Smart Modeler's reviewed policy.
 - A proposal never executes without explicit user approval.
 
 ## Compatibility
