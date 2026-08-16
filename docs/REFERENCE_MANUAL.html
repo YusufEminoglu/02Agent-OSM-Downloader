@@ -439,6 +439,9 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
   .main { max-width: 100%; padding: 20px 0; }
   body { font-size: 11pt; }
 }
+
+.video-embed { position: relative; width: 100%; padding-top: 56.25%; margin: 4px 0 28px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border, #ccc); background: #000; }
+.video-embed iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 </style>
 </head>
 <body>
@@ -448,6 +451,10 @@ td:first-child, th:first-child { font-family: 'Consolas', 'Cascadia Code', monos
 <!-- ════════════════════════════════════════════════════════════ -->
 <nav class="sidebar" id="sidebar">
   <h1>02Agent OSM Downloader</h1>
+<div class="video-embed">
+  <iframe src="https://www.youtube-nocookie.com/embed/7zmkn45ifD0" title="02Agent OSM Downloader &mdash; video walkthrough" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+</div>
+
   <div class="version">v1.1.0 &middot; Stable User + Technical Reference &middot; 2026-08-11</div>
 
   <div class="toc-section">Illustrated guides</div>
