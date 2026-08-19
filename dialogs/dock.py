@@ -273,7 +273,25 @@ class AgentOsmDock(QDockWidget):
         self.tabs.addTab(self.command_tab, "Command")
         self.tabs.addTab(self.connections_tab, "Agent")
         self.tabs.currentChanged.connect(self._tab_changed)
-        layout.addWidget(self.tabs, 1)
+        # A second, compact way to add the OSM basemap: it stays reachable
+        # from any tab, right next to the tab bar, instead of only inside the
+        # Run download section that may need scrolling to reach.
+        self.basemap_button_corner = QPushButton("+ OSM basemap")
+        self.basemap_button_corner.setObjectName("cornerButton")
+        self.basemap_button_corner.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.basemap_button_corner.setToolTip(
+            "Add the standard OpenStreetMap XYZ basemap to the current project."
+        )
+        self.basemap_button_corner.clicked.connect(self._add_basemap)
+        self.tabs.setCornerWidget(
+            self.basemap_button_corner, Qt.Corner.TopRightCorner
+        )
+        # No stretch factor: the tabs should take only the height their
+        # content needs. A stretch factor here would let the tab widget claim
+        # every pixel a tall docked panel happens to have, leaving a block of
+        # empty space inside the tab instead of showing the "Run download"
+        # section below it.
+        layout.addWidget(self.tabs)
 
         self.run_group = QGroupBox("Run download")
         run_form = QFormLayout(self.run_group)
@@ -430,7 +448,19 @@ class AgentOsmDock(QDockWidget):
         )
         layout.addWidget(self.status)
 
-        self.setWidget(root)
+        # A docked panel is only as tall as the space QGIS happens to give
+        # its dock area, which is routinely shorter than everything above
+        # (hero + tabs + Run download + status). Without this outer scroll
+        # area that overflow was simply clipped with no way to reach the
+        # Download button — floating the dock into its own window worked
+        # only because a top-level window can grow past the docked height.
+        root_scroll = QScrollArea()
+        root_scroll.setObjectName("agentOsmRootScroll")
+        root_scroll.setWidgetResizable(True)
+        root_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        root_scroll.setWidget(root)
+
+        self.setWidget(root_scroll)
         self.setMinimumWidth(350)
         self._apply_theme()
         self._refresh_agent_connection()
@@ -1749,8 +1779,11 @@ class AgentOsmDock(QDockWidget):
         context: QgsProcessingContext,
     ) -> list[str]:
         project = QgsProject.instance()
-        group = project.layerTreeRoot().addGroup(
-            f"02Agent — {self._current_label}"
+        # Inserted at index 0 (the top of the tree) rather than appended, so
+        # a fresh download is immediately visible instead of landing below
+        # whatever layers are already in the project.
+        group = project.layerTreeRoot().insertGroup(
+            0, f"02Agent — {self._current_label}"
         )
         added = []
         names = {

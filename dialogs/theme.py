@@ -81,6 +81,12 @@ def dock_color_tokens(palette: QPalette | None = None) -> dict[str, str]:
     input_surface = _mix(base, white, 0.04) if dark else base
     hero = _mix(surface, accent, 0.13 if dark else 0.09)
     tab_active = _mix(surface, accent, 0.20 if dark else 0.12)
+    # A separate, deliberately muted purple-grey used only for the small
+    # corner "+ OSM basemap" button, so it reads as its own quick action
+    # rather than blending into the green preset/download accent.
+    corner_accent = QColor("#B7A9CC" if dark else "#7E7196")
+    corner_soft = _mix(surface, corner_accent, 0.22 if dark else 0.14)
+    corner_soft_hover = _mix(surface, corner_accent, 0.34 if dark else 0.24)
     border = _mix(text, surface, 0.76 if dark else 0.84)
     subtle = _mix(text, surface, 0.40 if dark else 0.37)
     status = _mix(accent, surface, 0.76 if dark else 0.86)
@@ -108,6 +114,9 @@ def dock_color_tokens(palette: QPalette | None = None) -> dict[str, str]:
         "accent": _hex(accent),
         "accent_hover": _hex(accent_hover),
         "accent_text": _hex(accent_text),
+        "corner_accent": _hex(corner_accent),
+        "corner_soft": _hex(corner_soft),
+        "corner_soft_hover": _hex(corner_soft_hover),
         "status": _hex(status),
         "selection": _hex(selection),
     }
@@ -275,6 +284,21 @@ QPushButton#quietButton {
 QPushButton#quietButton:hover {
     background: %(tab_active)s;
     border-color: %(accent)s;
+}
+QPushButton#cornerButton {
+    background: %(corner_soft)s;
+    color: %(corner_accent)s;
+    border: 1px solid %(corner_accent)s;
+    border-radius: 5px;
+    padding: 3px 8px;
+    margin: 0px 4px 7px 0;
+    font-size: 7pt;
+    font-weight: 600;
+}
+QPushButton#cornerButton:hover {
+    background: %(corner_soft_hover)s;
+    color: %(corner_accent)s;
+    border-color: %(corner_accent)s;
 }
 QLabel#runSummary {
     color: %(text)s;

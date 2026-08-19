@@ -316,7 +316,13 @@ def _fetch_all(
 
     A single-tile request behaves exactly as before.  A tiled request reports
     per-tile progress, stays cancellable between tiles, and merges the
-    responses so an object straddling a seam appears once.
+    responses so an object straddling a seam appears once. A tile that
+    exhausts every mirror is skipped rather than aborting the whole job — a
+    large extent split into a dozen requests should not throw away eleven
+    successful tiles because a public Overpass mirror timed out once; the
+    caller is told which tiles were skipped and a retry can pick them up from
+    where it left off, since every tile that did succeed is already in the
+    persistent cache.
     """
     total = len(queries)
     if total == 1:
@@ -327,11 +333,22 @@ def _fetch_all(
         "Downloading them in sequence."
     )
     payloads = []
+    failed_tiles: List[int] = []
     for index, query in enumerate(queries):
         if feedback.isCanceled():
             raise QgsProcessingException("The OSM download was canceled.")
         feedback.pushInfo(f"Tile {index + 1} of {total} ...")
-        payloads.append(_fetch_json(query, feedback))
+        try:
+            payloads.append(_fetch_json(query, feedback))
+        except QgsProcessingException:
+            if feedback.isCanceled():
+                raise
+            failed_tiles.append(index + 1)
+            feedback.reportError(
+                f"Tile {index + 1} of {total} failed after every mirror and "
+                "is being skipped.",
+                fatalError=False,
+            )
         feedback.setProgress(
             start_progress
             + (end_progress - start_progress) * (index + 1) / total
@@ -339,12 +356,26 @@ def _fetch_all(
         # Only pause before a tile that will actually hit the network.
         if index + 1 < total and _cached(queries[index + 1]) is None:
             time.sleep(_TILE_PAUSE_SECONDS)
+    if not payloads:
+        raise QgsProcessingException(
+            f"All {total} tiled OSM requests failed. Reduce the map extent "
+            "or retry shortly."
+        )
     try:
         merged = merge_elements(payloads)
     except QueryError as exc:
         raise QgsProcessingException(str(exc)) from exc
+    if failed_tiles:
+        tile_list = ", ".join(str(number) for number in failed_tiles)
+        feedback.pushInfo(
+            f"{len(failed_tiles)} of {total} tiles failed and were skipped "
+            f"(tile {tile_list}); the result may be missing data in that "
+            "area. Retry to fill the gap — the tiles that already succeeded "
+            "are cached and will not be re-downloaded."
+        )
     feedback.pushInfo(
-        f"Merged {total} tiles into {len(merged['elements']):,} OSM objects."
+        f"Merged {len(payloads)} of {total} tiles into "
+        f"{len(merged['elements']):,} OSM objects."
     )
     return merged
 

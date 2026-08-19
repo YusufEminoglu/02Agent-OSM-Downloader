@@ -3,7 +3,7 @@ name=02Agent OSM Downloader
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=QGIS 3.28+ and QGIS 4 OpenStreetMap acquisition studio with 30 curated presets, Nominatim place search, exact administrative-boundary downloads, tiled wide extents, structured multi-tag queries with exclusion and regex matching, a typo-tolerant offline command router, and safe Processing endpoints.
-version=1.2.0
+version=1.2.1
 author=Yusuf Eminoglu
 email=yusuf.eminoglu@deu.edu.tr
 
@@ -28,6 +28,7 @@ hasProcessingProvider=yes
 license=GPL-3
 
 changelog=
+    1.2.1 - Fix a crash on every download after the first one (the 1.2.0 persistent cache reused a SQLite connection across QGIS worker threads). A tiled download that loses one tile to a mirror timeout now keeps the tiles that succeeded instead of discarding the whole job. The docked panel now sizes to its real content and scrolls instead of clipping the Download button on a short docked panel. The dock opens tabbed with the Browser panel, a downloaded layer group is inserted at the top of the layer tree, and a small basemap-add button sits in the tab bar.
     1.2.0 - Query and Command overhaul. Advanced Query: raise the tag filter cap from four to six, add an optional exclude key/value applied to every download endpoint after the response arrives, add an optional regex (~) value-matching mode, retry a transient mirror error once before failing over, and persist the Overpass response cache to disk so a repeated request can be instant even after restarting QGIS. Command: tolerate small misspellings via a bounded offline fuzzy match, recognise "without X" to exclude a tag and route the match to the Query tab, check a second same-theme dataset when a command names more than one, and keep a clickable recent-commands list.
     1.1.1 - Follow the companion plugin's rename: SmartModeler GIS is now 02Agent Smart Modeler (package planx_smartmodeler -> zero2smartmodeler). Update the AI Connections bridge lookup and user-facing text; no functional change for users who update both plugins together.
     1.1.0 - Add Nominatim place search with ranked matches, exact administrative-boundary downloads, tiled wide extents up to 2,500 km2 with automatic merging, a live request-size estimate and five illustrated task guides. Fix the route and tourism attribute columns holding each other's values, and preserve multi-part route relations.

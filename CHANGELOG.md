@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.2.1] - 2026-08-19
+
+### Fixed
+
+- **Every download after the first one could crash.** The persistent Overpass
+  cache added in 1.2.0 opened one SQLite connection and reused it from
+  whatever thread called it first; QGIS runs each download on its own worker
+  thread, so a later download from a different thread hit
+  `sqlite3.ProgrammingError: SQLite objects created in a thread can only be
+  used in that same thread` and failed outright. The connection is now opened
+  with `check_same_thread=False` and every access is serialized through a
+  lock.
+- **A single failed tile discarded an entire tiled download.** A large extent
+  split into several bounded requests aborted completely — throwing away
+  every tile that had already succeeded — the moment one tile exhausted all
+  three Overpass mirrors. A failing tile is now skipped and reported by
+  number; the tiles that did succeed are still merged into layers, and a
+  retry only needs to fill the gap since successful tiles stay cached.
+- **The docked panel didn't fit a short QGIS panel height and couldn't
+  scroll.** The tab widget claimed a stretch factor it didn't need, leaving a
+  block of empty space inside the active tab while the "Run download"
+  section and Download button could run off the bottom of a docked panel
+  with no way to reach them. The tab widget now sizes to its actual content,
+  and the whole dock is wrapped in a scroll area.
+
+### Changed
+
+- The dock now opens tabbed with QGIS's **Browser** panel instead of as a
+  separate stacked row in the left dock area.
+- A small **"+ OSM basemap"** button now sits in the tab bar's top-right
+  corner (a soft purple-grey accent, distinct from the plugin's green), so
+  the basemap can be added from any tab without opening Run download.
+- A finished download's layer group is now **inserted at the top** of the
+  layer tree instead of appended at the bottom, so it is immediately visible.
+
 ## [1.2.0] - 2026-08-19
 
 ### Query

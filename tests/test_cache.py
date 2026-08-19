@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -73,6 +74,35 @@ class QueryCacheTests(unittest.TestCase):
         cache.set("query-b", {"elements": [2]})
         self.assertEqual(cache.get("query-a"), {"elements": [1]})
         self.assertEqual(cache.get("query-b"), {"elements": [2]})
+
+    def test_get_and_set_work_from_a_different_thread_than_the_creator(
+        self,
+    ) -> None:
+        """Regression: QGIS runs each download on a different worker thread.
+
+        A `QueryCache` created lazily on one thread and then reused from a
+        later download's own thread must not hit sqlite3's default
+        same-thread restriction.
+        """
+        cache = self._cache(ttl_seconds=60)
+        errors: list[BaseException] = []
+        results: dict = {}
+
+        def worker() -> None:
+            try:
+                cache.set("from-worker", {"elements": [7]})
+                results["value"] = cache.get("from-worker")
+            except BaseException as exc:  # noqa: BLE001 - captured for assert
+                errors.append(exc)
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join(timeout=5)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(results.get("value"), {"elements": [7]})
+        # Readable back from the original (creator) thread too.
+        self.assertEqual(cache.get("from-worker"), {"elements": [7]})
 
 
 if __name__ == "__main__":

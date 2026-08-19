@@ -6,7 +6,7 @@ import os
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QAction, QIcon
-from qgis.PyQt.QtWidgets import QMessageBox
+from qgis.PyQt.QtWidgets import QDockWidget, QMessageBox
 from qgis.core import QgsApplication
 
 from .processing.provider import AgentOsmProvider
@@ -83,6 +83,15 @@ class AgentOsmDownloaderPlugin:
                 Qt.DockWidgetArea.LeftDockWidgetArea,
                 self.dock,
             )
+            # Tab it together with the Browser panel — the standard QGIS
+            # panel that sits above Layers — instead of stacking it as its
+            # own separate row, so it opens exactly where a user expects to
+            # find it. Falls back to the plain stacked placement above if a
+            # differently configured QGIS has no "Browser" dock widget.
+            main_window = self.iface.mainWindow()
+            browser = main_window.findChild(QDockWidget, "Browser")
+            if browser is not None and browser is not self.dock:
+                main_window.tabifyDockWidget(browser, self.dock)
             self.dock.setVisible(True)
             self.dock.raise_()
             return
