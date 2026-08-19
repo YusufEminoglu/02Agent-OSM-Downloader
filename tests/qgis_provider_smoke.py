@@ -15,7 +15,6 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -73,7 +72,6 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         )
         from zero2agent_osm_downloader.processing import osm_algorithms
         from zero2agent_osm_downloader.processing.osm_algorithms import (
-            _CACHE,
             _relation_polygon,
         )
 
@@ -275,8 +273,8 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
 
         bbox = (38.4100, 27.1200, 38.4160, 27.1260)
         query = build_query(get_preset("urban_form").tags, bbox)
-        _CACHE[query] = (
-            time.monotonic(),
+        osm_algorithms._cache().set(
+            query,
             {
                 "elements": [
                     {
@@ -412,8 +410,8 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             bbox,
             "all",
         )
-        _CACHE[advanced_query] = (
-            time.monotonic(),
+        osm_algorithms._cache().set(
+            advanced_query,
             {
                 "elements": [
                     {
@@ -527,7 +525,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
 
         from zero2agent_osm_downloader.core.catalog import PRESETS, get_preset
         from zero2agent_osm_downloader.core.query import build_queries
-        from zero2agent_osm_downloader.processing.osm_algorithms import _CACHE
+        from zero2agent_osm_downloader.processing import osm_algorithms
 
         wide_bbox = (38.40, 27.10, 38.55, 27.30)
         specs = get_preset("urban_transit").tags
@@ -540,8 +538,8 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         # also carries one stop of its own.
         shared_relation = self._route_relation(500, 0.0)
         for index, query in enumerate(queries):
-            _CACHE[query] = (
-                time.monotonic(),
+            osm_algorithms._cache().set(
+                query,
                 {
                     "elements": [
                         dict(shared_relation),
@@ -624,7 +622,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
 
         from zero2agent_osm_downloader.core.catalog import PRESETS, get_preset
         from zero2agent_osm_downloader.core.query import build_area_query
-        from zero2agent_osm_downloader.processing.osm_algorithms import _CACHE
+        from zero2agent_osm_downloader.processing import osm_algorithms
 
         area_id = 3_600_223_474
         place_bbox = (38.4100, 27.1200, 38.4160, 27.1260)
@@ -637,8 +635,8 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             raise RuntimeError(
                 "The boundary query is not also bounded by the extent."
             )
-        _CACHE[query] = (
-            time.monotonic(),
+        osm_algorithms._cache().set(
+            query,
             {
                 "elements": [
                     {

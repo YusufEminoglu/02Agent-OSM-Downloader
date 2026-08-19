@@ -30,10 +30,13 @@
           "map_extent",
           "layer_extent"
         ],
+        "EXCLUDE_KEY": "validated_osm_tag_or_blank",
+        "EXCLUDE_VALUE": "validated_osm_tag_or_blank",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
-      }
+      },
+      "notes": "EXCLUDE_KEY/EXCLUDE_VALUE are optional and shared by all four endpoints: when EXCLUDE_KEY is set, any fetched feature carrying that tag (any value, or the given value only) is dropped after the OSM response arrives — this is a client-side filter, not part of the Overpass query text."
     },
     {
       "id": "zero2agentosm:download_place",
@@ -48,11 +51,13 @@
           "layer_extent",
           "resolved_place_extent"
         ],
+        "EXCLUDE_KEY": "validated_osm_tag_or_blank",
+        "EXCLUDE_VALUE": "validated_osm_tag_or_blank",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
       },
-      "notes": "PLACE is resolved with the OpenStreetMap Nominatim geocoder. CLIP 0 follows the mapped boundary, CLIP 1 uses the rectangular extent. AREA_ID accepts an already resolved Overpass area id so a chosen place is not geocoded a second time. EXTENT is required in every case: an area carries no size of its own, so a boundary request is filtered by the extent as well and the job area ceiling applies to it. When AREA_ID is blank the name is geocoded and EXTENT is replaced by the resolved place's rectangle."
+      "notes": "PLACE is resolved with the OpenStreetMap Nominatim geocoder. CLIP 0 follows the mapped boundary, CLIP 1 uses the rectangular extent. AREA_ID accepts an already resolved Overpass area id so a chosen place is not geocoded a second time. EXTENT is required in every case: an area carries no size of its own, so a boundary request is filtered by the extent as well and the job area ceiling applies to it. When AREA_ID is blank the name is geocoded and EXTENT is replaced by the resolved place's rectangle. EXCLUDE_KEY/EXCLUDE_VALUE behave as on download_preset."
     },
     {
       "id": "zero2agentosm:download_custom_tag",
@@ -65,10 +70,13 @@
           "map_extent",
           "layer_extent"
         ],
+        "EXCLUDE_KEY": "validated_osm_tag_or_blank",
+        "EXCLUDE_VALUE": "validated_osm_tag_or_blank",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
-      }
+      },
+      "notes": "EXCLUDE_KEY/EXCLUDE_VALUE behave as on download_preset."
     },
     {
       "id": "zero2agentosm:download_advanced",
@@ -76,16 +84,20 @@
       "parameters": {
         "MATCH_MODE": "enum_from_live_algorithm",
         "GEOMETRY": "enum_from_live_algorithm",
-        "KEY_1..KEY_4": "validated_osm_tag_or_blank",
-        "VALUE_1..VALUE_4": "validated_osm_tag_or_blank",
+        "VALUE_MODE": "boolean_regex_instead_of_exact",
+        "KEY_1..KEY_6": "validated_osm_tag_or_blank",
+        "VALUE_1..VALUE_6": "validated_osm_tag_or_blank",
         "EXTENT": [
           "map_extent",
           "layer_extent"
         ],
+        "EXCLUDE_KEY": "validated_osm_tag_or_blank",
+        "EXCLUDE_VALUE": "validated_osm_tag_or_blank",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
-      }
+      },
+      "notes": "VALUE_MODE true renders every filled VALUE_N as an Overpass regex (~) selector instead of an exact-match (=) one; regex values still cannot contain quotes, backslashes or semicolons. EXCLUDE_KEY/EXCLUDE_VALUE behave as on download_preset."
     }
   ],
   "safety": {
@@ -100,7 +112,7 @@
     "maximum_single_request_area_km2": 100,
     "maximum_requests_per_download": 40,
     "maximum_merged_features": 400000,
-    "maximum_advanced_tag_filters": 4,
+    "maximum_advanced_tag_filters": 6,
     "maximum_datasets_per_request": 32,
     "advanced_match_modes": [
       "any",

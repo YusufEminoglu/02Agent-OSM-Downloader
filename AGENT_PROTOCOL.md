@@ -58,8 +58,15 @@ the dock, while Processing callers receive the declared sinks.
   Overpass mirrors and the Nominatim geocoder. Geocoding sends only the place
   name, percent-encoded, no more than once per second.
 - Raw query text, arbitrary URLs, file paths and API keys are not parameters.
-- Advanced requests expose at most four validated key/value rows, a fixed
-  ANY/ALL enum and a fixed geometry-scope enum.
+- Advanced requests expose at most six validated key/value rows, a fixed
+  ANY/ALL enum, a fixed geometry-scope enum, and an optional `VALUE_MODE`
+  boolean that renders every filled value as an Overpass regex (`~`) instead
+  of an exact match — regex values still cannot carry quotes, backslashes or
+  semicolons.
+- Every endpoint accepts an optional `EXCLUDE_KEY`/`EXCLUDE_VALUE` pair.
+  When set, a fetched feature carrying that tag (any value, or the given
+  value only) is dropped after the OSM response arrives — a client-side
+  filter, not additional Overpass query text.
 - Live algorithm signatures are checked against 02Agent Smart Modeler's reviewed policy.
 - A proposal never executes without explicit user approval.
 

@@ -4,11 +4,13 @@ from __future__ import annotations
 import json
 import threading
 import time
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from qgis.PyQt.QtCore import QByteArray, QMetaType, QUrl, QUrlQuery
 from qgis.PyQt.QtNetwork import QNetworkRequest
 from qgis.core import (
+    QgsApplication,
     QgsBlockingNetworkRequest,
     QgsCoordinateReferenceSystem,
     QgsCoordinateTransform,
@@ -20,6 +22,7 @@ from qgis.core import (
     QgsPointXY,
     QgsProcessingAlgorithm,
     QgsProcessingException,
+    QgsProcessingParameterBoolean,
     QgsProcessingParameterEnum,
     QgsProcessingParameterExtent,
     QgsProcessingParameterFeatureSink,
@@ -30,6 +33,7 @@ from qgis.core import (
     QgsWkbTypes,
 )
 
+from ..core.cache import QueryCache
 from ..core.catalog import (
     GEOMETRY_KINDS,
     PRESETS,
@@ -60,6 +64,7 @@ from ..core.query import (
     bbox_area_km2,
     build_area_query,
     build_queries,
+    excludes_tag,
     matching_specs,
     merge_elements,
     normalize_tag,
@@ -69,17 +74,48 @@ from ..core.query import (
 )
 
 USER_AGENT = (
-    "02Agent-OSM-Downloader-QGIS/1.1.0 "
+    "02Agent-OSM-Downloader-QGIS/1.2.0 "
     "(https://github.com/YusufEminoglu/02Agent-OSM-Downloader)"
 )
-_CACHE: Dict[str, Tuple[float, Dict]] = {}
-_CACHE_LOCK = threading.RLock()
-_CACHE_TTL_SECONDS = 15 * 60
-_CACHE_LIMIT = 24
+_CACHE_TTL_SECONDS = 60 * 60
+_CACHE_LIMIT = 300
+_QUERY_CACHE: Optional[QueryCache] = None
+_QUERY_CACHE_LOCK = threading.RLock()
 # Overpass asks clients to leave a gap between consecutive requests.  A tiled
 # job is the only path here that issues several in a row, so it pauses between
 # tiles instead of hammering one mirror.
 _TILE_PAUSE_SECONDS = 1.0
+# A transient failure (a dropped connection, a 5xx) gets one retry against the
+# same mirror before moving on; a definitive one (4xx, an unusable body) does
+# not, since a mirror that already answered clearly will not change its mind.
+_MIRROR_RETRY_DELAY_SECONDS = 1.2
+
+
+def _cache() -> QueryCache:
+    """Return the process-wide persistent Overpass response cache.
+
+    Resolved lazily against the real QGIS profile directory rather than at
+    import time, so importing this module never touches disk on its own —
+    only an actual fetch does (see docs/TRAPS.md 4.6 on `QgsSettings`
+    blocking against an uninitialised profile).
+    """
+    global _QUERY_CACHE
+    with _QUERY_CACHE_LOCK:
+        if _QUERY_CACHE is None:
+            db_path = (
+                Path(QgsApplication.qgisSettingsDirPath())
+                / "zero2agent_osm_downloader"
+                / "overpass_cache.sqlite3"
+            )
+            _QUERY_CACHE = QueryCache(
+                db_path, ttl_seconds=_CACHE_TTL_SECONDS, limit=_CACHE_LIMIT
+            )
+        return _QUERY_CACHE
+
+
+def _cached(query: str) -> Optional[Dict]:
+    """Return a live cache entry for this exact query, dropping stale ones."""
+    return _cache().get(query)
 
 
 def _known_header(name: str):
@@ -96,22 +132,60 @@ def _status_attribute():
     return QNetworkRequest.HttpStatusCodeAttribute
 
 
-def _cached(query: str) -> Optional[Dict]:
-    """Return a live cache entry for this exact query, dropping stale ones."""
-    with _CACHE_LOCK:
-        entry = _CACHE.get(query)
-        if entry is None:
-            return None
-        if time.monotonic() - entry[0] > _CACHE_TTL_SECONDS:
-            _CACHE.pop(query, None)
-            return None
-        return entry[1]
+def _attempt_mirror(
+    endpoint: str, body: QByteArray, feedback
+) -> Tuple[Optional[Dict], str, bool]:
+    """Try one OSM mirror once.
+
+    Returns `(payload, failure_detail, transient)`. `transient` marks a
+    failure worth retrying against the same mirror — a network error or a
+    5xx — as opposed to a 4xx or an unusable body, which will not change on
+    a second try.
+    """
+    request = QNetworkRequest(QUrl(endpoint))
+    if hasattr(request, "setTransferTimeout"):
+        request.setTransferTimeout((OVERPASS_TIMEOUT_SECONDS + 5) * 1000)
+    request.setHeader(
+        _known_header("ContentTypeHeader"),
+        "application/x-www-form-urlencoded",
+    )
+    request.setRawHeader(b"Accept", b"application/json")
+    request.setRawHeader(b"User-Agent", USER_AGENT.encode("ascii"))
+    client = QgsBlockingNetworkRequest()
+    try:
+        code = client.post(request, body, False, feedback)
+    except Exception as error:  # noqa: BLE001 - mirror fallback boundary
+        return None, str(error).strip() or "request exception", True
+    if code != QgsBlockingNetworkRequest.NoError:
+        detail = "network request failed"
+        error_message = getattr(client, "errorMessage", None)
+        if callable(error_message):
+            detail = str(error_message()).strip() or detail
+        return None, detail, True
+    reply = client.reply()
+    status = reply.attribute(_status_attribute())
+    try:
+        status_code = int(status)
+    except (TypeError, ValueError):
+        status_code = 0
+    if status_code and not 200 <= status_code < 300:
+        return None, f"HTTP {status_code}", 500 <= status_code < 600
+    content = bytes(reply.content())
+    if len(content) > MAX_RESPONSE_BYTES:
+        raise QgsProcessingException(
+            "The OSM response exceeded 64 MB; zoom in and retry."
+        )
+    try:
+        payload = validate_payload(json.loads(content.decode("utf-8")))
+    except (UnicodeDecodeError, json.JSONDecodeError, QueryError) as exc:
+        return None, str(exc).strip() or "invalid OSM response", False
+    return payload, "", False
 
 
 def _fetch_json(query: str, feedback) -> Dict:
     cached = _cached(query)
     if cached is not None:
-        feedback.pushInfo("Using the in-session OSM cache.")
+        feedback.pushInfo("Using the cached OSM response.")
         return cached
 
     encoded = QUrlQuery()
@@ -123,75 +197,28 @@ def _fetch_json(query: str, feedback) -> Dict:
     )
     failures: List[str] = []
     for index, endpoint in enumerate(OVERPASS_ENDPOINTS):
-        if feedback.isCanceled():
-            raise QgsProcessingException("The OSM download was canceled.")
         host = QUrl(endpoint).host()
-        feedback.pushInfo(
-            f"Querying {host} ..." if index == 0 else f"Trying mirror {host} ..."
-        )
-        request = QNetworkRequest(QUrl(endpoint))
-        if hasattr(request, "setTransferTimeout"):
-            request.setTransferTimeout((OVERPASS_TIMEOUT_SECONDS + 5) * 1000)
-        request.setHeader(
-            _known_header("ContentTypeHeader"),
-            "application/x-www-form-urlencoded",
-        )
-        request.setRawHeader(b"Accept", b"application/json")
-        request.setRawHeader(b"User-Agent", USER_AGENT.encode("ascii"))
-        client = QgsBlockingNetworkRequest()
-        try:
-            code = client.post(request, body, False, feedback)
-        except Exception as error:  # noqa: BLE001 - mirror fallback boundary
-            detail = str(error).strip() or "request exception"
+        for attempt in range(2):
+            if feedback.isCanceled():
+                raise QgsProcessingException("The OSM download was canceled.")
+            if attempt == 0:
+                feedback.pushInfo(
+                    f"Querying {host} ..." if index == 0
+                    else f"Trying mirror {host} ..."
+                )
+            else:
+                feedback.pushInfo(f"{host} had a transient error; retrying once ...")
+                time.sleep(_MIRROR_RETRY_DELAY_SECONDS)
+            payload, detail, transient = _attempt_mirror(endpoint, body, feedback)
+            if payload is not None:
+                _cache().set(query, payload)
+                return payload
             failures.append(f"{host}: {detail}")
-            feedback.pushInfo(
-                f"{host} failed ({detail}); trying the next OSM mirror."
-            )
-            continue
-        if code != QgsBlockingNetworkRequest.NoError:
-            detail = "network request failed"
-            error_message = getattr(client, "errorMessage", None)
-            if callable(error_message):
-                detail = str(error_message()).strip() or detail
-            failures.append(f"{host}: {detail}")
-            feedback.pushInfo(
-                f"{host} failed ({detail}); trying the next OSM mirror."
-            )
-            continue
-        reply = client.reply()
-        status = reply.attribute(_status_attribute())
-        try:
-            status_code = int(status)
-        except (TypeError, ValueError):
-            status_code = 0
-        if status_code and not 200 <= status_code < 300:
-            detail = f"HTTP {status_code}"
-            failures.append(f"{host}: {detail}")
-            feedback.pushInfo(
-                f"{host} returned {detail}; trying the next OSM mirror."
-            )
-            continue
-        content = bytes(reply.content())
-        if len(content) > MAX_RESPONSE_BYTES:
-            raise QgsProcessingException(
-                "The OSM response exceeded 64 MB; zoom in and retry."
-            )
-        try:
-            payload = validate_payload(json.loads(content.decode("utf-8")))
-        except (UnicodeDecodeError, json.JSONDecodeError, QueryError) as exc:
-            detail = str(exc).strip() or "invalid OSM response"
-            failures.append(f"{host}: {detail}")
-            feedback.pushInfo(
-                f"{host} returned an unusable response ({detail}); "
-                "trying the next OSM mirror."
-            )
-            continue
-        with _CACHE_LOCK:
-            if len(_CACHE) >= _CACHE_LIMIT:
-                oldest = min(_CACHE, key=lambda item: _CACHE[item][0])
-                _CACHE.pop(oldest, None)
-            _CACHE[query] = (time.monotonic(), payload)
-        return payload
+            if not (transient and attempt == 0):
+                feedback.pushInfo(
+                    f"{host} failed ({detail}); trying the next OSM mirror."
+                )
+                break
     detail = "; ".join(failures[-3:]) if failures else "no server answered"
     raise QgsProcessingException(
         "All pinned OSM mirrors failed. Reduce the map extent or retry shortly. "
@@ -462,22 +489,25 @@ def _kind_for_element(
     element: Dict,
     specs: Tuple[TagSpec, ...],
     match_mode: str = "any",
+    value_mode: str = "exact",
 ) -> Tuple[str, Tuple[TagSpec, ...]]:
     element_type = element.get("type")
     tags = element.get("tags")
     if element_type == "node":
-        matches = matching_specs(tags, specs, "point", match_mode)
+        matches = matching_specs(tags, specs, "point", match_mode, value_mode)
         return ("point", matches) if matches else ("", ())
     if element_type == "relation":
-        line_matches = matching_specs(tags, specs, "line", match_mode)
+        line_matches = matching_specs(tags, specs, "line", match_mode, value_mode)
         if line_matches:
             return "line", line_matches
-        matches = matching_specs(tags, specs, "polygon", match_mode)
+        matches = matching_specs(tags, specs, "polygon", match_mode, value_mode)
         return ("polygon", matches) if matches else ("", ())
     if element_type != "way":
         return "", ()
-    line_matches = matching_specs(tags, specs, "line", match_mode)
-    polygon_matches = matching_specs(tags, specs, "polygon", match_mode)
+    line_matches = matching_specs(tags, specs, "line", match_mode, value_mode)
+    polygon_matches = matching_specs(
+        tags, specs, "polygon", match_mode, value_mode
+    )
     if polygon_matches and not line_matches:
         return "polygon", polygon_matches
     if line_matches and not polygon_matches:
@@ -526,6 +556,8 @@ def _fields() -> QgsFields:
 
 class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
     EXTENT = "EXTENT"
+    EXCLUDE_KEY = "EXCLUDE_KEY"
+    EXCLUDE_VALUE = "EXCLUDE_VALUE"
     OUTPUT_POINTS = "OUTPUT_POINTS"
     OUTPUT_LINES = "OUTPUT_LINES"
     OUTPUT_POLYGONS = "OUTPUT_POLYGONS"
@@ -571,13 +603,30 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
             f"mirrors. One request covers {MAX_TILE_AREA_KM2:,.0f} km²; a wider "
             "extent is split into tiled requests and merged, up to "
             f"{MAX_BBOX_AREA_KM2:,.0f} km² and {MAX_TILES} requests per "
-            "download. No raw query, URL, path, API key, or external "
-            "dependency is accepted."
+            "download. An optional exclude key/value drops matching features "
+            "from the result after it is fetched. No raw query, URL, path, "
+            "API key, or external dependency is accepted."
         )
 
     def _add_common_parameters(self) -> None:
         self.addParameter(
             QgsProcessingParameterExtent(self.EXTENT, "Download extent")
+        )
+        self.addParameter(
+            QgsProcessingParameterString(
+                self.EXCLUDE_KEY,
+                "Exclude OSM tag key (optional)",
+                defaultValue="",
+                optional=True,
+            )
+        )
+        self.addParameter(
+            QgsProcessingParameterString(
+                self.EXCLUDE_VALUE,
+                "Exclude OSM tag value (blank or * means any value)",
+                defaultValue="",
+                optional=True,
+            )
         )
         self.addParameter(
             QgsProcessingParameterFeatureSink(
@@ -600,16 +649,33 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
     ) -> Tuple[str, str, Tuple[TagSpec, ...], str]:
         raise NotImplementedError
 
+    def _value_mode(self, parameters, context) -> str:
+        """The tag-value matching mode for this run; only Advanced Query offers regex."""
+        return "exact"
+
+    def _exclude_tag(self, parameters, context) -> Tuple[str, str]:
+        key = self.parameterAsString(parameters, self.EXCLUDE_KEY, context).strip()
+        if not key:
+            return "", ""
+        value = self.parameterAsString(
+            parameters, self.EXCLUDE_VALUE, context
+        ).strip()
+        try:
+            return normalize_tag(key, value)
+        except QueryError as exc:
+            raise QgsProcessingException(str(exc)) from exc
+
     def _build_queries(
         self,
         specs: Tuple[TagSpec, ...],
         bbox: Tuple[float, float, float, float],
         match_mode: str,
         feedback,
+        value_mode: str = "exact",
     ) -> Tuple[str, ...]:
         """Return every bounded request needed to cover the extent."""
         area = bbox_area_km2(*bbox)
-        queries = build_queries(specs, bbox, match_mode)
+        queries = build_queries(specs, bbox, match_mode, value_mode=value_mode)
         feedback.pushInfo(
             f"Request extent: {area:,.1f} km² "
             f"({len(queries)} bounded OSM request"
@@ -619,6 +685,8 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
 
     def processAlgorithm(self, parameters, context, feedback):
         preset_id, theme, specs, match_mode = self._request(parameters, context)
+        value_mode = self._value_mode(parameters, context)
+        exclude_key, exclude_value = self._exclude_tag(parameters, context)
         extent = self.parameterAsExtent(parameters, self.EXTENT, context)
         extent_crs = self.parameterAsExtentCrs(
             parameters, self.EXTENT, context
@@ -641,7 +709,9 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
                 wgs_extent.yMinimum(), wgs_extent.xMinimum(),
                 wgs_extent.yMaximum(), wgs_extent.xMaximum(),
             )
-            queries = self._build_queries(specs, bbox, match_mode, feedback)
+            queries = self._build_queries(
+                specs, bbox, match_mode, feedback, value_mode
+            )
         except QueryError as exc:
             raise QgsProcessingException(str(exc)) from exc
 
@@ -684,8 +754,12 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
         for index, element in enumerate(elements):
             if feedback.isCanceled():
                 raise QgsProcessingException("The OSM download was canceled.")
-            kind, matches = _kind_for_element(element, specs, match_mode)
+            kind, matches = _kind_for_element(element, specs, match_mode, value_mode)
             if not kind or not matches:
+                continue
+            if exclude_key and excludes_tag(
+                element.get("tags"), exclude_key, exclude_value
+            ):
                 continue
             geometry = _geometry(element, kind)
             if geometry is None or geometry.isEmpty():
@@ -802,9 +876,13 @@ class DownloadPlaceAlgorithm(DownloadPresetAlgorithm):
             "bounded tiles as needed."
         )
 
-    def _build_queries(self, specs, bbox, match_mode, feedback):
+    def _build_queries(
+        self, specs, bbox, match_mode, feedback, value_mode: str = "exact"
+    ):
         if not self._area_id:
-            return super()._build_queries(specs, bbox, match_mode, feedback)
+            return super()._build_queries(
+                specs, bbox, match_mode, feedback, value_mode
+            )
         # An area carries no size of its own, so the request is filtered by the
         # extent as well.  `build_area_query` enforces the job ceiling on that
         # extent, which is what stops a caller pairing a country-sized area id
@@ -813,7 +891,11 @@ class DownloadPlaceAlgorithm(DownloadPresetAlgorithm):
             "Clipping the request to the mapped boundary of the place "
             f"({bbox_area_km2(*bbox):,.0f} km² extent, one boundary request)."
         )
-        return (build_area_query(specs, self._area_id, bbox, match_mode),)
+        return (
+            build_area_query(
+                specs, self._area_id, bbox, match_mode, value_mode=value_mode
+            ),
+        )
 
     def processAlgorithm(self, parameters, context, feedback):
         place = self.parameterAsString(parameters, self.PLACE, context).strip()
@@ -915,6 +997,7 @@ class DownloadCustomTagAlgorithm(_BaseDownloadAlgorithm):
 class DownloadAdvancedQueryAlgorithm(_BaseDownloadAlgorithm):
     MATCH_MODE = "MATCH_MODE"
     GEOMETRY = "GEOMETRY"
+    VALUE_MODE = "VALUE_MODE"
     ALGORITHM_NAME = "download_advanced"
     DISPLAY_NAME = "Download structured advanced OSM query"
     GEOMETRY_OPTIONS = (
@@ -941,6 +1024,13 @@ class DownloadAdvancedQueryAlgorithm(_BaseDownloadAlgorithm):
                 defaultValue=0,
             )
         )
+        self.addParameter(
+            QgsProcessingParameterBoolean(
+                self.VALUE_MODE,
+                "Match values as regex (~) instead of exact equality",
+                defaultValue=False,
+            )
+        )
         for index in range(1, MAX_ADVANCED_FILTERS + 1):
             self.addParameter(
                 QgsProcessingParameterString(
@@ -959,11 +1049,19 @@ class DownloadAdvancedQueryAlgorithm(_BaseDownloadAlgorithm):
             )
         self._add_common_parameters()
 
+    def _value_mode(self, parameters, context) -> str:
+        return (
+            "regex"
+            if self.parameterAsBoolean(parameters, self.VALUE_MODE, context)
+            else "exact"
+        )
+
     def _request(self, parameters, context):
         mode_index = self.parameterAsEnum(parameters, self.MATCH_MODE, context)
         if mode_index not in (0, 1):
             raise QgsProcessingException("The tag match mode is not valid.")
         match_mode = ("any", "all")[mode_index]
+        value_mode = self._value_mode(parameters, context)
 
         geometry_index = self.parameterAsEnum(parameters, self.GEOMETRY, context)
         geometry_options = (
@@ -995,6 +1093,7 @@ class DownloadAdvancedQueryAlgorithm(_BaseDownloadAlgorithm):
                 filters,
                 geometry_options[geometry_index],
                 match_mode,
+                value_mode,
             )
         except QueryError as exc:
             raise QgsProcessingException(str(exc)) from exc

@@ -118,6 +118,47 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(intent.preset_id, "urban_context")
         self.assertEqual(intent.place_name, "Paris")
 
+    def test_typo_tolerant_fallback_matches_close_misspellings(self) -> None:
+        intent = interpret_prompt("download buildngs in izmir")
+        self.assertEqual(intent.mode, "place")
+        self.assertEqual(intent.preset_id, "buildings")
+        self.assertLessEqual(intent.confidence, 0.72)
+        healthcare = interpret_prompt("download helthcare in ankara")
+        self.assertEqual(healthcare.preset_id, "healthcare")
+
+    def test_typo_fallback_does_not_fire_on_unrelated_text(self) -> None:
+        self.assertEqual(interpret_prompt("scarcity analysis").mode, "none")
+        self.assertEqual(interpret_prompt("xyzqwerty placeholder").mode, "none")
+
+    def test_same_group_command_adds_a_sibling_preset(self) -> None:
+        intent = interpret_prompt("download parks and water")
+        self.assertEqual(intent.mode, "preset")
+        self.assertIn(intent.preset_id, ("green_spaces", "blue_network"))
+        other = (
+            "blue_network" if intent.preset_id == "green_spaces"
+            else "green_spaces"
+        )
+        self.assertEqual(intent.extra_preset_ids, (other,))
+
+    def test_negation_extracts_an_exclude_tag_and_strips_the_clause(self) -> None:
+        intent = interpret_prompt("download parking without charging")
+        self.assertEqual(intent.mode, "preset")
+        self.assertEqual(intent.preset_id, "parking")
+        self.assertEqual(intent.exclude_key, "amenity")
+        self.assertEqual(intent.exclude_value, "fuel")
+
+    def test_negation_preserves_the_place_after_the_clause(self) -> None:
+        intent = interpret_prompt(
+            "download roads without service roads in Berlin"
+        )
+        self.assertEqual(intent.mode, "place")
+        self.assertEqual(intent.place_name, "Berlin")
+
+    def test_no_negation_means_no_exclude_tag(self) -> None:
+        intent = interpret_prompt("Download parks in Konak")
+        self.assertEqual(intent.exclude_key, "")
+        self.assertEqual(intent.exclude_value, "")
+
 
 if __name__ == "__main__":
     unittest.main()

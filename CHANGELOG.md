@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.2.0] - 2026-08-19
+
+### Query
+
+- **Exclude tag.** Every download endpoint (Presets, Place, Custom tag,
+  Advanced query) now accepts an optional exclude key/value. A matching
+  feature is dropped once the OSM response arrives — a client-side filter,
+  not additional Overpass query text — and is surfaced on the Query tab as
+  "Exclude tag (optional)".
+- **Regex value matching.** The Advanced query panel gained a "Match values
+  as regex (~)" checkbox that renders every filled value as an Overpass
+  regex selector instead of an exact match. Regex values still cannot carry
+  quotes, backslashes or semicolons, capped at 60 characters.
+- **Six tag filters**, up from four (`MAX_ADVANCED_FILTERS`).
+- **Persistent Overpass cache.** Responses now persist to a small on-disk
+  SQLite cache under the QGIS profile directory instead of an in-session
+  dictionary, so re-downloading the same region stays instant even after
+  restarting QGIS.
+- **Mirror retry.** A transient failure (a dropped connection, a 5xx) gets
+  one retry against the same mirror, with a short pause, before the request
+  moves on to the next pinned mirror.
+
+### Command
+
+- **Typo tolerance.** A misspelled preset word (`buildngs`, `helthcare`)
+  now falls back to a bounded offline fuzzy match when no exact phrase is
+  found, weighted so a word owned by one preset outweighs one shared by
+  several.
+- **Negation.** "download parking without charging" now extracts an
+  exclude tag and routes the match to the Query tab, pre-filled with both
+  the matched tag(s) and the exclusion.
+- **Same-theme combination.** A command naming two datasets from the same
+  group (e.g. "parks and water") now checks both, generalising the existing
+  Urban Context special case.
+- **Command history.** The Command tab keeps a clickable list of the last
+  ten interpreted commands.
+
 ## [1.1.1] - 2026-08-14
 
 ### Follow the companion plugin's rename

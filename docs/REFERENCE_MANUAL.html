@@ -590,8 +590,9 @@ presets in 15 thematic groups. Maximum response size: 64 MB.
 Maximum extent per request: 100 km<sup>2</sup>; a wider extent is tiled, up to
 2,500 km<sup>2</sup> and 40 requests per job, merged to at most 400,000
 features. Maximum features per response: 150,000.
-Maximum tag selectors per request: 32; advanced queries accept four validated
-filters. Overpass timeout: 45 seconds. Three hard-coded JSON-only Overpass
+Maximum tag selectors per request: 32; advanced queries accept six validated
+filters, optionally as a regex value match, plus one optional exclude tag
+applied to every endpoint after the response arrives. Overpass timeout: 45 seconds. Three hard-coded JSON-only Overpass
 endpoints with automatic failover, plus the Nominatim geocoder: four fixed
 hosts in total. Named-place lookup returns at most 25 ranked candidates and the
 user chooses among them. No raw query, URL, path, or external dependency
@@ -640,12 +641,16 @@ list is safe: no network request is sent until <em>Download</em> is pressed.
 
 <h3>Structured Query workspace</h3>
 <p>
-The Query tab provides four bounded key/value rows. Key and value fields offer
+The Query tab provides six bounded key/value rows. Key and value fields offer
 common OSM suggestions, the live counter shows how many rows are populated,
 and <em>Clear filters</em> resets the form. <em>Load example</em> supplies
 ready-to-edit patterns for accessibility, transit, healthcare, parks,
 waterways, historic features, pedestrian streets, electric charging, and
-building metadata. The read-only Overpass preview remains collapsed until
+building metadata. A <em>Match values as regex (~)</em> checkbox switches
+every filled value from an exact match to an Overpass regex selector, and an
+optional <em>Exclude tag</em> key/value drops matching features once the
+response arrives — a client-side filter, not part of the query text below.
+The read-only Overpass preview remains collapsed until
 <em>Show preview</em> is pressed.
 </p>
 
@@ -1932,10 +1937,14 @@ combinatorial explosion of possible OSM key/value combinations.
 <p>
 The advanced algorithm's expressivity is deliberately constrained. It
 does not support: spatial operators (around, poly), recursion operators,
-difference/union of query results, regular expression matching, or
-conditional logic. This constraint is by design: it keeps queries
+true Overpass difference/union of query results, or conditional logic. An
+optional value-mode switch renders every filled value as a bounded regex
+(<code>~</code>) selector instead of an exact match, and a separate optional
+exclude key/value drops matching features once the response arrives — a
+client-side filter applied after the fact, not a true Overpass difference
+operator. This constraint is by design: it keeps queries
 predictable, performant, and safe for the Overpass public service
-infrastructure (Olbricht, 2021). For users requiring these capabilities,
+infrastructure (Olbricht, 2021). For users requiring further capabilities,
 the raw Overpass API or local OSM data processing tools (osmium, osm2pgsql)
 are recommended.
 </p>
@@ -1949,6 +1958,7 @@ are recommended.
 <tbody>
 <tr><td><code>MATCH_MODE</code></td><td>Enum</td><td>Boolean match mode: "Match any tag (OR)" (0) or "Match all tags (AND)" (1). In AND mode, duplicate keys across filters are rejected.</td></tr>
 <tr><td><code>GEOMETRY</code></td><td>Enum</td><td>Geometry scope: "All geometries" (0), "Points" (1), "Lines" (2), "Polygons" (3). Determines which OSM primitives are queried.</td></tr>
+<tr><td><code>VALUE_MODE</code></td><td>Boolean</td><td>When true, every filled <code>VALUE_n</code> is matched as an Overpass regex (<code>~</code>) instead of an exact value; regex values are capped at 60 characters and still cannot carry quotes, backslashes or semicolons. Default false.</td></tr>
 <tr><td><code>KEY_1</code></td><td>String (required)</td><td>First OSM tag key. Must be non-empty and match the key regex.</td></tr>
 <tr><td><code>VALUE_1</code></td><td>String (optional)</td><td>Value for the first OSM tag key. Blank or "*" = any value.</td></tr>
 <tr><td><code>KEY_2</code></td><td>String (optional)</td><td>Second OSM tag key. Required if VALUE_2 is specified.</td></tr>
@@ -1957,7 +1967,13 @@ are recommended.
 <tr><td><code>VALUE_3</code></td><td>String (optional)</td><td>Value for the third OSM tag key.</td></tr>
 <tr><td><code>KEY_4</code></td><td>String (optional)</td><td>Fourth OSM tag key. Required if VALUE_4 is specified.</td></tr>
 <tr><td><code>VALUE_4</code></td><td>String (optional)</td><td>Value for the fourth OSM tag key.</td></tr>
+<tr><td><code>KEY_5</code></td><td>String (optional)</td><td>Fifth OSM tag key. Required if VALUE_5 is specified.</td></tr>
+<tr><td><code>VALUE_5</code></td><td>String (optional)</td><td>Value for the fifth OSM tag key.</td></tr>
+<tr><td><code>KEY_6</code></td><td>String (optional)</td><td>Sixth OSM tag key. Required if VALUE_6 is specified.</td></tr>
+<tr><td><code>VALUE_6</code></td><td>String (optional)</td><td>Value for the sixth OSM tag key.</td></tr>
 <tr><td><code>EXTENT</code></td><td>Extent</td><td>Geographic download extent (see Algorithm 1).</td></tr>
+<tr><td><code>EXCLUDE_KEY</code></td><td>String (optional)</td><td>OSM tag key to exclude. When set, any fetched feature carrying this key is dropped after the response arrives, before it reaches an output sink. Shared by all four algorithms.</td></tr>
+<tr><td><code>EXCLUDE_VALUE</code></td><td>String (optional)</td><td>Value to exclude for <code>EXCLUDE_KEY</code>. Blank or "*" excludes the key regardless of value.</td></tr>
 <tr><td><code>OUTPUT_POINTS</code></td><td>FeatureSink</td><td>Point output layer.</td></tr>
 <tr><td><code>OUTPUT_LINES</code></td><td>FeatureSink</td><td>Line output layer.</td></tr>
 <tr><td><code>OUTPUT_POLYGONS</code></td><td>FeatureSink</td><td>Polygon output layer.</td></tr>
@@ -2229,7 +2245,8 @@ validation. The following design decisions enforce this:
 <tr><td>Requests per job</td><td>40</td><td><code>MAX_TILES</code> in <code>tile_bbox()</code></td></tr>
 <tr><td>Merged features</td><td>400,000</td><td><code>MAX_TOTAL_FEATURES</code> in <code>merge_elements()</code></td></tr>
 <tr><td>Tag selectors</td><td>32</td><td><code>MAX_SELECTORS</code> in <code>normalized_specs()</code></td></tr>
-<tr><td>Advanced filters</td><td>4</td><td><code>MAX_ADVANCED_FILTERS</code> in <code>advanced_specs()</code></td></tr>
+<tr><td>Advanced filters</td><td>6</td><td><code>MAX_ADVANCED_FILTERS</code> in <code>advanced_specs()</code></td></tr>
+<tr><td>Regex value length</td><td>60</td><td><code>MAX_REGEX_VALUE_LENGTH</code> in <code>query.py</code></td></tr>
 <tr><td>Place candidates</td><td>25</td><td><code>MAX_PLACE_RESULTS</code> in <code>core/places.py</code></td></tr>
 <tr><td>Overpass timeout</td><td>45 s</td><td><code>OVERPASS_TIMEOUT_SECONDS</code> in query rendering</td></tr>
 <tr><td>Cache entries</td><td>24</td><td><code>_CACHE_LIMIT</code> in <code>osm_algorithms.py</code></td></tr>

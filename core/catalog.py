@@ -1,6 +1,7 @@
 """Curated OSM thematic presets and a small offline intent router."""
 from __future__ import annotations
 
+import difflib
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -474,6 +475,9 @@ class PromptIntent:
     geometry: str = ""
     place_name: str = ""
     confidence: float = 0.0
+    extra_preset_ids: Tuple[str, ...] = ()
+    exclude_key: str = ""
+    exclude_value: str = ""
 
 
 def presets_for_group(group_id: str) -> Tuple[Preset, ...]:
@@ -533,7 +537,7 @@ _COMMAND_WORDS = {
 }
 
 
-def _best_preset(normalized: str) -> Tuple[str, float]:
+def _scored_presets(normalized: str) -> list:
     scored = []
     for preset in PRESETS:
         terms: Iterable[str] = preset.keywords + (
@@ -546,11 +550,142 @@ def _best_preset(normalized: str) -> Tuple[str, float]:
         )
         if score:
             scored.append((score, preset.preset_id))
-    if not scored:
-        return "", 0.0
     scored.sort(key=lambda item: (-item[0], item[1]))
+    return scored
+
+
+# Single-word keywords, titles and group titles (4+ characters, to avoid
+# noisy short-word collisions) mapped back to every preset that uses them,
+# built once so a typo-tolerant fallback never has to rescan the catalog per
+# command. A *multi*-word term such as "roads buildings trees" or "Road
+# network" is deliberately skipped here: exact matching already checks it as
+# one phrase, but decomposed into individual words for fuzzy matching, a
+# single word out of a longer phrase ("buildings" out of "roads buildings
+# trees") is too weak a signal and would out-vote the dedicated single-word
+# preset it is really a typo for.
+_vocab_builder: Dict[str, list] = {}
+for _preset in PRESETS:
+    for _term in _preset.keywords + (_preset.title, _preset.group_title):
+        _term_words = _normalized(_term).split()
+        if len(_term_words) != 1:
+            continue
+        _word = _term_words[0]
+        if len(_word) < 4:
+            continue
+        _bucket = _vocab_builder.setdefault(_word, [])
+        if _preset.preset_id not in _bucket:
+            _bucket.append(_preset.preset_id)
+_KEYWORD_VOCAB: Dict[str, Tuple[str, ...]] = {
+    word: tuple(ids) for word, ids in _vocab_builder.items()
+}
+del _vocab_builder, _preset, _term, _term_words, _word, _bucket
+
+_FUZZY_CUTOFF = 0.82
+
+
+def _fuzzy_preset(normalized: str) -> Tuple[str, float]:
+    """A typo-tolerant fallback used only when no exact phrase matched.
+
+    Offline commands have no spellchecker behind them, so a single
+    misspelled word (`buildngs`, `helthcare`) would otherwise fall through
+    to "no confident match" even though the intent is obvious to a human.
+    Each matched vocabulary word contributes its similarity ratio split
+    across every preset that uses it, so a word owned by a single preset
+    outweighs one shared by several unrelated presets (otherwise a common
+    word like "road" — shared by Road network and Urban Context — could tip
+    a close call towards whichever preset id sorts last). Confidence is
+    capped well below an exact match so the UI can still show this as a
+    lower-certainty guess.
+    """
+    words = [word for word in normalized.split() if len(word) >= 4]
+    if not words:
+        return "", 0.0
+    vocabulary = tuple(_KEYWORD_VOCAB)
+    weights: Dict[str, float] = {}
+    for word in words:
+        for candidate in difflib.get_close_matches(
+            word, vocabulary, n=3, cutoff=_FUZZY_CUTOFF
+        ):
+            ratio = difflib.SequenceMatcher(None, word, candidate).ratio()
+            bucket = _KEYWORD_VOCAB[candidate]
+            share = ratio / len(bucket)
+            for preset_id in bucket:
+                weights[preset_id] = weights.get(preset_id, 0.0) + share
+    if not weights:
+        return "", 0.0
+    best_id = max(weights, key=lambda preset_id: (weights[preset_id], preset_id))
+    return best_id, min(0.6, 0.4 + 0.1 * weights[best_id])
+
+
+def _best_preset(normalized: str) -> Tuple[str, float]:
+    scored = _scored_presets(normalized)
+    if not scored:
+        return _fuzzy_preset(normalized)
     score, preset_id = scored[0]
     return preset_id, min(1.0, 0.45 + score * 0.12)
+
+
+def _top_presets(
+    normalized: str, primary_id: str, limit: int = 2
+) -> Tuple[str, ...]:
+    """Return other presets in the same theme group the command also names.
+
+    Restricted to the primary match's own group: the Presets tab only shows
+    one theme group's checkboxes at a time, so a cross-group suggestion here
+    could never actually be checked in the dock. Within one group, e.g.
+    "download parks and water" naming both Green spaces and Blue network is
+    directly representable as two checked datasets.
+    """
+    if not primary_id or primary_id not in PRESETS_BY_ID:
+        return ()
+    group_id = PRESETS_BY_ID[primary_id].group_id
+    extras = [
+        preset_id
+        for score, preset_id in _scored_presets(normalized)
+        if preset_id != primary_id
+        and PRESETS_BY_ID[preset_id].group_id == group_id
+    ]
+    return tuple(extras[:limit])
+
+
+_NEGATION_RE = re.compile(
+    r"\b(?:without|excluding|except|exclude|no)\b\s+"
+    r"([^,;]+?)"
+    r"(?=\s+\b(?:in|at|near|within|around|for|of|and)\b|[,;]|$)",
+    re.IGNORECASE,
+)
+
+
+def _extract_exclusion(raw: str) -> Tuple[str, str, str]:
+    """Pull a "without X" clause out of a command before it is interpreted.
+
+    Returns `(remaining_text, exclude_key, exclude_value)`. The negated
+    clause is removed from the text handed back so a place or preset search
+    over the rest of the command never sees the negated words. Only the
+    negated phrase itself is removed — anything after a following place
+    connector ("in Berlin") is preserved for the normal place extraction
+    that runs afterwards.
+    """
+    match = _NEGATION_RE.search(raw)
+    if not match:
+        return raw, "", ""
+    clause = match.group(1).strip(" ,;:-")
+    remaining = (raw[: match.start()] + " " + raw[match.end():]).strip()
+    if not clause:
+        return remaining, "", ""
+    tag_match = _TAG_RE.search(clause)
+    if tag_match:
+        return remaining, tag_match.group(1), tag_match.group(2).strip()
+    # Exact catalog matches only: an exclusion is applied silently to the
+    # request, unlike a positive match the user still reviews on the
+    # Download tab, so a fuzzy guess here is more likely to hide data than
+    # to help.
+    scored = _scored_presets(_normalized(clause))
+    if not scored:
+        return remaining, "", ""
+    _, preset_id = scored[0]
+    representative = get_preset(preset_id).tags[0]
+    return remaining, representative.key, representative.value
 
 
 def _extract_place(raw: str, preset_id: str) -> str:
@@ -609,6 +744,8 @@ def interpret_prompt(text: object) -> PromptIntent:
             geometry=_geometry_hint(raw, key), confidence=1.0,
         )
 
+    raw, exclude_key, exclude_value = _extract_exclusion(raw)
+
     normalized = _normalized(raw)
     words = tuple(normalized.split())
     has_road = any(
@@ -624,13 +761,24 @@ def interpret_prompt(text: object) -> PromptIntent:
     if has_road and (has_building or has_tree):
         preset_id, confidence = "urban_context", 1.0
     place_name = _extract_place(raw, preset_id)
+    extra_preset_ids = _top_presets(normalized, preset_id)
     if place_name:
         return PromptIntent(
             "place",
             preset_id=preset_id or "administrative_places",
             place_name=place_name,
             confidence=max(confidence, 0.72),
+            extra_preset_ids=extra_preset_ids,
+            exclude_key=exclude_key,
+            exclude_value=exclude_value,
         )
     if not preset_id:
         return PromptIntent("none")
-    return PromptIntent("preset", preset_id=preset_id, confidence=confidence)
+    return PromptIntent(
+        "preset",
+        preset_id=preset_id,
+        confidence=confidence,
+        extra_preset_ids=extra_preset_ids,
+        exclude_key=exclude_key,
+        exclude_value=exclude_value,
+    )

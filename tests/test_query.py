@@ -7,11 +7,13 @@ from zero2agent_osm_downloader.core.catalog import TagSpec, get_preset
 from zero2agent_osm_downloader.core.query import (
     MAX_ADVANCED_FILTERS,
     MAX_FEATURES,
+    MAX_REGEX_VALUE_LENGTH,
     OVERPASS_ENDPOINTS,
     QueryError,
     advanced_specs,
     build_query,
     compact_tags,
+    excludes_tag,
     matching_specs,
     normalize_tag,
     validate_bbox,
@@ -137,6 +139,65 @@ class QueryTests(unittest.TestCase):
     def test_mirrors_are_fixed_https_hosts(self) -> None:
         self.assertEqual(len(OVERPASS_ENDPOINTS), 3)
         self.assertTrue(all(item.startswith("https://") for item in OVERPASS_ENDPOINTS))
+
+    def test_advanced_filter_cap_is_six(self) -> None:
+        self.assertEqual(MAX_ADVANCED_FILTERS, 6)
+        specs = advanced_specs(
+            tuple((f"key_{index}", "") for index in range(MAX_ADVANCED_FILTERS)),
+            ("point",),
+        )
+        self.assertEqual(len({spec.key for spec in specs}), MAX_ADVANCED_FILTERS)
+
+    def test_regex_value_mode_renders_a_tilde_selector(self) -> None:
+        specs = advanced_specs(
+            (("building", "garage|shed"),),
+            ("polygon",),
+            value_mode="regex",
+        )
+        query = build_query(specs, SMALL_BBOX, value_mode="regex")
+        self.assertIn('way["building"~"garage|shed"]', query)
+        self.assertNotIn('="garage|shed"', query)
+
+    def test_regex_value_mode_rejects_quotes_and_backslashes(self) -> None:
+        with self.assertRaises(QueryError):
+            normalize_tag("building", 'x"y', value_mode="regex")
+        with self.assertRaises(QueryError):
+            normalize_tag("building", "x\\y", value_mode="regex")
+        with self.assertRaises(QueryError):
+            normalize_tag("building", "", value_mode="regex")
+        with self.assertRaises(QueryError):
+            normalize_tag(
+                "building", "x" * (MAX_REGEX_VALUE_LENGTH + 1), value_mode="regex"
+            )
+
+    def test_regex_value_mode_allows_regex_metacharacters(self) -> None:
+        key, value = normalize_tag(
+            "building", "^(garage|shed)$", value_mode="regex"
+        )
+        self.assertEqual(value, "^(garage|shed)$")
+
+    def test_regex_matching_specs_uses_search_not_equality(self) -> None:
+        specs = advanced_specs(
+            (("building", "garage|shed"),), ("polygon",), value_mode="regex"
+        )
+        matches = matching_specs(
+            {"building": "detached_garage"},
+            specs,
+            "polygon",
+            value_mode="regex",
+        )
+        self.assertEqual(matches, specs)
+
+    def test_excludes_tag_matches_any_or_exact_value(self) -> None:
+        self.assertTrue(excludes_tag({"amenity": "parking"}, "amenity"))
+        self.assertTrue(
+            excludes_tag({"amenity": "parking"}, "amenity", "parking")
+        )
+        self.assertFalse(
+            excludes_tag({"amenity": "parking"}, "amenity", "fuel")
+        )
+        self.assertFalse(excludes_tag({"amenity": "parking"}, "building"))
+        self.assertFalse(excludes_tag({}, "", ""))
 
 
 if __name__ == "__main__":

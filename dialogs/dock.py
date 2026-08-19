@@ -56,6 +56,7 @@ from ..core.basemap import add_osm_basemap
 from ..core.query import (
     MAX_ADVANCED_FILTERS,
     MAX_BBOX_AREA_KM2,
+    MAX_REGEX_VALUE_LENGTH,
     MAX_TILE_AREA_KM2,
     QueryError,
     advanced_specs,
@@ -532,9 +533,10 @@ class AgentOsmDock(QDockWidget):
         heading.setObjectName("heroEyebrow")
         outer.addWidget(heading)
         hint = QLabel(
-            "Combine up to four validated OSM tags. The generated Overpass "
-            "query is read-only; the selected map or layer extent is inserted "
-            "only when the download starts."
+            f"Combine up to {MAX_ADVANCED_FILTERS} validated OSM tags, "
+            "optionally as a regex, and optionally exclude one more tag. "
+            "The generated Overpass query is read-only; the selected map or "
+            "layer extent is inserted only when the download starts."
         )
         hint.setObjectName("mutedText")
         hint.setWordWrap(True)
@@ -593,8 +595,17 @@ class AgentOsmDock(QDockWidget):
             self.query_value_edits.append(value_edit)
         outer.addWidget(tag_group)
 
+        self.query_regex_check = QCheckBox("Match values as regex (~) instead of exact equality")
+        self.query_regex_check.setToolTip(
+            "Renders [\"key\"~\"value\"] instead of [\"key\"=\"value\"]. "
+            f"Regex values accept up to {MAX_REGEX_VALUE_LENGTH} characters; "
+            "quotes, backslashes and semicolons are still blocked."
+        )
+        self.query_regex_check.toggled.connect(self._update_query_preview)
+        outer.addWidget(self.query_regex_check)
+
         filter_actions = QHBoxLayout()
-        self.query_filter_status = QLabel("0 / 4 filters")
+        self.query_filter_status = QLabel(f"0 / {MAX_ADVANCED_FILTERS} filters")
         self.query_filter_status.setObjectName("mutedText")
         clear_filters = QPushButton("Clear filters")
         clear_filters.setObjectName("quietButton")
@@ -603,6 +614,27 @@ class AgentOsmDock(QDockWidget):
         filter_actions.addStretch(1)
         filter_actions.addWidget(clear_filters)
         outer.addLayout(filter_actions)
+
+        exclude_group = QGroupBox("Exclude tag (optional)")
+        exclude_form = QFormLayout(exclude_group)
+        self.query_exclude_key_edit = QLineEdit()
+        self.query_exclude_key_edit.setPlaceholderText("e.g. amenity")
+        self.query_exclude_key_edit.setClearButtonEnabled(True)
+        self.query_exclude_value_edit = QLineEdit()
+        self.query_exclude_value_edit.setPlaceholderText("blank or * = any value")
+        self.query_exclude_value_edit.setClearButtonEnabled(True)
+        self.query_exclude_key_edit.textChanged.connect(self._refresh_run_summary)
+        self.query_exclude_value_edit.textChanged.connect(self._refresh_run_summary)
+        exclude_form.addRow("OSM key", self.query_exclude_key_edit)
+        exclude_form.addRow("Value", self.query_exclude_value_edit)
+        outer.addWidget(exclude_group)
+        exclude_note = QLabel(
+            "Excluded features are dropped after the OSM response arrives — "
+            "this is not part of the Overpass query text below."
+        )
+        exclude_note.setObjectName("mutedText")
+        exclude_note.setWordWrap(True)
+        outer.addWidget(exclude_note)
 
         self.query_match_combo.currentIndexChanged.connect(
             self._update_query_preview
@@ -655,7 +687,8 @@ class AgentOsmDock(QDockWidget):
         prompt_layout.addWidget(heading)
         hint = QLabel(
             "Describe a preset in English, or enter a safe "
-            "key=value tag. The command is interpreted locally."
+            "key=value tag. Add \"without X\" to exclude a tag, and small "
+            "misspellings are tolerated. The command is interpreted locally."
         )
         hint.setObjectName("mutedText")
         hint.setWordWrap(True)
@@ -663,7 +696,8 @@ class AgentOsmDock(QDockWidget):
         self.prompt = QPlainTextEdit()
         self.prompt.setPlaceholderText(
             "Example: download public transport in Tokyo\n"
-            "Example: download building=* data as polygons"
+            "Example: download building=* data as polygons\n"
+            "Example: download parking without charging in Berlin"
         )
         self.prompt.setMinimumHeight(115)
         self.prompt.setMaximumHeight(180)
@@ -722,6 +756,21 @@ class AgentOsmDock(QDockWidget):
         privacy.setObjectName("mutedText")
         privacy.setWordWrap(True)
         prompt_layout.addWidget(privacy)
+
+        history_label = QLabel("Recent commands")
+        history_label.setObjectName("mutedText")
+        prompt_layout.addWidget(history_label)
+        self.command_history_list = QListWidget()
+        self.command_history_list.setMaximumHeight(110)
+        self.command_history_list.setToolTip(
+            "Click a past command to load it back into the box above."
+        )
+        self.command_history_list.itemClicked.connect(
+            self._load_command_from_history
+        )
+        prompt_layout.addWidget(self.command_history_list)
+        self._command_history: list[str] = []
+
         prompt_layout.addStretch(1)
         return tab
 
@@ -888,6 +937,15 @@ class AgentOsmDock(QDockWidget):
             else (geometry,)
         )
 
+    def _query_value_mode(self) -> str:
+        return "regex" if self.query_regex_check.isChecked() else "exact"
+
+    def _query_exclude(self) -> tuple[str, str]:
+        return (
+            self.query_exclude_key_edit.text().strip(),
+            self.query_exclude_value_edit.text().strip(),
+        )
+
     def _load_query_example(self) -> None:
         data = self.query_example_combo.currentData()
         if not isinstance(data, dict):
@@ -895,6 +953,9 @@ class AgentOsmDock(QDockWidget):
         for edit in (*self.query_key_edits, *self.query_value_edits):
             edit.blockSignals(True)
             edit.clear()
+        self.query_regex_check.setChecked(False)
+        self.query_exclude_key_edit.clear()
+        self.query_exclude_value_edit.clear()
         filters = tuple(data.get("filters") or ())[:MAX_ADVANCED_FILTERS]
         for index, (key, value) in enumerate(filters):
             self.query_key_edits[index].setText(str(key))
@@ -920,9 +981,14 @@ class AgentOsmDock(QDockWidget):
             self._refresh_run_summary()
             return
         mode = str(self.query_match_combo.currentData() or "any")
+        value_mode = self._query_value_mode()
         try:
-            specs = advanced_specs(filters, self._query_geometries(), mode)
-            self.query_preview.setPlainText(preview_query(specs, mode))
+            specs = advanced_specs(
+                filters, self._query_geometries(), mode, value_mode
+            )
+            self.query_preview.setPlainText(
+                preview_query(specs, mode, value_mode)
+            )
         except QueryError as error:
             self.query_preview.setPlainText(f"Invalid structured query: {error}")
         self._refresh_run_summary()
@@ -939,16 +1005,28 @@ class AgentOsmDock(QDockWidget):
         return clean if len(clean) <= limit else f"{clean[:limit - 1]}…"
 
     def _interpret(self) -> None:
-        intent = interpret_prompt(self.prompt.toPlainText())
+        raw_text = self.prompt.toPlainText()
+        intent = interpret_prompt(raw_text)
+        self._remember_command(raw_text, intent)
+        if intent.mode == "place" and intent.exclude_key:
+            preset = get_preset(intent.preset_id or "administrative_places")
+            self._route_exclusion_to_query_tab(preset.tags, intent)
+            self._place_extent_ui(intent.place_name)
+            self.command_place_label.setText(
+                f"Place: {intent.place_name}  ·  resolving map extent..."
+            )
+            self._set_status(
+                f"Place command matched {preset.title}, excluding "
+                f"{intent.exclude_key}={intent.exclude_value or '*'}. "
+                "Resolving the place extent — review the Query tab."
+            )
+            self.tabs.setCurrentWidget(self.query_tab)
+            return
         if intent.mode == "place":
             self.custom_check.setChecked(False)
             self._select_preset(intent.preset_id or "administrative_places")
-            self._place_name = intent.place_name
-            self._forget_place_matches()
-            self.place_edit.setText(intent.place_name)
-            place_index = self.extent_combo.findData("place")
-            if place_index >= 0:
-                self.extent_combo.setCurrentIndex(place_index)
+            self._check_extra_presets(intent.extra_preset_ids)
+            self._place_extent_ui(intent.place_name)
             self.command_place_label.setText(
                 f"Place: {intent.place_name}  ·  resolving map extent..."
             )
@@ -958,12 +1036,21 @@ class AgentOsmDock(QDockWidget):
                 "Resolving the place extent before download."
             )
             self.tabs.setCurrentWidget(self.download_tab)
-            self.place_search_button.setEnabled(False)
-            self._resolve_place_extent(intent.place_name)
+            return
+        if intent.mode == "preset" and intent.exclude_key:
+            preset = get_preset(intent.preset_id)
+            self._route_exclusion_to_query_tab(preset.tags, intent)
+            self._set_status(
+                f"Matched {preset.title}, excluding "
+                f"{intent.exclude_key}={intent.exclude_value or '*'}. "
+                "Review the Query tab and download."
+            )
+            self.tabs.setCurrentWidget(self.query_tab)
             return
         if intent.mode == "preset":
             self.custom_check.setChecked(False)
             self._select_preset(intent.preset_id)
+            self._check_extra_presets(intent.extra_preset_ids)
             preset = get_preset(intent.preset_id)
             self._set_status(
                 f"Matched {preset.processing_label} "
@@ -987,6 +1074,95 @@ class AgentOsmDock(QDockWidget):
         self._set_status(
             "No confident match. Choose a preset or enter key=value."
         )
+
+    def _place_extent_ui(self, place_name: str) -> None:
+        """Point the shared extent controls at a resolved place name."""
+        self._place_name = place_name
+        self._forget_place_matches()
+        self.place_edit.setText(place_name)
+        place_index = self.extent_combo.findData("place")
+        if place_index >= 0:
+            self.extent_combo.setCurrentIndex(place_index)
+        self.place_search_button.setEnabled(False)
+        self._resolve_place_extent(place_name)
+
+    def _check_extra_presets(self, extra_preset_ids: tuple[str, ...]) -> None:
+        """Additionally check same-group presets the command also named."""
+        if not extra_preset_ids:
+            return
+        self.dataset_list.blockSignals(True)
+        for index in range(self.dataset_list.count()):
+            item = self.dataset_list.item(index)
+            if item.data(Qt.ItemDataRole.UserRole) in extra_preset_ids:
+                item.setCheckState(Qt.CheckState.Checked)
+        self.dataset_list.blockSignals(False)
+        self._dataset_changed()
+
+    def _route_exclusion_to_query_tab(self, positive_tags, intent) -> None:
+        """Expand a matched preset's tags into the Query tab, with the excluded tag.
+
+        Exclusion is only implemented for the Advanced Query algorithm (it is
+        applied after the OSM response arrives), so a command carrying a
+        "without X" clause is redirected there instead of the Presets tab,
+        pre-filled with the tags the command already matched.
+        """
+        self.custom_check.setChecked(False)
+        pairs: list[tuple[str, str]] = []
+        for tag in positive_tags:
+            pair = (tag.key, tag.value)
+            if pair not in pairs:
+                pairs.append(pair)
+        pairs = pairs[:MAX_ADVANCED_FILTERS]
+        for edit in (*self.query_key_edits, *self.query_value_edits):
+            edit.blockSignals(True)
+            edit.clear()
+        for index, (key, value) in enumerate(pairs):
+            self.query_key_edits[index].setText(key)
+            self.query_value_edits[index].setText(value or "*")
+        for edit in (*self.query_key_edits, *self.query_value_edits):
+            edit.blockSignals(False)
+        self.query_match_combo.setCurrentIndex(0)
+        self.query_geometry_combo.setCurrentIndex(0)
+        self.query_regex_check.setChecked(False)
+        self.query_exclude_key_edit.setText(intent.exclude_key)
+        self.query_exclude_value_edit.setText(intent.exclude_value)
+        self._update_query_preview()
+
+    def _remember_command(self, raw_text: str, intent) -> None:
+        text = " ".join(str(raw_text or "").split())
+        if not text:
+            return
+        if intent.mode == "none":
+            summary = "no match"
+        elif intent.mode == "custom":
+            summary = f"{intent.key}={intent.value or '*'}"
+        else:
+            label = get_preset(
+                intent.preset_id or "administrative_places"
+            ).title
+            summary = (
+                f"{label} in {intent.place_name}" if intent.place_name
+                else label
+            )
+            if intent.exclude_key:
+                summary = f"{summary} (excl. {intent.exclude_key})"
+        entry = self._display_label(f"{text}  →  {summary}", limit=90)
+        if entry in self._command_history:
+            self._command_history.remove(entry)
+        self._command_history.insert(0, entry)
+        del self._command_history[10:]
+        self.command_history_list.blockSignals(True)
+        self.command_history_list.clear()
+        for item_text in self._command_history:
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.ItemDataRole.UserRole, text)
+            self.command_history_list.addItem(item)
+        self.command_history_list.blockSignals(False)
+
+    def _load_command_from_history(self, item: QListWidgetItem) -> None:
+        original = item.data(Qt.ItemDataRole.UserRole)
+        if original:
+            self.prompt.setPlainText(str(original))
 
     def _forget_place_matches(self) -> None:
         """Drop any resolved place so a stale match cannot be downloaded.
@@ -1284,6 +1460,12 @@ class AgentOsmDock(QDockWidget):
             summary = operator.join(
                 f"{key or '?'}={value or '*'}" for key, value in filters
             )
+            exclude_key, exclude_value = self._query_exclude()
+            if exclude_key:
+                summary = (
+                    f"{summary}  (excluding {exclude_key}="
+                    f"{exclude_value or '*'})"
+                )
             self.run_summary.setText(
                 self._display_label(summary or "Add at least one query filter.")
             )
@@ -1366,8 +1548,9 @@ class AgentOsmDock(QDockWidget):
             algorithm_id = "zero2agentosm:download_advanced"
             filters = self._query_filters()
             mode = str(self.query_match_combo.currentData() or "any")
+            value_mode = self._query_value_mode()
             try:
-                advanced_specs(filters, self._query_geometries(), mode)
+                advanced_specs(filters, self._query_geometries(), mode, value_mode)
             except QueryError as error:
                 QMessageBox.warning(
                     self,
@@ -1375,9 +1558,23 @@ class AgentOsmDock(QDockWidget):
                     str(error),
                 )
                 return
+            exclude_key, exclude_value = self._query_exclude()
+            if exclude_key:
+                try:
+                    exclude_key, exclude_value = normalize_tag(
+                        exclude_key, exclude_value
+                    )
+                except QueryError as error:
+                    QMessageBox.warning(
+                        self, "02Agent OSM Downloader", str(error)
+                    )
+                    return
             parameters = {
                 "MATCH_MODE": 0 if mode == "any" else 1,
                 "GEOMETRY": self.query_geometry_combo.currentIndex(),
+                "VALUE_MODE": value_mode == "regex",
+                "EXCLUDE_KEY": exclude_key,
+                "EXCLUDE_VALUE": exclude_value,
             }
             for index in range(MAX_ADVANCED_FILTERS):
                 key, value = filters[index] if index < len(filters) else ("", "")
@@ -1388,6 +1585,7 @@ class AgentOsmDock(QDockWidget):
                 operator.join(
                     f"{key}={value or '*'}" for key, value in filters
                 )
+                + (f" NOT {exclude_key}={exclude_value or '*'}" if exclude_key else "")
             )
         elif self.custom_check.isChecked():
             algorithm_id = "zero2agentosm:download_custom_tag"

@@ -27,29 +27,78 @@ MAX_TILES = 40
 # Merged across every tile.  A single response is still capped at MAX_FEATURES.
 MAX_TOTAL_FEATURES = 400_000
 MAX_SELECTORS = 32
-MAX_ADVANCED_FILTERS = 4
+MAX_ADVANCED_FILTERS = 6
 MATCH_MODES = ("any", "all")
+VALUE_MODES = ("exact", "regex")
+MAX_REGEX_VALUE_LENGTH = 60
 
 _KM_PER_DEGREE = 111.32
 
 _KEY_RE = re.compile(r"^[A-Za-z0-9_:.~-]{1,80}$")
 _UNSAFE_VALUE_RE = re.compile(r"[\x00-\x1f\x7f\"\\;\[\]\(\){}]")
+# Regex-mode values still cannot break out of the Overpass QL `~"..."`
+# string, so quotes, backslashes and statement separators stay banned; the
+# regex metacharacters `()[]{}^$.*+?|` are allowed so patterns like
+# `^(garage|shed)$` work. A slow pattern is bounded server-side by the
+# query's own `timeout:45`, the same as any other selector.
+_UNSAFE_REGEX_VALUE_RE = re.compile(r'[\x00-\x1f\x7f"\\;]')
 
 
 class QueryError(ValueError):
     """A bounded, user-actionable query or response error."""
 
 
-def normalize_tag(key: object, value: object = "") -> Tuple[str, str]:
+def normalize_tag(
+    key: object, value: object = "", value_mode: str = "exact"
+) -> Tuple[str, str]:
+    mode = str(value_mode or "").strip().casefold()
+    if mode not in VALUE_MODES:
+        raise QueryError("The tag value mode is not valid.")
     key_text = str(key or "").strip()
     value_text = str(value or "").strip()
     if not _KEY_RE.fullmatch(key_text):
         raise QueryError("The OSM key contains unsupported characters.")
-    if value_text == "*":
-        value_text = ""
-    if len(value_text) > 120 or _UNSAFE_VALUE_RE.search(value_text):
-        raise QueryError("The OSM value contains unsupported query characters.")
+    if mode == "exact":
+        if value_text == "*":
+            value_text = ""
+        if len(value_text) > 120 or _UNSAFE_VALUE_RE.search(value_text):
+            raise QueryError(
+                "The OSM value contains unsupported query characters."
+            )
+    else:
+        if len(value_text) > MAX_REGEX_VALUE_LENGTH:
+            raise QueryError(
+                "The regex value is longer than "
+                f"{MAX_REGEX_VALUE_LENGTH} characters."
+            )
+        if _UNSAFE_REGEX_VALUE_RE.search(value_text):
+            raise QueryError(
+                "The regex value contains unsupported query characters."
+            )
+        if not value_text:
+            raise QueryError("A regex value cannot be blank.")
     return key_text, value_text
+
+
+def excludes_tag(tags: object, key: object, value: object = "") -> bool:
+    """Return True when a fetched element's tags match a client-side exclusion.
+
+    Exclusion is applied after the OSM response arrives, not folded into the
+    Overpass query text: subtracting a selector from a union in Overpass QL
+    needs a second named set per request, which would multiply the already
+    bounded query surface for no real benefit here. A blank value follows the
+    same "any value" convention as every other tag field in this module.
+    """
+    key_text = str(key or "").strip()
+    if not key_text:
+        return False
+    data = tags if isinstance(tags, dict) else {}
+    if key_text not in data:
+        return False
+    value_text = str(value or "").strip()
+    if not value_text or value_text == "*":
+        return True
+    return str(data.get(key_text)) == value_text
 
 
 def _widest_longitude_scale(south: float, north: float) -> float:
@@ -175,13 +224,15 @@ def tile_bbox(
     return tuple(tiles)
 
 
-def normalized_specs(specs: Iterable[TagSpec]) -> Tuple[TagSpec, ...]:
+def normalized_specs(
+    specs: Iterable[TagSpec], value_mode: str = "exact"
+) -> Tuple[TagSpec, ...]:
     unique = []
     seen = set()
     for spec in specs:
         if spec.geometry not in GEOMETRY_KINDS:
             raise QueryError("An unsupported geometry type was requested.")
-        key, value = normalize_tag(spec.key, spec.value)
+        key, value = normalize_tag(spec.key, spec.value, value_mode)
         row = TagSpec(key, value, spec.geometry)
         marker = (row.key, row.value, row.geometry)
         if marker not in seen:
@@ -198,6 +249,7 @@ def advanced_specs(
     filters: Iterable[Tuple[object, object]],
     geometries: Sequence[str],
     match_mode: str = "any",
+    value_mode: str = "exact",
 ) -> Tuple[TagSpec, ...]:
     """Create bounded selectors for the structured advanced-query endpoint.
 
@@ -212,7 +264,7 @@ def advanced_specs(
     safe_filters = []
     seen_filters = set()
     for key, value in filters:
-        normalized = normalize_tag(key, value)
+        normalized = normalize_tag(key, value, value_mode)
         if normalized not in seen_filters:
             seen_filters.add(normalized)
             safe_filters.append(normalized)
@@ -235,9 +287,12 @@ def advanced_specs(
     ):
         raise QueryError("Choose at least one supported geometry type.")
     return normalized_specs(
-        TagSpec(key, value, geometry)
-        for geometry in safe_geometries
-        for key, value in safe_filters
+        (
+            TagSpec(key, value, geometry)
+            for geometry in safe_geometries
+            for key, value in safe_filters
+        ),
+        value_mode,
     )
 
 
@@ -246,6 +301,7 @@ def _render_query(
     scope: str,
     match_mode: str,
     preamble: str = "",
+    value_mode: str = "exact",
 ) -> str:
     """Render the bounded request.
 
@@ -256,15 +312,22 @@ def _render_query(
     mode = str(match_mode or "").strip().casefold()
     if mode not in MATCH_MODES:
         raise QueryError("The query match mode is not valid.")
+    values_mode = str(value_mode or "").strip().casefold()
+    if values_mode not in VALUE_MODES:
+        raise QueryError("The tag value mode is not valid.")
+    operator = "~" if values_mode == "regex" else "="
+
+    def _tag(spec: TagSpec) -> str:
+        return (
+            f'["{spec.key}"{operator}"{spec.value}"]'
+            if spec.value
+            else f'["{spec.key}"]'
+        )
 
     selectors = []
     if mode == "any":
         for spec in safe_specs:
-            tag = (
-                f'["{spec.key}"="{spec.value}"]'
-                if spec.value
-                else f'["{spec.key}"]'
-            )
+            tag = _tag(spec)
             if spec.geometry == "point":
                 selectors.append(f"  node{tag}{scope};")
             elif spec.geometry == "line":
@@ -280,12 +343,7 @@ def _render_query(
             )
             if not geometry_specs:
                 continue
-            tags = "".join(
-                f'["{spec.key}"="{spec.value}"]'
-                if spec.value
-                else f'["{spec.key}"]'
-                for spec in geometry_specs
-            )
+            tags = "".join(_tag(spec) for spec in geometry_specs)
             if geometry == "point":
                 selectors.append(f"  node{tags}{scope};")
             elif geometry == "line":
@@ -314,11 +372,15 @@ def build_query(
     specs: Iterable[TagSpec],
     bbox: Tuple[object, object, object, object],
     match_mode: str = "any",
+    value_mode: str = "exact",
 ) -> str:
     """Build the single bounded request for an extent that fits one tile."""
-    safe_specs = normalized_specs(specs)
+    safe_specs = normalized_specs(specs, value_mode)
     return _render_query(
-        safe_specs, _box_scope(validate_bbox(*bbox)), match_mode
+        safe_specs,
+        _box_scope(validate_bbox(*bbox)),
+        match_mode,
+        value_mode=value_mode,
     )
 
 
@@ -327,11 +389,14 @@ def build_queries(
     bbox: Tuple[object, object, object, object],
     match_mode: str = "any",
     max_tile_km2: float = MAX_TILE_AREA_KM2,
+    value_mode: str = "exact",
 ) -> Tuple[str, ...]:
     """Build one bounded request per tile covering the whole extent."""
-    safe_specs = normalized_specs(specs)
+    safe_specs = normalized_specs(specs, value_mode)
     return tuple(
-        _render_query(safe_specs, _box_scope(tile), match_mode)
+        _render_query(
+            safe_specs, _box_scope(tile), match_mode, value_mode=value_mode
+        )
         for tile in tile_bbox(bbox, max_tile_km2)
     )
 
@@ -359,6 +424,7 @@ def build_area_query(
     area_id: object,
     bbox: Tuple[object, object, object, object],
     match_mode: str = "any",
+    value_mode: str = "exact",
 ) -> str:
     """Build a request clipped to a real administrative boundary.
 
@@ -370,7 +436,7 @@ def build_area_query(
     the area id of an entire country and issue an unbounded request; requiring
     the box means every area request is still covered by the job ceiling.
     """
-    safe_specs = normalized_specs(specs)
+    safe_specs = normalized_specs(specs, value_mode)
     checked_id = validate_area_id(area_id)
     box = _box_scope(validate_job_bbox(*bbox))
     return _render_query(
@@ -378,16 +444,21 @@ def build_area_query(
         f"(area.searchArea){box}",
         match_mode,
         preamble=f"area({checked_id})->.searchArea;",
+        value_mode=value_mode,
     )
 
 
 def preview_query(
     specs: Iterable[TagSpec],
     match_mode: str = "any",
+    value_mode: str = "exact",
 ) -> str:
     """Return a display-only query with a non-executable extent placeholder."""
     return _render_query(
-        normalized_specs(specs), "(<selected extent>)", match_mode
+        normalized_specs(specs, value_mode),
+        "(<selected extent>)",
+        match_mode,
+        value_mode=value_mode,
     )
 
 
@@ -453,19 +524,31 @@ def compact_tags(tags: object) -> str:
     )
 
 
+def _value_matches(data: Dict[str, Any], spec: TagSpec, value_mode: str) -> bool:
+    if spec.key not in data:
+        return False
+    if not spec.value:
+        return True
+    actual = str(data.get(spec.key))
+    if value_mode == "regex":
+        try:
+            return re.search(spec.value, actual) is not None
+        except re.error:
+            return False
+    return actual == spec.value
+
+
 def matching_specs(
     tags: object,
     specs: Iterable[TagSpec],
     geometry: str,
     match_mode: str = "any",
+    value_mode: str = "exact",
 ) -> Tuple[TagSpec, ...]:
     data = tags if isinstance(tags, dict) else {}
     candidates = tuple(spec for spec in specs if spec.geometry == geometry)
     matches = tuple(
-        spec
-        for spec in candidates
-        if spec.key in data
-        and (not spec.value or str(data.get(spec.key)) == spec.value)
+        spec for spec in candidates if _value_matches(data, spec, value_mode)
     )
     mode = str(match_mode or "").strip().casefold()
     if mode not in MATCH_MODES:
