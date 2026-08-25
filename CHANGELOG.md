@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.4] - 2026-08-25
+
+### Fixed
+
+- **Places: the admin_level informational text was wrong, not just
+  mistranslated.** The country name is now **Türkiye**, not "Turkey".
+  admin_level=8 was described as "village or local settlement"; the correct
+  Türkiye equivalent is **mahalle** (neighborhood or quarter), which the
+  text had instead attached to admin_level=10. admin_level=10 is no longer
+  asserted as a fixed "neighborhood" level at all -- what it represents
+  varies by country, and some federal administrative systems structure it
+  quite differently, so it is now described as a generic finer subdivision
+  rather than a specific unit. Text-only change: no tag, query or
+  admin_level matching logic was touched.
+
 ## [1.3.3] - 2026-08-25
 
 ### Fixed

@@ -43,15 +43,22 @@ def _tags(*rows: tuple) -> Tuple[TagSpec, ...]:
 
 
 _ADMIN_LEVEL_LABELS: Tuple[Tuple[str, str, str], ...] = (
-    ("2", "Country", "Turkey country boundary."),
-    ("3", "Region", "Turkey regional boundaries where mapped."),
-    ("4", "Province", "Turkey province boundaries."),
-    ("5", "Intermediate level", "Rare Turkey intermediate boundaries where mapped."),
-    ("6", "District", "Turkey district boundaries."),
-    ("7", "Subdistrict", "Turkey subdistrict boundaries where mapped."),
-    ("8", "Village or local settlement", "Turkey village or local settlement boundaries where mapped."),
-    ("9", "Intermediate local level", "Rare Turkey intermediate local boundaries where mapped."),
-    ("10", "Neighborhood", "Turkey neighborhood boundaries where mapped."),
+    ("2", "Country", "Türkiye country boundary."),
+    ("3", "Region", "Türkiye regional boundaries where mapped."),
+    ("4", "Province (il)", "Türkiye province (il) boundaries."),
+    ("5", "Intermediate level", "Rare Türkiye intermediate boundaries where mapped."),
+    ("6", "District (ilçe)", "Türkiye district (ilçe) boundaries."),
+    ("7", "Subdistrict", "Türkiye subdistrict boundaries where mapped."),
+    ("8", "Neighborhood or quarter (mahalle)",
+     "Türkiye neighborhood or quarter (mahalle) boundaries where mapped."),
+    ("9", "Intermediate local level", "Rare Türkiye intermediate local boundaries where mapped."),
+    (
+        "10", "Finer local subdivision",
+        "A finer local subdivision where mapped. What this level actually "
+        "represents is not fixed -- it varies by country, and some federal "
+        "systems use it differently again -- so it should not be read as a "
+        "specific unit the way admin_level=4/6/8 can be for Türkiye.",
+    ),
 )
 
 
@@ -62,9 +69,11 @@ def _admin_level_preset(level: str, label: str, description: str) -> Preset:
         "Places",
         f"admin_level={level} - {label}",
         (
-            f"{description} Turkey mapping commonly uses admin_level=4 for "
-            "province, 6 for district, 8 for village or local settlement and "
-            "10 for neighborhood; OSM admin levels still vary by country."
+            f"{description} Türkiye mapping commonly uses admin_level=4 for "
+            "il (province), 6 for ilçe (district) and 8 for mahalle "
+            "(neighborhood or quarter). OSM admin levels vary by country, "
+            "and some federal systems structure them differently again, so "
+            "higher levels such as 10 should not be read as a fixed unit."
         ),
         _tags(
             ("boundary", "administrative", "point", (("admin_level", level),)),

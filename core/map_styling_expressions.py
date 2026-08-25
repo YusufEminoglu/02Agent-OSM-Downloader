@@ -23,9 +23,12 @@ ADMIN_LEVEL_STYLES: Dict[str, Tuple[str, str, float]] = {
     "5": ("Intermediate boundaries", "#9a76b5", 1.25),
     "6": ("District boundaries", "#aa84bd", 1.10),
     "7": ("Subdistrict boundaries", "#ba93c5", 0.95),
-    "8": ("Village or local-settlement boundaries", "#c9a1cd", 0.82),
+    "8": ("Neighborhood or quarter boundaries", "#c9a1cd", 0.82),
     "9": ("Intermediate local boundaries", "#d5afd2", 0.72),
-    "10": ("Neighborhood boundaries", "#dfbdd8", 0.64),
+    # What admin_level=10 represents is not fixed across countries -- some
+    # federal systems use it quite differently -- so this stays a generic
+    # "finer than 8/9" label rather than asserting "neighborhood" here too.
+    "10": ("Finer local subdivision boundaries", "#dfbdd8", 0.64),
 }
 
 _ADMIN_BRANCH = (
