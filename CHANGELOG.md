@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1] - 2026-08-25
+
+### Changed
+
+- **OSM As-Is** road width scale tuned down from 1.5x to 1.4x, and the
+  label scale from 1.8x to 1.6x -- v1.3.0's size-up read a little heavy
+  once tested live.
+
 ## [1.3.0] - 2026-08-25
 
 ### Added

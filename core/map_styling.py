@@ -287,12 +287,12 @@ CARTO = {
     "civic_area": ("#f0f0d8", "#e2e2c4"),
 }
 #: OSM As-Is widens its whole visible stack from the plain analytical themes:
-#: roads read 1.5x wider, so a residential street reads as a street next to
+#: roads read 1.4x wider, so a residential street reads as a street next to
 #: the carto colours instead of the hairline the analytical line weights use.
-_CARTO_WIDTH_SCALE = 1.5
+_CARTO_WIDTH_SCALE = 1.4
 #: Labels grow further still -- a name at road width looks small once the
-#: carriageway underneath it is already 1.5x as wide.
-_CARTO_LABEL_SCALE = 1.8
+#: carriageway underneath it is already 1.4x as wide.
+_CARTO_LABEL_SCALE = 1.6
 
 #: `category: (fill, casing, width)` -- the road hierarchy, widest first.
 CARTO_ROADS = {
