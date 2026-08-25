@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Pedestrian crossing, seen from above: the zebra bars as they are painted on
+  the road. Drawn for 02Agent OSM Downloader, so it carries no third-party
+  licence. Parametrised the way the QGIS symbol library is, so the styling
+  code can colour it like every other icon.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <g fill="param(fill) #4a4a4a"
+     fill-opacity="param(fill-opacity) 1"
+     stroke="param(outline) #ffffff"
+     stroke-width="param(outline-width) 0.5"
+     stroke-opacity="param(outline-opacity) 1">
+    <rect x="2.2" y="4.5" width="2.9" height="11" rx="0.5"/>
+    <rect x="6.6" y="4.5" width="2.9" height="11" rx="0.5"/>
+    <rect x="11.0" y="4.5" width="2.9" height="11" rx="0.5"/>
+    <rect x="15.4" y="4.5" width="2.9" height="11" rx="0.5"/>
+  </g>
+</svg>

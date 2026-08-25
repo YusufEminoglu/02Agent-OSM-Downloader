@@ -63,6 +63,10 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             build_query,
         )
         from zero2agent_osm_downloader.core.map_styling import apply_map_theme
+        from zero2agent_osm_downloader.core.map_styling_expressions import (
+            RENDERER_EXPRESSIONS,
+            expression_values,
+        )
         from zero2agent_osm_downloader.core.map_themes import MAP_THEMES
         from zero2agent_osm_downloader.dialogs.dock import AgentOsmDock
         from zero2agent_osm_downloader.dialogs.theme import (
@@ -358,11 +362,6 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
 
         from qgis.core import QgsCategorizedSymbolRenderer, QgsExpression
 
-        expected_categories = {
-            "OUTPUT_POINTS": 9,
-            "OUTPUT_LINES": 11,
-            "OUTPUT_POLYGONS": 12,
-        }
         for name, layer in output_layers.items():
             resolved = apply_map_theme(layer, "aegean")
             renderer = layer.renderer()
@@ -370,8 +369,20 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
                 renderer, QgsCategorizedSymbolRenderer
             ):
                 raise RuntimeError(f"{name} did not receive a semantic renderer.")
-            if len(renderer.categories()) != expected_categories[name]:
-                raise RuntimeError(f"{name} has incomplete style categories.")
+            # A hand-counted total goes stale the moment a category is added,
+            # and it never catches the failure that actually matters: a value
+            # the expression emits with no category draws nothing at all.
+            emitted = expression_values(renderer.classAttribute())
+            styled = {str(category.value()) for category in renderer.categories()}
+            if emitted - styled:
+                raise RuntimeError(
+                    f"{name} renders nothing for {sorted(emitted - styled)}."
+                )
+            if styled - emitted:
+                raise RuntimeError(
+                    f"{name} has legend entries nothing can match: "
+                    f"{sorted(styled - emitted)}."
+                )
             if layer.customProperty("zero2agent/map_theme") != "aegean":
                 raise RuntimeError(f"{name} did not record its map theme.")
             expression = QgsExpression(renderer.classAttribute())
@@ -485,12 +496,581 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
 
         tiled = self._check_wide_extent_tiling(context, feedback)
         boundary = self._check_place_boundary_download(context, feedback)
+        places = self._check_places_styling()
+        closed = self._check_closed_ways_split_by_tags()
+        basemap = self._check_osm_as_is_looks_like_a_basemap()
         return {
             "RESULT": (
                 "Urban form produced 1/1/1, advanced ALL filtering produced "
-                f"0/0/1, {tiled}, and {boundary}."
+                f"0/0/1, {tiled}, {boundary}, {places}, {closed}, and "
+                f"{basemap}."
             )
         }
+
+    def _check_osm_as_is_looks_like_a_basemap(self) -> str:
+        """OSM As-Is has to render the way openstreetmap.org does.
+
+        What makes that map read as a map rather than as a diagram is road
+        *casing*: a dark outline with the carriageway drawn on top of it, and
+        every casing painted before every carriageway so junctions join
+        cleanly. A single-stroke line cannot look like it however it is
+        coloured, so the structure is asserted, not just the colours.
+        """
+        from qgis.core import (
+            QgsExpression,
+            QgsExpressionContext,
+            QgsExpressionContextUtils,
+            QgsFeature,
+            QgsVectorLayer,
+        )
+
+        from zero2agent_osm_downloader.core.map_styling import apply_map_theme
+        from zero2agent_osm_downloader.core.schema import FIELD_NAMES
+
+        fields = "&".join(f"field={name}:string" for name in FIELD_NAMES)
+        lines = QgsVectorLayer(
+            f"LineString?crs=epsg:3857&{fields}", "as_is_lines", "memory"
+        )
+        if not lines.isValid():
+            raise RuntimeError("Could not build the OSM As-Is test layer.")
+        if apply_map_theme(lines, "osm_as_is") != "osm_as_is":
+            raise RuntimeError("The OSM As-Is theme did not resolve.")
+        renderer = lines.renderer()
+        if not renderer.usingSymbolLevels():
+            raise RuntimeError(
+                "OSM As-Is roads render without symbol levels, so every road "
+                "paints its casing over the road it meets."
+            )
+        # Categories own their symbols; holding only the symbol leaves a
+        # dangling pointer once the category is collected.
+        categories = {
+            str(category.value()): category
+            for category in renderer.categories()
+        }
+        for value in ("major", "primary", "secondary", "tertiary",
+                      "residential", "service"):
+            symbol = categories[value].symbol()
+            # Direction arrows ride along as a marker line; the road itself is
+            # the two strokes.
+            strokes = [
+                symbol.symbolLayer(index)
+                for index in range(symbol.symbolLayerCount())
+                if type(symbol.symbolLayer(index)).__name__
+                == "QgsSimpleLineSymbolLayer"
+            ]
+            if len(strokes) != 2:
+                raise RuntimeError(
+                    f"The '{value}' road has {len(strokes)} stroke(s); a road "
+                    "is a casing plus a carriageway."
+                )
+            casing, carriageway = strokes
+            if casing.width() <= carriageway.width():
+                raise RuntimeError(
+                    f"The '{value}' casing ({casing.width()}) is not wider "
+                    f"than its carriageway ({carriageway.width()})."
+                )
+            if casing.renderingPass() >= carriageway.renderingPass():
+                raise RuntimeError(
+                    f"The '{value}' casing does not render before the "
+                    "carriageways."
+                )
+        # Width has to fall with the hierarchy, and a residential street has
+        # to read as a street: at hairline widths the render looks like a
+        # wireframe next to the real OSM map.
+        def _carriageway_width(value: str) -> float:
+            symbol = categories[value].symbol()
+            return [
+                symbol.symbolLayer(index).width()
+                for index in range(symbol.symbolLayerCount())
+                if type(symbol.symbolLayer(index)).__name__
+                == "QgsSimpleLineSymbolLayer"
+            ][1]
+
+        widths = {
+            value: _carriageway_width(value)
+            for value in ("major", "primary", "secondary", "tertiary",
+                          "residential", "service")
+        }
+        ordered = ["major", "primary", "secondary", "tertiary",
+                   "residential", "service"]
+        for wider, narrower in zip(ordered, ordered[1:]):
+            if widths[wider] <= widths[narrower]:
+                raise RuntimeError(
+                    f"'{wider}' ({widths[wider]}) is not wider than "
+                    f"'{narrower}' ({widths[narrower]})."
+                )
+        if widths["residential"] < 2.0:
+            raise RuntimeError(
+                f"A residential street is {widths['residential']} mm wide; "
+                "that reads as a hairline, not as a street."
+            )
+        # A footpath has no carriageway -- it is a dashed line, and it must
+        # stay thinner than the streets it runs beside.
+        active = categories["active"].symbol()
+        if active.symbolLayerCount() != 1:
+            raise RuntimeError("A footway should be a single dashed stroke.")
+        if active.symbolLayer(0).width() >= widths["service"]:
+            raise RuntimeError(
+                "Footways are drawn as wide as service roads, so sidewalks "
+                "read as the street network."
+            )
+        if not lines.labelsEnabled():
+            raise RuntimeError("OSM As-Is roads carry no street-name labels.")
+        label_settings = lines.labeling().settings()
+        placement = label_settings.placement
+        if int(placement) == 0:
+            raise RuntimeError(
+                "Street names use the default AroundPoint placement, which "
+                "does not follow the road."
+            )
+        # A route relation is named for the service, not for the street its
+        # members run along. Labelling it writes "EuroVelo 8 - Mediterranean
+        # Route" across the whole network.
+        if not label_settings.isExpression:
+            raise RuntimeError(
+                "OSM As-Is labels the raw name field, so route relations are "
+                "labelled along every street they follow."
+            )
+        expression = QgsExpression(label_settings.fieldName)
+        if expression.hasParserError():
+            raise RuntimeError(
+                f"The label expression does not parse: "
+                f"{expression.parserErrorString()}"
+            )
+        context = QgsExpressionContext()
+        context.appendScopes(
+            QgsExpressionContextUtils.globalProjectLayerScopes(lines)
+        )
+        expression.prepare(context)
+        for tags, expected in (
+            ({"name": "312. Sokak", "highway": "residential"}, "312. Sokak"),
+            ({"name": "T2: Halkapinar - Fahrettin Altay", "route": "tram"}, None),
+            # OSM does not write the sea's name along the shore, nor the
+            # city's name across the streets.
+            ({"name": "Turk Ege Denizi kiyisi", "natural": "coastline"}, None),
+            ({"name": "Izmir (sehir)", "place": "city"}, None),
+        ):
+            feature = QgsFeature(lines.fields())
+            for key, value in tags.items():
+                feature.setAttribute(key, value)
+            context.setFeature(feature)
+            if expression.evaluate(context) != expected:
+                raise RuntimeError(
+                    f"A feature tagged {tags} labels as "
+                    f"{expression.evaluate(context)!r}, expected {expected!r}."
+                )
+
+        points = QgsVectorLayer(
+            f"Point?crs=epsg:3857&{fields}", "as_is_points", "memory"
+        )
+        apply_map_theme(points, "osm_as_is")
+        polygons = QgsVectorLayer(
+            f"Polygon?crs=epsg:3857&{fields}", "as_is_polygons", "memory"
+        )
+        apply_map_theme(polygons, "osm_as_is")
+        fills = {
+            str(category.value()): category
+            for category in polygons.renderer().categories()
+        }
+        building = fills["building_residential"].symbol().color().name()
+        if building.lower() != "#d9d0c9":
+            raise RuntimeError(
+                f"OSM As-Is buildings are {building}, not the standard "
+                "OSM building colour."
+            )
+        # Boundaries belong to the Places group. OSM As-Is neither downloads
+        # them nor offers the reader a legend entry for them.
+        for layer, styled in (
+            ("polygon", polygons.renderer()),
+            ("line", renderer),
+            ("point", points.renderer()),
+        ):
+            admin = sorted(
+                str(category.value())
+                for category in styled.categories()
+                if str(category.value()).startswith("admin_")
+            )
+            if admin:
+                raise RuntimeError(
+                    f"The OSM As-Is {layer} legend still offers {admin}."
+                )
+        if not polygons.renderer().usingSymbolLevels():
+            raise RuntimeError(
+                "OSM As-Is polygons render without symbol levels, so the "
+                "urban blocks paint over whatever is stored after them."
+            )
+        levels = {
+            str(category.value()):
+                category.symbol().symbolLayer(0).renderingPass()
+            for category in polygons.renderer().categories()
+        }
+        ground = levels["urban_residential"]
+        if min(levels.values()) < ground:
+            raise RuntimeError(
+                "Something draws below the urban blocks; they are the ground."
+            )
+        for value in ("green", "water", "parking", "pedestrian", "civic"):
+            if levels[value] <= ground:
+                raise RuntimeError(
+                    f"'{value}' ({levels[value]}) draws at or below the urban "
+                    f"blocks ({ground})."
+                )
+        for building in (
+            "building_residential", "building_commercial", "building_other",
+        ):
+            if levels[building] <= levels["green"]:
+                raise RuntimeError(
+                    f"'{building}' draws at or below the green space."
+                )
+        # "Other" is the catch-all. It must stay visibly neutral so an
+        # unexpected polygon cannot pass itself off as the urban ground.
+        blocks = {
+            str(category.value()): category
+            for category in polygons.renderer().categories()
+        }
+        if blocks["other"].label() == blocks["urban_residential"].label():
+            raise RuntimeError(
+                "The catch-all is labelled as urban blocks again, so anything "
+                "that fails to classify is read as the city's ground."
+            )
+        # Street names belong *on* the carriageway, the way OSM writes them.
+        flags = int(label_settings.lineSettings().placementFlags())
+        from qgis.core import QgsLabeling
+
+        on_line = int(
+            getattr(
+                getattr(QgsLabeling, "LinePlacementFlag", QgsLabeling), "OnLine"
+            )
+        )
+        if not flags & on_line:
+            raise RuntimeError(
+                f"Street names are placed with flags {flags}, which does not "
+                "include OnLine, so they float beside the road."
+            )
+
+        # A POI name is written in its family's colour and smaller than a
+        # street name. One flat grey at street size is a wall of text.
+        point_settings = points.labeling().settings()
+        if point_settings.format().size() >= label_settings.format().size():
+            raise RuntimeError(
+                "POI names are set as large as street names."
+            )
+        if not point_settings.dataDefinedProperties().hasActiveProperties():
+            raise RuntimeError(
+                "POI names are all one colour, so the map cannot be skimmed "
+                "by family the way OSM's can."
+            )
+
+        # POIs draw as the icon the reader expects, and the road network's own
+        # nodes stay out of the way instead of being an unexplained scatter.
+        from zero2agent_osm_downloader.core.map_styling import (
+            CARTO_ICONS,
+            _svg_exists,
+        )
+
+        pois = {
+            str(category.value()): category
+            for category in points.renderer().categories()
+        }
+        for category, (default_icon, _mapping) in CARTO_ICONS.items():
+            if category not in pois:
+                raise RuntimeError(f"'{category}' has no point category.")
+            layer_kind = type(
+                pois[category].symbol().symbolLayer(0)
+            ).__name__
+            # An install without the icon set falls back to a plain marker on
+            # purpose; a missing SVG would otherwise draw a broken-image box.
+            if _svg_exists(default_icon) and layer_kind != "QgsSvgMarkerSymbolLayer":
+                raise RuntimeError(
+                    f"'{category}' renders as {layer_kind} even though "
+                    f"{default_icon} is installed."
+                )
+        for category, (_default, mapping) in CARTO_ICONS.items():
+            for _condition, icon in mapping:
+                if not _svg_exists(icon):
+                    continue
+                properties = pois[category].symbol().symbolLayer(
+                    0
+                ).dataDefinedProperties()
+                if not properties.hasActiveProperties():
+                    raise RuntimeError(
+                        f"'{category}' has per-type icons available but picks "
+                        "one icon for every feature."
+                    )
+                break
+        # The bundled icons are parametrised. Leaving the fill unset renders
+        # every one of them solid black.
+        for category in CARTO_ICONS:
+            symbol_layer = pois[category].symbol().symbolLayer(0)
+            if type(symbol_layer).__name__ != "QgsSvgMarkerSymbolLayer":
+                continue
+            fill = symbol_layer.fillColor().name().lower()
+            if fill in ("#000000", "#ffffff"):
+                raise RuntimeError(
+                    f"The '{category}' icon renders {fill}; its OSM family "
+                    "colour was never applied."
+                )
+        junction = pois["junction"].symbol().size()
+        for busier in ("shop", "food", "health"):
+            if junction >= pois[busier].symbol().size():
+                raise RuntimeError(
+                    f"Junction nodes ({junction}) draw as large as "
+                    f"'{busier}' places; they are road furniture."
+                )
+        # A crossing is where people cross; it earns the zebra rather than
+        # being filed away as a grey traffic dot.
+        from zero2agent_osm_downloader.core.map_styling import plugin_svg
+
+        zebra = plugin_svg("crossing.svg")
+        if not os.path.isfile(zebra):
+            raise RuntimeError(
+                f"The crossing icon is missing from the plugin: {zebra}"
+            )
+        if "crossing" not in pois:
+            raise RuntimeError("Pedestrian crossings have no category.")
+        crossing_layer = type(pois["crossing"].symbol().symbolLayer(0)).__name__
+        if crossing_layer != "QgsSvgMarkerSymbolLayer":
+            raise RuntimeError(
+                f"Crossings render as {crossing_layer}, not as the zebra icon."
+            )
+
+        # Kerbs and barriers are the footway's edge, not somewhere to go.
+        if "furniture" not in pois:
+            raise RuntimeError(
+                "Kerbs and barriers have no category, so they fall back into "
+                "'other' as an unexplained dot on every corner."
+            )
+        if pois["furniture"].symbol().size() >= pois["shop"].symbol().size():
+            raise RuntimeError("Kerbs draw as large as shops.")
+
+        # One-way streets carry OSM's direction arrows; a waterway is not a
+        # road and takes none.
+        road = categories["residential"].symbol()
+        arrows = [
+            road.symbolLayer(index)
+            for index in range(road.symbolLayerCount())
+            if type(road.symbolLayer(index)).__name__
+            == "QgsMarkerLineSymbolLayer"
+        ]
+        if not arrows:
+            raise RuntimeError("Roads carry no one-way direction arrows.")
+        sub_layer = arrows[0].subSymbol().symbolLayer(0)
+        if not sub_layer.dataDefinedProperties().hasActiveProperties():
+            raise RuntimeError(
+                "The direction arrow is not data-defined, so every street "
+                "draws arrows whether it is one-way or not."
+            )
+        # One arrow where the street name is written. On an interval the
+        # arrows stipple down the whole road and the map stops being readable.
+        from qgis.core import Qgis
+
+        central = int(Qgis.MarkerLinePlacement.CentralPoint)
+        placement = (
+            arrows[0].placements()
+            if hasattr(arrows[0], "placements")
+            else arrows[0].placement()
+        )
+        if not int(placement) & central:
+            raise RuntimeError(
+                f"Direction arrows are placed with {int(placement)}, not once "
+                "at the centre of the street."
+            )
+        water = categories["water"].symbol()
+        if any(
+            type(water.symbolLayer(index)).__name__
+            == "QgsMarkerLineSymbolLayer"
+            for index in range(water.symbolLayerCount())
+        ):
+            raise RuntimeError("Waterways draw one-way road arrows.")
+        return (
+            "OSM As-Is draws cased roads, centred street names, OSM icons "
+            "and quiet junction nodes"
+        )
+
+    def _check_closed_ways_split_by_tags(self) -> str:
+        """A closed way becomes a polygon only when its tags enclose an area.
+
+        OSM has no polygon primitive.  Splitting on closure alone turned every
+        footpath loop, roundabout and racetrack into a polygon -- which is how
+        an "OSM as-is" download filled its polygon layer with footways.
+        """
+        from zero2agent_osm_downloader.core.catalog import TagSpec, get_preset
+        from zero2agent_osm_downloader.processing.osm_algorithms import (
+            _kinds_for_element,
+        )
+
+        ring = [
+            {"lat": 38.4100, "lon": 27.1200},
+            {"lat": 38.4100, "lon": 27.1210},
+            {"lat": 38.4110, "lon": 27.1210},
+            {"lat": 38.4100, "lon": 27.1200},
+        ]
+        # The wildcard request asks for line *and* polygon, so the tags are
+        # the only thing that can decide.
+        wildcard = (
+            TagSpec("*", "", "line"),
+            TagSpec("*", "", "polygon"),
+        )
+        expected = {
+            "footway loop": ({"highway": "footway"}, "line"),
+            "roundabout": ({"highway": "residential", "junction": "roundabout"}, "line"),
+            "pedestrian square": ({"highway": "pedestrian", "area": "yes"}, "polygon"),
+            "building": ({"building": "yes"}, "polygon"),
+            "park": ({"leisure": "park"}, "polygon"),
+            "fence": ({"barrier": "fence"}, "line"),
+        }
+        for label, (tags, want) in expected.items():
+            element = {"type": "way", "id": 1, "tags": tags, "geometry": ring}
+            kinds = _kinds_for_element(element, wildcard)
+            got = [kind for kind, _matches in kinds]
+            if got != [want]:
+                raise RuntimeError(
+                    f"A closed {label} split as {got or 'nothing'}, "
+                    f"expected ['{want}']."
+                )
+
+        # An administrative boundary is the relation; the closed ways inside
+        # it are ring fragments.  Reading those as areas is what turned one
+        # neighbourhood into a pile of overlapping part-polygons.
+        admin_specs = get_preset("admin_level_8").tags
+        admin_tags = {"boundary": "administrative", "admin_level": "8"}
+        fragment = {"type": "way", "id": 3, "tags": admin_tags, "geometry": ring}
+        kinds = [kind for kind, _m in _kinds_for_element(fragment, admin_specs)]
+        if kinds != ["line"]:
+            raise RuntimeError(
+                f"A closed admin boundary way split as {kinds}, expected "
+                "['line'] -- only the relation carries the area."
+            )
+        # ...and the relation must still give both, because the preset asks
+        # for the boundary as an area and as a line.
+        admin_relation = {
+            "type": "relation",
+            "id": 4,
+            "tags": dict(admin_tags, type="boundary"),
+            "members": [],
+        }
+        kinds = [kind for kind, _m in _kinds_for_element(admin_relation, admin_specs)]
+        if "polygon" not in kinds or "line" not in kinds:
+            raise RuntimeError(
+                f"An admin boundary relation split as {kinds}, expected both "
+                "line and polygon."
+            )
+
+        # A circular bus route closes up and is still a route.
+        route = {
+            "type": "relation",
+            "id": 2,
+            "tags": {"type": "route", "route": "bus"},
+            "members": [],
+        }
+        kinds = [kind for kind, _matches in _kinds_for_element(route, wildcard)]
+        if kinds != ["line"]:
+            raise RuntimeError(
+                f"A circular route relation split as {kinds}, expected ['line']."
+            )
+        return "closed ways split by tag, not by closure"
+
+    def _check_places_styling(self) -> str:
+        """Places layers must be read as places, not as urban morphology.
+
+        The Places presets download administrative boundaries.  Rendering them
+        through the morphology renderer is not a cosmetic slip — every boundary
+        falls into the catch-all category and the legend offers the reader
+        building, land-use and road entries that the layer cannot contain.
+        """
+        from qgis.core import (
+            QgsCategorizedSymbolRenderer,
+            QgsFeature,
+            QgsVectorLayer,
+        )
+
+        from zero2agent_osm_downloader.core.map_styling import apply_map_theme
+        from zero2agent_osm_downloader.core.map_styling_expressions import (
+            ADMIN_LEVEL_STYLES,
+            PLACES_LINE_EXPRESSION,
+            PLACES_POINT_EXPRESSION,
+            PLACES_POLYGON_EXPRESSION,
+            expression_values,
+        )
+        from zero2agent_osm_downloader.core.schema import FIELD_NAMES
+
+        fields = "&".join(f"field={name}:string" for name in FIELD_NAMES)
+        expected = {
+            "Polygon": PLACES_POLYGON_EXPRESSION,
+            "LineString": PLACES_LINE_EXPRESSION,
+            "Point": PLACES_POINT_EXPRESSION,
+        }
+        # Every route into the Places renderers, so none of them can rot: the
+        # dock stamps the custom property, while Processing outputs only carry
+        # the attributes the download wrote.
+        scopes = ("property", "attributes")
+        for geometry, expression in expected.items():
+            for scope in scopes:
+                layer = QgsVectorLayer(
+                    f"{geometry}?crs=epsg:4326&{fields}", f"places_{geometry}", "memory"
+                )
+                if not layer.isValid():
+                    raise RuntimeError(f"Could not build a {geometry} test layer.")
+                if scope == "property":
+                    layer.setCustomProperty("zero2agent/style_scope", "places")
+                else:
+                    feature = QgsFeature(layer.fields())
+                    feature.setAttribute("theme", "Places")
+                    feature.setAttribute("preset_id", "admin_level_6")
+                    if not layer.dataProvider().addFeature(feature):
+                        raise RuntimeError("Could not seed the Places test layer.")
+                    layer.updateExtents()
+                resolved = apply_map_theme(layer, "aegean")
+                renderer = layer.renderer()
+                if resolved != "aegean" or not isinstance(
+                    renderer, QgsCategorizedSymbolRenderer
+                ):
+                    raise RuntimeError(
+                        f"A Places {geometry} layer got no categorised renderer."
+                    )
+                if renderer.classAttribute() != expression:
+                    raise RuntimeError(
+                        f"A Places {geometry} layer ({scope}) was styled as "
+                        "urban morphology, not as places."
+                    )
+                styled = {
+                    str(category.value()) for category in renderer.categories()
+                }
+                if styled != expression_values(expression):
+                    raise RuntimeError(
+                        f"The Places {geometry} legend does not match its "
+                        "expression."
+                    )
+                missing_admin = {
+                    f"admin_{level}" for level in ADMIN_LEVEL_STYLES
+                } - styled
+                if missing_admin:
+                    raise RuntimeError(
+                        f"The Places {geometry} legend is missing "
+                        f"{sorted(missing_admin)}."
+                    )
+                morphology = {
+                    value
+                    for value in styled
+                    if value.startswith("building_")
+                    or value in {"green", "parking", "pedestrian", "major",
+                                 "primary", "secondary", "tertiary",
+                                 "residential", "service", "tree", "health",
+                                 "education", "tourism", "sport"}
+                }
+                if morphology:
+                    raise RuntimeError(
+                        f"The Places {geometry} legend still offers morphology "
+                        f"categories: {sorted(morphology)}."
+                    )
+                if not layer.labelsEnabled():
+                    raise RuntimeError(
+                        f"A Places {geometry} layer carries no name labels."
+                    )
+        return (
+            "Places point/line/polygon layers style as administrative places "
+            "through both the dock and Processing routes"
+        )
 
     @staticmethod
     def _route_relation(identifier: int, offset: float) -> dict:
@@ -730,8 +1310,13 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         )
 
 
-def main() -> bool:
-    """Bootstrap headless QGIS, register the provider, run the check."""
+def main(exit_process: bool = False) -> bool:
+    """Bootstrap headless QGIS, register the provider, run the check.
+
+    ``exit_process`` leaves through :func:`os._exit` once the result has been
+    printed, and is for the standalone runners only -- never when the check is
+    invoked from inside a live QGIS session.
+    """
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     plugin_dir = Path(
         os.environ.get(
@@ -788,10 +1373,23 @@ def main() -> bool:
         if owns_app:
             app.exitQgis()
             profile.cleanup()
+            if exit_process:
+                # Returning from here destroys this frame, which drops the
+                # last reference to the QgsApplication that exitQgis() has
+                # already torn down.  When a check failed, the objects it
+                # left alive make that destructor deadlock, and the runner
+                # then times out after minutes with the diagnosis stranded
+                # in a buffered pipe.  The verdict is printed and flushed, so
+                # leave now rather than unwinding into the deadlock.
+                sys.stdout.flush()
+                sys.stderr.flush()
+                os._exit(0 if ok else 1)
     return ok
 
 
 if __name__ == "__main__":
-    sys.exit(0 if main() else 1)
+    # Normally this does not return -- see `exit_process`.  It does when the
+    # application was already running, and then the exit code still matters.
+    sys.exit(0 if main(exit_process=True) else 1)
 else:
     main()

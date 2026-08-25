@@ -4,7 +4,8 @@ from __future__ import annotations
 import contextlib
 from typing import Optional
 
-from qgis.PyQt.QtCore import QEvent, Qt
+from qgis.PyQt.QtCore import QEvent, QSize, Qt, QUrl
+from qgis.PyQt.QtGui import QDesktopServices
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -24,6 +25,7 @@ from qgis.PyQt.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -195,6 +197,46 @@ _QUERY_VALUE_SUGGESTIONS = (
 )
 
 
+class _FittedTabWidget(QTabWidget):
+    """A tab widget only as tall as the page currently on show.
+
+    Two Qt defaults combine badly here.  QTabWidget reports the height of its
+    *tallest* page, and a QScrollArea page reports a fixed guess rather than
+    the height of what it holds.  Together they kept the tab strip at the
+    Command page's height, so collapsing the custom-tag panel on a short tab
+    left a block of dead space above "Run download" instead of letting it
+    move up.
+
+    The hint here only ever shrinks the widget: a page taller than the default
+    keeps scrolling inside itself exactly as before.
+    """
+
+    def _page_height(self) -> int:
+        page = self.currentWidget()
+        if page is None:
+            return 0
+        content = page.widget() if isinstance(page, QScrollArea) else None
+        return (content or page).sizeHint().height()
+
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        height = self._page_height()
+        if height <= 0:
+            return hint
+        margins = self.contentsMargins()
+        needed = (
+            height
+            + self.tabBar().sizeHint().height()
+            + margins.top()
+            + margins.bottom()
+        )
+        return QSize(hint.width(), min(hint.height(), needed))
+
+    def minimumSizeHint(self) -> QSize:
+        hint = super().minimumSizeHint()
+        return QSize(hint.width(), min(hint.height(), self.sizeHint().height()))
+
+
 class AgentOsmDock(QDockWidget):
     """Primary downloader UI with no browser or plugin-UI automation."""
 
@@ -206,6 +248,7 @@ class AgentOsmDock(QDockWidget):
         self._feedback = None
         self._context = None
         self._current_label = ""
+        self._current_style_scope = ""
         self._place_name = ""
         self._place_candidate = None
         self._place_task = None
@@ -249,11 +292,24 @@ class AgentOsmDock(QDockWidget):
         hero_copy.addWidget(subtitle)
         hero_top.addLayout(hero_copy, 1)
 
+        badge_column = QVBoxLayout()
+        badge_column.setContentsMargins(0, 0, 0, 0)
+        badge_column.setSpacing(4)
         hero_badge = QLabel("OSM\nREADY")
         hero_badge.setObjectName("heroBadge")
         hero_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hero_badge.setToolTip("OpenStreetMap acquisition tools")
-        hero_top.addWidget(hero_badge)
+        self.map_features_button = QPushButton("OSM Map Features")
+        self.map_features_button.setObjectName("mapFeaturesButton")
+        self.map_features_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.map_features_button.setToolTip(
+            "Open the OpenStreetMap Map Features reference."
+        )
+        self.map_features_button.clicked.connect(self._open_map_features)
+        badge_column.addWidget(hero_badge)
+        badge_column.addWidget(self.map_features_button)
+        badge_column.addStretch(1)
+        hero_top.addLayout(badge_column)
         hero_layout.addLayout(hero_top)
 
         workflow_hint = QLabel("Choose a workflow, review the request, then download.")
@@ -262,7 +318,7 @@ class AgentOsmDock(QDockWidget):
         hero_layout.addWidget(workflow_hint)
         layout.addWidget(hero)
 
-        self.tabs = QTabWidget()
+        self.tabs = _FittedTabWidget()
         self.tabs.setDocumentMode(True)
         self.download_tab = self._build_download_tab()
         self.query_tab = self._build_query_tab()
@@ -291,7 +347,12 @@ class AgentOsmDock(QDockWidget):
         # every pixel a tall docked panel happens to have, leaving a block of
         # empty space inside the tab instead of showing the "Run download"
         # section below it.
+        # Never taller than the page on show needs.
+        tab_policy = self.tabs.sizePolicy()
+        tab_policy.setVerticalPolicy(QSizePolicy.Policy.Maximum)
+        self.tabs.setSizePolicy(tab_policy)
         layout.addWidget(self.tabs)
+        self._fit_tabs_to_current_page()
 
         self.run_group = QGroupBox("Run download")
         run_form = QFormLayout(self.run_group)
@@ -299,6 +360,16 @@ class AgentOsmDock(QDockWidget):
         self.run_summary = QLabel()
         self.run_summary.setObjectName("runSummary")
         self.run_summary.setWordWrap(True)
+        # A word-wrapped label reports the height of a single line unless the
+        # layout is told to ask it how tall it is at the width it actually
+        # gets. Without this a summary that wraps is clipped, and the clipped
+        # second line reads as text printed over the line above it.
+        summary_policy = self.run_summary.sizePolicy()
+        summary_policy.setHeightForWidth(True)
+        self.run_summary.setSizePolicy(summary_policy)
+        self.run_summary.setMinimumHeight(
+            self.run_summary.fontMetrics().height() * 2
+        )
         run_form.addRow(self.run_summary)
         self.extent_combo = QComboBox()
         self.extent_combo.addItem("Current map view", "map")
@@ -447,6 +518,11 @@ class AgentOsmDock(QDockWidget):
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
         layout.addWidget(self.status)
+        # Collect any height the dock area has to spare down here. Without
+        # this the surplus goes to the only expanding child -- the tab widget
+        # -- which pushes "Run download" to the bottom of a tall panel and
+        # leaves dead space above it whenever a tab is short.
+        layout.addStretch(1)
 
         # A docked panel is only as tall as the space QGIS happens to give
         # its dock area, which is routinely shorter than everything above
@@ -490,7 +566,7 @@ class AgentOsmDock(QDockWidget):
         self.dataset_list.setSelectionMode(
             QListWidget.SelectionMode.NoSelection
         )
-        self.dataset_list.setMaximumHeight(132)
+        self.dataset_list.setMaximumHeight(184)
         self.dataset_list.setToolTip(
             "Select one or more datasets from this theme. They run as one bounded request."
         )
@@ -525,10 +601,30 @@ class AgentOsmDock(QDockWidget):
         preset_form.addRow(self.description)
         outer.addWidget(preset_group)
 
-        custom_group = QGroupBox("Custom tag")
-        custom_form = QFormLayout(custom_group)
-        self.custom_check = QCheckBox("Use a custom OSM key/value")
+        custom_group = QFrame()
+        custom_group.setObjectName("customTagPanel")
+        custom_layout = QVBoxLayout(custom_group)
+        custom_layout.setContentsMargins(9, 8, 9, 9)
+        custom_layout.setSpacing(6)
+        custom_header = QHBoxLayout()
+        custom_header.setSpacing(6)
+        self.custom_check = QPushButton("Custom tag  +")
+        self.custom_check.setObjectName("customToggleButton")
+        self.custom_check.setCheckable(True)
+        self.custom_check.setChecked(False)
+        self.custom_check.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.custom_check.setToolTip("Open a bounded custom OSM key/value request.")
         self.custom_check.toggled.connect(self._sync_custom_fields)
+        custom_badge = QLabel("key=value")
+        custom_badge.setObjectName("customTagBadge")
+        custom_header.addWidget(self.custom_check, 1)
+        custom_header.addWidget(custom_badge)
+        custom_layout.addLayout(custom_header)
+        self.custom_fields_panel = QFrame()
+        self.custom_fields_panel.setObjectName("customTagFields")
+        custom_form = QFormLayout(self.custom_fields_panel)
+        custom_form.setContentsMargins(0, 2, 0, 0)
+        custom_form.setSpacing(6)
         self.key_edit = QLineEdit()
         self.key_edit.setPlaceholderText("building")
         self.key_edit.setClearButtonEnabled(True)
@@ -539,10 +635,10 @@ class AgentOsmDock(QDockWidget):
         self.value_edit.textChanged.connect(self._refresh_run_summary)
         self.geometry_combo = QComboBox()
         self.geometry_combo.addItems(["Point", "Line", "Polygon"])
-        custom_form.addRow(self.custom_check)
         custom_form.addRow("Key", self.key_edit)
         custom_form.addRow("Value", self.value_edit)
         custom_form.addRow("Geometry", self.geometry_combo)
+        custom_layout.addWidget(self.custom_fields_panel)
         outer.addWidget(custom_group)
         outer.addStretch(1)
         self._sync_custom_fields(False)
@@ -918,6 +1014,10 @@ class AgentOsmDock(QDockWidget):
 
     def _dataset_changed(self, *_args) -> None:
         preset_ids = self._selected_preset_ids()
+        if any(get_preset(preset_id).group_id == "osm_as_is" for preset_id in preset_ids):
+            theme_index = self.map_theme_combo.findData("osm_as_is")
+            if theme_index >= 0 and self.map_theme_combo.currentIndex() != theme_index:
+                self.map_theme_combo.setCurrentIndex(theme_index)
         self.dataset_count.setText(
             f"{len(preset_ids)} of {self.dataset_list.count()} selected"
         )
@@ -1039,7 +1139,7 @@ class AgentOsmDock(QDockWidget):
         intent = interpret_prompt(raw_text)
         self._remember_command(raw_text, intent)
         if intent.mode == "place" and intent.exclude_key:
-            preset = get_preset(intent.preset_id or "administrative_places")
+            preset = get_preset(intent.preset_id or "place_centres")
             self._route_exclusion_to_query_tab(preset.tags, intent)
             self._place_extent_ui(intent.place_name)
             self.command_place_label.setText(
@@ -1054,13 +1154,13 @@ class AgentOsmDock(QDockWidget):
             return
         if intent.mode == "place":
             self.custom_check.setChecked(False)
-            self._select_preset(intent.preset_id or "administrative_places")
+            self._select_preset(intent.preset_id or "place_centres")
             self._check_extra_presets(intent.extra_preset_ids)
             self._place_extent_ui(intent.place_name)
             self.command_place_label.setText(
                 f"Place: {intent.place_name}  ·  resolving map extent..."
             )
-            preset = get_preset(intent.preset_id or "administrative_places")
+            preset = get_preset(intent.preset_id or "place_centres")
             self._set_status(
                 f"Place command matched {preset.processing_label}. "
                 "Resolving the place extent before download."
@@ -1168,7 +1268,7 @@ class AgentOsmDock(QDockWidget):
             summary = f"{intent.key}={intent.value or '*'}"
         else:
             label = get_preset(
-                intent.preset_id or "administrative_places"
+                intent.preset_id or "place_centres"
             ).title
             summary = (
                 f"{label} in {intent.place_name}" if intent.place_name
@@ -1455,7 +1555,13 @@ class AgentOsmDock(QDockWidget):
         if not result.ok:
             QMessageBox.information(self, "Agent Workspace", result.message)
 
+    def _fit_tabs_to_current_page(self) -> None:
+        """Re-ask the tab widget for its height after a page changed shape."""
+        if hasattr(self, "tabs"):
+            self.tabs.updateGeometry()
+
     def _tab_changed(self, index: int) -> None:
+        self._fit_tabs_to_current_page()
         if self.tabs.widget(index) is self.connections_tab:
             self._refresh_agent_connection()
         if hasattr(self, "run_group"):
@@ -1477,6 +1583,25 @@ class AgentOsmDock(QDockWidget):
         self.key_edit.setEnabled(checked)
         self.value_edit.setEnabled(checked)
         self.geometry_combo.setEnabled(checked)
+        if hasattr(self, "custom_fields_panel"):
+            self.custom_fields_panel.setVisible(checked)
+        if hasattr(self, "custom_check"):
+            self.custom_check.setText(
+                "Custom tag  -" if checked else "Custom tag  +"
+            )
+        if hasattr(self, "custom_fields_panel"):
+            panel = self.custom_fields_panel.parentWidget()
+            if panel is not None:
+                layout = panel.layout()
+                if layout is not None:
+                    layout.setContentsMargins(
+                        9, 8, 9, 9 if checked else 6
+                    )
+                    layout.setSpacing(6 if checked else 0)
+                panel.setProperty("active", checked)
+                panel.style().unpolish(panel)
+                panel.style().polish(panel)
+        self._fit_tabs_to_current_page()
         self._refresh_run_summary()
 
     def _refresh_run_summary(self, *_args) -> None:
@@ -1505,7 +1630,7 @@ class AgentOsmDock(QDockWidget):
             if self.custom_check.isChecked():
                 key = self.key_edit.text().strip() or "OSM key"
                 value = self.value_edit.text().strip() or "*"
-                self.run_summary.setText(f"Custom tag  •  {key}={value}")
+                self.run_summary.setText(f"{key}={value}")
                 self.download_button.setText("Download custom tag")
             else:
                 preset_ids = self._selected_preset_ids()
@@ -1648,6 +1773,7 @@ class AgentOsmDock(QDockWidget):
             self._current_label = self._display_label(
                 f"{key}={parameters['VALUE'] or '*'}"
             )
+            self._current_style_scope = ""
         else:
             preset_ids = self._selected_preset_ids()
             preset_indexes = [
@@ -1692,6 +1818,12 @@ class AgentOsmDock(QDockWidget):
                 parameters = {"PRESET": preset_indexes}
             self._current_label = ", ".join(
                 PRESETS[index].title for index in preset_indexes
+            )
+            selected_groups = {
+                PRESETS[index].group_id for index in preset_indexes
+            }
+            self._current_style_scope = (
+                "places" if selected_groups == {"places"} else ""
             )
             if candidate is not None:
                 self._current_label = (
@@ -1800,6 +1932,11 @@ class AgentOsmDock(QDockWidget):
                 layer.deleteLater()
                 continue
             layer.setName(f"{self._current_label} — {suffix}")
+            if self._current_style_scope:
+                layer.setCustomProperty(
+                    "zero2agent/style_scope",
+                    self._current_style_scope,
+                )
             self._style_layer(
                 layer,
                 self.current_map_theme(),
@@ -1865,6 +2002,12 @@ class AgentOsmDock(QDockWidget):
             "OpenStreetMap basemap added. Attribution: OpenStreetMap contributors."
             if added
             else "OpenStreetMap basemap is already in the project and is now visible."
+        )
+
+    def _open_map_features(self) -> None:
+        """Open the public OSM tag reference in the user's browser."""
+        QDesktopServices.openUrl(
+            QUrl("https://wiki.openstreetmap.org/wiki/Map_features")
         )
 
     @staticmethod

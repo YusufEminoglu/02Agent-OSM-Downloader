@@ -18,7 +18,7 @@ def _entry(**overrides) -> dict:
     entry = {
         "osm_type": "relation",
         "osm_id": 223474,
-        "display_name": "Konak, İzmir, Türkiye",
+        "display_name": "Konak, Izmir, Turkey",
         "addresstype": "municipality",
         "class": "boundary",
         "type": "administrative",
@@ -70,7 +70,7 @@ class ResultParsingTests(unittest.TestCase):
     def test_relation_result_yields_a_usable_boundary(self) -> None:
         candidate = parse_geocode_results([_entry()], "Konak")[0]
         self.assertEqual(candidate.name, "Konak")
-        self.assertEqual(candidate.label, "Konak, İzmir, Türkiye")
+        self.assertEqual(candidate.label, "Konak, Izmir, Turkey")
         self.assertEqual(candidate.admin_level, "6")
         self.assertEqual(candidate.source, "nominatim")
         # Nominatim orders its box south, north, west, east.

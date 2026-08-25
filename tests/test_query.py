@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 import unittest
 
-from zero2agent_osm_downloader.core.catalog import TagSpec, get_preset
+from zero2agent_osm_downloader.core.catalog import (
+    TagSpec,
+    get_preset,
+    presets_for_group,
+)
 from zero2agent_osm_downloader.core.query import (
     MAX_ADVANCED_FILTERS,
     MAX_FEATURES,
@@ -12,12 +16,14 @@ from zero2agent_osm_downloader.core.query import (
     QueryError,
     advanced_specs,
     build_query,
+    build_queries,
     compact_tags,
     excludes_tag,
     matching_specs,
     normalize_tag,
     validate_bbox,
     validate_payload,
+    wildcard_excluded,
 )
 
 SMALL_BBOX = (38.410, 27.120, 38.416, 27.126)
@@ -41,6 +47,83 @@ class QueryTests(unittest.TestCase):
         self.assertIn('way["natural"="tree_row"]', query)
         self.assertEqual(query.count("[out:json]"), 1)
         self.assertNotIn("http", query)
+
+    def test_osm_as_is_full_visible_stack_is_bounded_and_multi_geometry(self) -> None:
+        preset = get_preset("osm_as_is_full_visible_stack")
+        self.assertEqual(len(preset.tags), 3)
+        query = build_query(preset.tags, SMALL_BBOX)
+        self.assertIn('node[~"."~"."]', query)
+        self.assertIn('way[~"."~"."]', query)
+        self.assertIn('relation[~"."~"."]', query)
+        self.assertEqual(query.count("[out:json]"), 1)
+        self.assertNotIn("http", query)
+
+    def test_wildcard_leaves_boundaries_and_places_to_the_places_group(
+        self,
+    ) -> None:
+        query = build_query(
+            get_preset("osm_as_is_full_visible_stack").tags, SMALL_BBOX
+        )
+        # Asked for at Overpass, so they never travel...
+        self.assertEqual(query.count('["boundary"!="administrative"]'), 3)
+        self.assertEqual(query.count('[!"place"]'), 3)
+        # ...and refused again on the way in, so a cached or mirrored payload
+        # cannot slip them past the query filter.
+        self.assertTrue(wildcard_excluded({"boundary": "administrative"}))
+        self.assertTrue(wildcard_excluded({"place": "town"}))
+        self.assertFalse(wildcard_excluded({"highway": "footway"}))
+        self.assertFalse(wildcard_excluded({"boundary": "national_park"}))
+
+    def test_no_osm_as_is_preset_asks_for_boundaries_or_places(self) -> None:
+        for preset in presets_for_group("osm_as_is"):
+            with self.subTest(preset=preset.preset_id):
+                for tag in preset.tags:
+                    self.assertNotEqual(tag.key, "place")
+                    self.assertNotEqual(
+                        (tag.key, tag.value), ("boundary", "administrative")
+                    )
+
+    def test_admin_level_preset_combines_boundary_and_exact_level(self) -> None:
+        query = build_query(get_preset("admin_level_8").tags, SMALL_BBOX)
+        expected = (
+            'way["boundary"="administrative"]["admin_level"="8"]'
+            "(38.4100000,27.1200000,38.4160000,27.1260000);"
+        )
+        self.assertIn(expected, query)
+        self.assertIn(
+            'relation["boundary"="administrative"]["admin_level"="8"]',
+            query,
+        )
+        self.assertNotIn('node["admin_level"="8"]', query)
+
+    def test_admin_level_requests_are_not_tiled(self) -> None:
+        queries = build_queries(
+            get_preset("admin_level_4").tags,
+            (38.30, 27.00, 38.55, 27.30),
+        )
+        self.assertEqual(len(queries), 1)
+        self.assertIn(
+            'relation["boundary"="administrative"]["admin_level"="4"]',
+            queries[0],
+        )
+
+    def test_qualified_matching_requires_every_tag(self) -> None:
+        spec = next(
+            tag for tag in get_preset("admin_level_4").tags
+            if tag.geometry == "line"
+        )
+        self.assertEqual(
+            matching_specs(
+                {"boundary": "administrative", "admin_level": "4"},
+                (spec,),
+                "line",
+            ),
+            (spec,),
+        )
+        self.assertEqual(
+            matching_specs({"boundary": "administrative"}, (spec,), "line"),
+            (),
+        )
 
     def test_duplicate_selectors_are_deduplicated(self) -> None:
         spec = TagSpec("building", "", "polygon")
@@ -96,11 +179,11 @@ class QueryTests(unittest.TestCase):
         self.assertIs(validate_payload(payload), payload)
         with self.assertRaises(QueryError):
             validate_payload({"elements": [{}] * (MAX_FEATURES + 1)})
-        text = compact_tags({"name": "İzmir", "x": "y" * 20_000})
+        text = compact_tags({"name": "Izmir", "x": "y" * 20_000})
         self.assertLessEqual(len(text), 16_000)
         decoded = json.loads(text)
         self.assertTrue(decoded["_truncated"])
-        self.assertEqual(decoded["name"], "İzmir")
+        self.assertEqual(decoded["name"], "Izmir")
 
     def test_matching_specs_uses_key_value_and_geometry(self) -> None:
         specs = (

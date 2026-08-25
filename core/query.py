@@ -48,6 +48,35 @@ class QueryError(ValueError):
     """A bounded, user-actionable query or response error."""
 
 
+#: The wildcard selector means "every tagged object here", minus the two
+#: families the Places group owns.  Administrative boundaries are enormous
+#: relations and place nodes are settlement labels; both swamp an as-is render
+#: and are chosen deliberately from Places instead.  The Overpass filter and
+#: `_value_matches` below have to agree, or features either arrive and get
+#: dropped, or are asked for and never come.
+WILDCARD_EXCLUDED_KEYS: Tuple[Tuple[str, str], ...] = (
+    ("boundary", "administrative"),
+    ("place", ""),
+)
+_WILDCARD_FILTER = "".join(
+    f'["{key}"!="{value}"]' if value else f'[!"{key}"]'
+    for key, value in WILDCARD_EXCLUDED_KEYS
+)
+
+
+def wildcard_excluded(tags: object) -> bool:
+    """True when a wildcard request must skip this element."""
+    if not isinstance(tags, dict):
+        return False
+    for key, value in WILDCARD_EXCLUDED_KEYS:
+        actual = tags.get(key)
+        if actual is None:
+            continue
+        if not value or str(actual).strip().lower() == value:
+            return True
+    return False
+
+
 def normalize_tag(
     key: object, value: object = "", value_mode: str = "exact"
 ) -> Tuple[str, str]:
@@ -232,9 +261,16 @@ def normalized_specs(
     for spec in specs:
         if spec.geometry not in GEOMETRY_KINDS:
             raise QueryError("An unsupported geometry type was requested.")
-        key, value = normalize_tag(spec.key, spec.value, value_mode)
-        row = TagSpec(key, value, spec.geometry)
-        marker = (row.key, row.value, row.geometry)
+        if spec.key == "*":
+            key, value = "*", ""
+        else:
+            key, value = normalize_tag(spec.key, spec.value, value_mode)
+        qualifiers = tuple(
+            normalize_tag(qualifier_key, qualifier_value)
+            for qualifier_key, qualifier_value in spec.qualifiers
+        )
+        row = TagSpec(key, value, spec.geometry, qualifiers)
+        marker = (row.key, row.value, row.geometry, row.qualifiers)
         if marker not in seen:
             seen.add(marker)
             unique.append(row)
@@ -243,6 +279,28 @@ def normalized_specs(
     if len(unique) > MAX_SELECTORS:
         raise QueryError("The preset contains too many OSM selectors.")
     return tuple(unique)
+
+
+def is_admin_boundary_spec(spec: TagSpec) -> bool:
+    """True for an exact `boundary=administrative` + `admin_level` request.
+
+    An administrative area is a *relation*; the closed ways in it are the
+    fragments its ring is built from.  Reading those fragments as areas turns
+    one neighbourhood into a pile of part-polygons, so both the query and the
+    feature reader have to agree that only relations carry admin polygons --
+    which is why this predicate is shared rather than written twice.
+    """
+    return (
+        spec.key == "boundary"
+        and spec.value == "administrative"
+        and any(key == "admin_level" and value for key, value in spec.qualifiers)
+    )
+
+
+def admin_boundary_specs(specs: Iterable[TagSpec]) -> bool:
+    """Return True when a request is only exact administrative boundaries."""
+    rows = tuple(specs)
+    return bool(rows) and all(is_admin_boundary_spec(spec) for spec in rows)
 
 
 def advanced_specs(
@@ -318,23 +376,37 @@ def _render_query(
     operator = "~" if values_mode == "regex" else "="
 
     def _tag(spec: TagSpec) -> str:
-        return (
-            f'["{spec.key}"{operator}"{spec.value}"]'
-            if spec.value
-            else f'["{spec.key}"]'
+        if spec.key == "*":
+            primary = '[~"."~"."]' + _WILDCARD_FILTER
+        else:
+            primary = (
+                f'["{spec.key}"{operator}"{spec.value}"]'
+                if spec.value
+                else f'["{spec.key}"]'
+            )
+        qualifiers = "".join(
+            f'["{key}"="{value}"]' if value else f'["{key}"]'
+            for key, value in spec.qualifiers
         )
+        return primary + qualifiers
 
     selectors = []
+    _is_admin_boundary = is_admin_boundary_spec
+
     if mode == "any":
         for spec in safe_specs:
             tag = _tag(spec)
             if spec.geometry == "point":
-                selectors.append(f"  node{tag}{scope};")
+                if _is_admin_boundary(spec):
+                    selectors.append(f"  relation{tag}{scope};")
+                else:
+                    selectors.append(f"  node{tag}{scope};")
             elif spec.geometry == "line":
                 selectors.append(f"  way{tag}{scope};")
                 selectors.append(f"  relation{tag}{scope};")
             else:
-                selectors.append(f"  way{tag}{scope};")
+                if not _is_admin_boundary(spec):
+                    selectors.append(f"  way{tag}{scope};")
                 selectors.append(f"  relation{tag}{scope};")
     else:
         for geometry in GEOMETRY_KINDS:
@@ -344,13 +416,18 @@ def _render_query(
             if not geometry_specs:
                 continue
             tags = "".join(_tag(spec) for spec in geometry_specs)
+            admin_only = all(_is_admin_boundary(spec) for spec in geometry_specs)
             if geometry == "point":
-                selectors.append(f"  node{tags}{scope};")
+                if admin_only:
+                    selectors.append(f"  relation{tags}{scope};")
+                else:
+                    selectors.append(f"  node{tags}{scope};")
             elif geometry == "line":
                 selectors.append(f"  way{tags}{scope};")
                 selectors.append(f"  relation{tags}{scope};")
             else:
-                selectors.append(f"  way{tags}{scope};")
+                if not admin_only:
+                    selectors.append(f"  way{tags}{scope};")
                 selectors.append(f"  relation{tags}{scope};")
 
     return (
@@ -393,6 +470,15 @@ def build_queries(
 ) -> Tuple[str, ...]:
     """Build one bounded request per tile covering the whole extent."""
     safe_specs = normalized_specs(specs, value_mode)
+    if admin_boundary_specs(safe_specs):
+        return (
+            _render_query(
+                safe_specs,
+                _box_scope(validate_job_bbox(*bbox)),
+                match_mode,
+                value_mode=value_mode,
+            ),
+        )
     return tuple(
         _render_query(
             safe_specs, _box_scope(tile), match_mode, value_mode=value_mode
@@ -525,17 +611,39 @@ def compact_tags(tags: object) -> str:
 
 
 def _value_matches(data: Dict[str, Any], spec: TagSpec, value_mode: str) -> bool:
+    if spec.key == "*":
+        primary_matches = bool(data)
+        if not primary_matches:
+            return False
+        if wildcard_excluded(data):
+            return False
+        for key, value in spec.qualifiers:
+            if key not in data:
+                return False
+            if value and str(data.get(key)) != value:
+                return False
+        return True
     if spec.key not in data:
         return False
     if not spec.value:
-        return True
-    actual = str(data.get(spec.key))
-    if value_mode == "regex":
-        try:
-            return re.search(spec.value, actual) is not None
-        except re.error:
+        primary_matches = True
+    else:
+        actual = str(data.get(spec.key))
+        if value_mode == "regex":
+            try:
+                primary_matches = re.search(spec.value, actual) is not None
+            except re.error:
+                return False
+        else:
+            primary_matches = actual == spec.value
+    if not primary_matches:
+        return False
+    for key, value in spec.qualifiers:
+        if key not in data:
             return False
-    return actual == spec.value
+        if value and str(data.get(key)) != value:
+            return False
+    return True
 
 
 def matching_specs(

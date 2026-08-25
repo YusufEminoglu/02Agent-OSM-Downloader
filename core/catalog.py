@@ -15,6 +15,7 @@ class TagSpec:
     key: str
     value: str
     geometry: str
+    qualifiers: Tuple[Tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -32,11 +33,168 @@ class Preset:
         return f"{self.group_title} — {self.title}"
 
 
-def _tags(*rows: Tuple[str, str, str]) -> Tuple[TagSpec, ...]:
-    return tuple(TagSpec(*row) for row in rows)
+def _tags(*rows: tuple) -> Tuple[TagSpec, ...]:
+    specs = []
+    for row in rows:
+        key, value, geometry = row[:3]
+        qualifiers = tuple(row[3]) if len(row) > 3 else ()
+        specs.append(TagSpec(key, value, geometry, qualifiers))
+    return tuple(specs)
+
+
+_ADMIN_LEVEL_LABELS: Tuple[Tuple[str, str, str], ...] = (
+    ("2", "Country", "Turkey country boundary."),
+    ("3", "Region", "Turkey regional boundaries where mapped."),
+    ("4", "Province", "Turkey province boundaries."),
+    ("5", "Intermediate level", "Rare Turkey intermediate boundaries where mapped."),
+    ("6", "District", "Turkey district boundaries."),
+    ("7", "Subdistrict", "Turkey subdistrict boundaries where mapped."),
+    ("8", "Village or local settlement", "Turkey village or local settlement boundaries where mapped."),
+    ("9", "Intermediate local level", "Rare Turkey intermediate local boundaries where mapped."),
+    ("10", "Neighborhood", "Turkey neighborhood boundaries where mapped."),
+)
+
+
+def _admin_level_preset(level: str, label: str, description: str) -> Preset:
+    return Preset(
+        f"admin_level_{level}",
+        "places",
+        "Places",
+        f"admin_level={level} - {label}",
+        (
+            f"{description} Turkey mapping commonly uses admin_level=4 for "
+            "province, 6 for district, 8 for village or local settlement and "
+            "10 for neighborhood; OSM admin levels still vary by country."
+        ),
+        _tags(
+            ("boundary", "administrative", "point", (("admin_level", level),)),
+            ("boundary", "administrative", "line", (("admin_level", level),)),
+            ("boundary", "administrative", "polygon", (("admin_level", level),)),
+        ),
+        (
+            f"admin level {level}",
+            f"admin_level={level}",
+            label,
+            "administrative boundary",
+            "boundary",
+            "places",
+        ),
+    )
+
+
+_ADMIN_LEVEL_PRESETS: Tuple[Preset, ...] = tuple(
+    _admin_level_preset(level, label, description)
+    for level, label, description in _ADMIN_LEVEL_LABELS
+)
 
 
 PRESETS: Tuple[Preset, ...] = (
+    Preset(
+        "osm_as_is_overview",
+        "osm_as_is",
+        "OSM As-Is",
+        "OSM as-is: Overview",
+        "Small-scale standard-map context: major transport, water, coastline and natural context. Administrative boundaries and place centres live in the Places group.",
+        _tags(
+            ("highway", "motorway", "line"),
+            ("highway", "trunk", "line"),
+            ("highway", "primary", "line"),
+            ("railway", "rail", "line"),
+            ("route", "ferry", "line"),
+            ("natural", "water", "polygon"),
+            ("waterway", "river", "line"),
+            ("natural", "coastline", "line"),
+            ("natural", "wood", "polygon"),
+            ("landuse", "forest", "polygon"),
+        ),
+        (
+            "osm as is", "as-is", "overview", "basemap", "base map",
+            "standard map", "carto", "context",
+        ),
+    ),
+    Preset(
+        "osm_as_is_urban_detail",
+        "osm_as_is",
+        "OSM As-Is",
+        "OSM as-is: Urban detail",
+        "City-scale standard-map detail: roads, buildings, land use, amenities, shops, tourism, public transport, barriers and green-blue features.",
+        _tags(
+            ("highway", "", "line"),
+            ("building", "", "polygon"),
+            ("landuse", "", "polygon"),
+            ("amenity", "", "point"),
+            ("amenity", "", "polygon"),
+            ("shop", "", "point"),
+            ("shop", "", "polygon"),
+            ("tourism", "", "point"),
+            ("tourism", "", "polygon"),
+            ("historic", "", "point"),
+            ("historic", "", "polygon"),
+            ("leisure", "park", "polygon"),
+            ("leisure", "garden", "polygon"),
+            ("natural", "tree", "point"),
+            ("natural", "tree_row", "line"),
+            ("natural", "water", "polygon"),
+            ("waterway", "", "line"),
+            ("barrier", "", "line"),
+            ("public_transport", "platform", "point"),
+            ("public_transport", "platform", "polygon"),
+            ("public_transport", "station", "point"),
+            ("public_transport", "station", "polygon"),
+            ("railway", "station", "point"),
+        ),
+        (
+            "osm as is urban", "urban detail", "visible city map",
+            "standard urban map", "full city basemap",
+        ),
+    ),
+    Preset(
+        "osm_as_is_mobility",
+        "osm_as_is",
+        "OSM As-Is",
+        "OSM as-is: Mobility",
+        "Transport-focused standard-map content: roads, cycleways, rail, transit stops, stations, platforms and mapped passenger routes.",
+        _tags(
+            ("highway", "", "line"),
+            ("highway", "cycleway", "line"),
+            ("cycleway", "", "line"),
+            ("railway", "", "line"),
+            ("route", "bus", "line"),
+            ("route", "tram", "line"),
+            ("route", "ferry", "line"),
+            ("highway", "bus_stop", "point"),
+            ("public_transport", "stop_position", "point"),
+            ("public_transport", "platform", "point"),
+            ("public_transport", "platform", "polygon"),
+            ("public_transport", "station", "point"),
+            ("public_transport", "station", "polygon"),
+            ("railway", "station", "point"),
+            ("railway", "tram_stop", "point"),
+            ("railway", "subway_entrance", "point"),
+            ("amenity", "bus_station", "point"),
+            ("amenity", "bus_station", "polygon"),
+        ),
+        (
+            "osm as is mobility", "transport basemap", "mobility basemap",
+            "roads rail transit", "multimodal as is",
+        ),
+    ),
+    Preset(
+        "osm_as_is_full_visible_stack",
+        "osm_as_is",
+        "OSM As-Is",
+        "OSM as-is: All tagged objects",
+        "Every tagged OSM node, way and relation inside the selected extent, split into point, line and polygon outputs by geometry.",
+        _tags(
+            ("*", "", "point"),
+            ("*", "", "line"),
+            ("*", "", "polygon"),
+        ),
+        (
+            "osm as is full", "all tagged objects", "download everything",
+            "complete basemap", "standard map all", "all osm tags",
+        ),
+    ),
     Preset(
         "urban_context",
         "urban_context",
@@ -360,27 +518,72 @@ PRESETS: Tuple[Preset, ...] = (
         ("emergency", "fire", "police", "assembly point"),
     ),
     Preset(
-        "administrative_places", "places", "Places", "Administrative places",
-        "Administrative boundaries and named place centres resolved from a command.",
-        _tags(
-            ("boundary", "administrative", "line"),
-            ("boundary", "administrative", "polygon"),
-            ("place", "", "point"),
-        ),
+        "place_centres", "places", "Places", "Place centres",
+        "Named OSM place centres as points: countries, states, cities, towns, villages, suburbs, neighbourhoods and localities.",
+        _tags(("place", "", "point")),
         (
             "place", "places", "location", "locations", "city", "town",
-            "district", "neighbourhood", "city", "county", "state",
-            "location", "administrative boundary",
+            "village", "suburb", "neighbourhood", "neighborhood",
+            "locality", "place centre", "place center",
         ),
     ),
+    *_ADMIN_LEVEL_PRESETS,
+)
+
+_GROUP_ORDER: Dict[str, int] = {
+    "urban_context": 0,
+    "morphology": 1,
+    "network": 2,
+    "places": 3,
+    "osm_as_is": 4,
+}
+
+#: Rank inside a group. Anything unlisted falls back to
+#: `_PRESET_ORDER_DEFAULT` and is then ordered by title.
+_PRESET_ORDER: Dict[str, int] = {
+    "urban_context": 0,
+    # An admin level is a number written as text, and ordering the titles as
+    # text lists admin_level=10 above admin_level=2. Rank them by the level.
+    **{
+        f"admin_level_{level}": int(level)
+        for level, _label, _description in _ADMIN_LEVEL_LABELS
+    },
+    # The one Places entry that is not a boundary sits after them.
+    "place_centres": 99,
+}
+_PRESET_ORDER_DEFAULT = 50
+
+
+PRESETS = tuple(
+    sorted(
+        PRESETS,
+        key=lambda item: (
+            _GROUP_ORDER.get(item.group_id, len(_GROUP_ORDER)),
+            item.group_title.casefold(),
+            _PRESET_ORDER.get(item.preset_id, _PRESET_ORDER_DEFAULT),
+            item.title.casefold(),
+            item.preset_id,
+        ),
+    )
 )
 
 PRESETS_BY_ID: Dict[str, Preset] = {item.preset_id: item for item in PRESETS}
 GROUPS: Tuple[Tuple[str, str], ...] = tuple(
-    dict.fromkeys((item.group_id, item.group_title) for item in PRESETS)
+    sorted(
+        dict.fromkeys((item.group_id, item.group_title) for item in PRESETS),
+        key=lambda item: (
+            _GROUP_ORDER.get(item[0], len(_GROUP_ORDER)),
+            item[1].casefold(),
+        ),
+    )
 )
 
 GROUP_CONTEXTS: Dict[str, Tuple[str, str]] = {
+    "osm_as_is": (
+        "Download scale-aware standard-map-style OSM datasets: overview, urban "
+        "detail, mobility or a broad visible stack.",
+        "Related: Urban Context, Network, Places",
+    ),
     "urban_context": (
         "Start with the street-scale city context: movement, built form, nature, "
         "transit and everyday public-realm features.",
@@ -447,9 +650,9 @@ GROUP_CONTEXTS: Dict[str, Tuple[str, str]] = {
         "Related: Health, Urban Context, Places",
     ),
     "places": (
-        "Resolve named administrative boundaries and place centres when a command "
-        "needs a real-world location.",
-        "Related: Urban Context, Morphology",
+        "Choose real OSM admin_level boundary datasets or named place-centre "
+        "points. Admin levels vary by country and are approximate equivalents.",
+        "Related: OSM As-Is, Urban Context, Morphology",
     ),
 }
 
@@ -765,7 +968,7 @@ def interpret_prompt(text: object) -> PromptIntent:
     if place_name:
         return PromptIntent(
             "place",
-            preset_id=preset_id or "administrative_places",
+            preset_id=preset_id or "place_centres",
             place_name=place_name,
             confidence=max(confidence, 0.72),
             extra_preset_ids=extra_preset_ids,

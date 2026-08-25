@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.0] - 2026-08-25
+
+### Added
+
+- Add scale-aware **OSM As-Is** presets for overview, urban detail, mobility
+  and a broad standard-map-style visible stack.
+- Replace the old Places catch-all with real `admin_level=2` through
+  `admin_level=10` boundary datasets plus named place centres, with
+  exact `boundary=administrative` and `admin_level=*` matching.
+- Add an **OSM Map Features** reference button under the OSM READY badge.
+
+### Changed
+
+- Curated preset groups and datasets are now shown alphabetically.
+- **OSM As-Is** roads now draw 1.5x wider, street and POI labels scale up
+  further still, and POI SVG icons render larger, so the standard-map-style
+  stack reads closer to openstreetmap.org at normal zoom.
+
 ## [1.2.1] - 2026-08-19
 
 ### Fixed

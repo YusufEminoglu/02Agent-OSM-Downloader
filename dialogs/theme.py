@@ -162,6 +162,19 @@ QLabel#heroBadge {
     font-size: 7pt;
     font-weight: 750;
 }
+QPushButton#mapFeaturesButton {
+    background: transparent;
+    color: %(accent)s;
+    border: 1px solid %(border)s;
+    border-radius: 6px;
+    padding: 4px 7px;
+    font-size: 7pt;
+    font-weight: 600;
+}
+QPushButton#mapFeaturesButton:hover {
+    background: %(tab_active)s;
+    border-color: %(accent)s;
+}
 QLabel#heroHint {
     color: %(subtle)s;
     padding-left: 46px;
@@ -221,6 +234,44 @@ QGroupBox::title {
     left: 9px;
     padding: 0 5px;
     font-weight: 600;
+}
+QFrame#customTagPanel {
+    background: %(card)s;
+    border: 1px solid %(border)s;
+    border-radius: 8px;
+}
+QFrame#customTagPanel[active="true"] {
+    border-color: %(accent)s;
+    background: %(tab_active)s;
+}
+QFrame#customTagFields {
+    background: transparent;
+    border: none;
+}
+QPushButton#customToggleButton {
+    background: transparent;
+    color: %(text)s;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 7px;
+    text-align: left;
+    font-weight: 700;
+}
+QPushButton#customToggleButton:hover {
+    background: %(status)s;
+    color: %(accent)s;
+}
+QPushButton#customToggleButton:checked {
+    color: %(accent)s;
+}
+QLabel#customTagBadge {
+    color: %(accent)s;
+    background: %(status)s;
+    border: 1px solid %(border)s;
+    border-radius: 7px;
+    padding: 3px 7px;
+    font-size: 7pt;
+    font-weight: 650;
 }
 QLineEdit, QPlainTextEdit, QComboBox {
     background: %(input_surface)s;

@@ -35,6 +35,7 @@ from qgis.core import (
 
 from ..core.cache import QueryCache
 from ..core.catalog import (
+    PRESETS_BY_ID,
     GEOMETRY_KINDS,
     PRESETS,
     TagSpec,
@@ -50,8 +51,11 @@ from ..core.places import (
     build_place_query,
     parse_place_candidates,
 )
+from ..core.osm_areas import relation_is_area, way_is_area
 from ..core.schema import FIELD_NAMES, feature_attributes
 from ..core.query import (
+    is_admin_boundary_spec,
+    wildcard_excluded,
     MAX_ADVANCED_FILTERS,
     MAX_BBOX_AREA_KM2,
     MAX_RESPONSE_BYTES,
@@ -177,7 +181,21 @@ def _attempt_mirror(
         )
     try:
         payload = validate_payload(json.loads(content.decode("utf-8")))
-    except (UnicodeDecodeError, json.JSONDecodeError, QueryError) as exc:
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        # Overpass answers a rate-limited or timed-out request with an HTML
+        # error page, not JSON.  Reporting the decoder's "Expecting value:
+        # line 1 column 1" tells the user nothing about what to do next.
+        detail = "the mirror sent an error page instead of OSM data"
+        head = bytes(content)[:400].decode("utf-8", "replace").strip()
+        lowered = head.casefold()
+        if "rate_limited" in lowered or "too many requests" in lowered:
+            detail = "the mirror is rate-limiting this client; retry shortly"
+        elif "timeout" in lowered or "timed out" in lowered:
+            detail = (
+                "the mirror timed out on this query; reduce the map extent"
+            )
+        return None, f"{detail} ({type(exc).__name__})", True
+    except QueryError as exc:
         return None, str(exc).strip() or "invalid OSM response", False
     return payload, "", False
 
@@ -516,36 +534,128 @@ def _relation_line(element: Dict) -> Optional[QgsGeometry]:
     return geometry
 
 
+def _relation_points(element: Dict) -> List[QgsGeometry]:
+    members = element.get("members")
+    if not isinstance(members, list):
+        return []
+    polygon = _relation_polygon(element)
+    points = []
+    for member in members:
+        if (
+            not isinstance(member, dict)
+            or member.get("type") != "node"
+            or str(member.get("role") or "") not in {"label", "admin_centre"}
+        ):
+            continue
+        try:
+            point = QgsPointXY(float(member["lon"]), float(member["lat"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+        geometry = QgsGeometry.fromPointXY(point)
+        if polygon is not None and not polygon.isEmpty():
+            if not polygon.contains(geometry):
+                continue
+        points.append(geometry)
+    return points
+
+
+def _is_osm_as_is(preset_id: object) -> bool:
+    """True when every selected preset belongs to the OSM As-Is group.
+
+    OSM As-Is is a picture of the streets and what stands on them.
+    Administrative areas and place labels belong to the Places group, and an
+    admin polygon that reaches an as-is layer is drawn as urban ground, so
+    this is enforced on the way in as well as in the query -- one gate is one
+    place for the rule to stop being true.
+    """
+    parts = [part for part in str(preset_id or "").split("+") if part]
+    if not parts:
+        return False
+    presets = [PRESETS_BY_ID.get(part) for part in parts]
+    return all(
+        preset is not None and preset.group_id == "osm_as_is"
+        for preset in presets
+    )
+
+
+def _kinds_for_element(
+    element: Dict,
+    specs: Tuple[TagSpec, ...],
+    match_mode: str = "any",
+    value_mode: str = "exact",
+) -> Tuple[Tuple[str, Tuple[TagSpec, ...]], ...]:
+    element_type = element.get("type")
+    tags = element.get("tags")
+    if element_type == "node":
+        matches = matching_specs(tags, specs, "point", match_mode, value_mode)
+        return (("point", matches),) if matches else ()
+    if element_type == "relation":
+        kinds = []
+        point_matches = matching_specs(tags, specs, "point", match_mode, value_mode)
+        if point_matches:
+            kinds.append(("point", point_matches))
+        line_matches = matching_specs(tags, specs, "line", match_mode, value_mode)
+        polygon_matches = matching_specs(tags, specs, "polygon", match_mode, value_mode)
+        # A wildcard request matches a relation as both, so ask the tags which
+        # one it is -- otherwise every multipolygon also arrives as a line.
+        # A preset that names both geometries asked for both on purpose (the
+        # Places presets want boundaries as areas *and* as lines), so only the
+        # wildcard is disambiguated here.
+        if (
+            line_matches
+            and polygon_matches
+            and all(
+                spec.key == "*" for spec in line_matches + polygon_matches
+            )
+        ):
+            if relation_is_area(tags):
+                line_matches = ()
+            else:
+                polygon_matches = ()
+        if line_matches:
+            kinds.append(("line", line_matches))
+        if polygon_matches:
+            kinds.append(("polygon", polygon_matches))
+        return tuple(kinds)
+    if element_type != "way":
+        return ()
+    line_matches = matching_specs(tags, specs, "line", match_mode, value_mode)
+    polygon_matches = matching_specs(
+        tags, specs, "polygon", match_mode, value_mode
+    )
+    # An administrative area is the relation, not the closed ways its ring is
+    # assembled from.  The query already asks for admin polygons as relations
+    # only; without the same rule here every closed fragment that arrived for
+    # the *line* output also became a polygon, and one neighbourhood came back
+    # as a pile of overlapping part-shapes.
+    polygon_matches = tuple(
+        spec for spec in polygon_matches if not is_admin_boundary_spec(spec)
+    )
+    if polygon_matches and not line_matches:
+        return (("polygon", polygon_matches),)
+    if line_matches and not polygon_matches:
+        return (("line", line_matches),)
+    # Both geometries were asked for -- a wildcard "OSM as-is" request asks for
+    # every one of them -- so closure alone cannot decide.  OSM has no polygon
+    # primitive: a closed way is an area only when its tags say so, and a
+    # closed `highway=footway` is a loop path, not a plaza.
+    if (
+        polygon_matches
+        and _closed_ring(element.get("geometry"))
+        and way_is_area(tags)
+    ):
+        return (("polygon", polygon_matches),)
+    return (("line", line_matches),) if line_matches else ()
+
+
 def _kind_for_element(
     element: Dict,
     specs: Tuple[TagSpec, ...],
     match_mode: str = "any",
     value_mode: str = "exact",
 ) -> Tuple[str, Tuple[TagSpec, ...]]:
-    element_type = element.get("type")
-    tags = element.get("tags")
-    if element_type == "node":
-        matches = matching_specs(tags, specs, "point", match_mode, value_mode)
-        return ("point", matches) if matches else ("", ())
-    if element_type == "relation":
-        line_matches = matching_specs(tags, specs, "line", match_mode, value_mode)
-        if line_matches:
-            return "line", line_matches
-        matches = matching_specs(tags, specs, "polygon", match_mode, value_mode)
-        return ("polygon", matches) if matches else ("", ())
-    if element_type != "way":
-        return "", ()
-    line_matches = matching_specs(tags, specs, "line", match_mode, value_mode)
-    polygon_matches = matching_specs(
-        tags, specs, "polygon", match_mode, value_mode
-    )
-    if polygon_matches and not line_matches:
-        return "polygon", polygon_matches
-    if line_matches and not polygon_matches:
-        return "line", line_matches
-    if polygon_matches and _closed_ring(element.get("geometry")):
-        return "polygon", polygon_matches
-    return ("line", line_matches) if line_matches else ("", ())
+    kinds = _kinds_for_element(element, specs, match_mode, value_mode)
+    return kinds[0] if kinds else ("", ())
 
 
 def _geometry(element: Dict, kind: str) -> Optional[QgsGeometry]:
@@ -576,6 +686,13 @@ def _geometry(element: Dict, kind: str) -> Optional[QgsGeometry]:
     geometry = QgsGeometry.fromPolygonXY([ring])
     geometry.convertToMultiType()
     return geometry
+
+
+def _geometries(element: Dict, kind: str) -> List[QgsGeometry]:
+    if kind == "point" and element.get("type") == "relation":
+        return _relation_points(element)
+    geometry = _geometry(element, kind)
+    return [geometry] if geometry is not None and not geometry.isEmpty() else []
 
 
 def _fields() -> QgsFields:
@@ -781,32 +898,42 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
             if extent_crs != wgs84 else None
         )
         counts = {"point": 0, "line": 0, "polygon": 0}
+        as_is_request = _is_osm_as_is(preset_id)
         elements = payload.get("elements", [])
         for index, element in enumerate(elements):
             if feedback.isCanceled():
                 raise QgsProcessingException("The OSM download was canceled.")
-            kind, matches = _kind_for_element(element, specs, match_mode, value_mode)
-            if not kind or not matches:
-                continue
             if exclude_key and excludes_tag(
                 element.get("tags"), exclude_key, exclude_value
             ):
                 continue
-            geometry = _geometry(element, kind)
-            if geometry is None or geometry.isEmpty():
+            if as_is_request and wildcard_excluded(element.get("tags")):
                 continue
-            if to_target is not None and geometry.transform(to_target) != 0:
-                continue
-            feature = QgsFeature(fields)
-            feature.setGeometry(geometry)
-            feature.setAttributes(
-                feature_attributes(element, preset_id, theme, matches)
-            )
-            if not sinks[kind].addFeature(
-                feature, QgsFeatureSink.Flag.FastInsert
+            for kind, matches in _kinds_for_element(
+                element, specs, match_mode, value_mode
             ):
-                raise QgsProcessingException("QGIS could not write an OSM feature.")
-            counts[kind] += 1
+                if not kind or not matches:
+                    continue
+                geometries = _geometries(element, kind)
+                if not geometries:
+                    continue
+                for geometry in geometries:
+                    if geometry is None or geometry.isEmpty():
+                        continue
+                    if to_target is not None and geometry.transform(to_target) != 0:
+                        continue
+                    feature = QgsFeature(fields)
+                    feature.setGeometry(geometry)
+                    feature.setAttributes(
+                        feature_attributes(element, preset_id, theme, matches)
+                    )
+                    if not sinks[kind].addFeature(
+                        feature, QgsFeatureSink.Flag.FastInsert
+                    ):
+                        raise QgsProcessingException(
+                            "QGIS could not write an OSM feature."
+                        )
+                    counts[kind] += 1
             if index % 250 == 0:
                 feedback.setProgress(
                     40 + int(55 * (index + 1) / max(1, len(elements)))

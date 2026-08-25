@@ -14,12 +14,13 @@ from zero2agent_osm_downloader.core.map_themes import (
 
 class MapThemeCatalogTests(unittest.TestCase):
     def test_catalog_contains_quick3d_and_original_palettes(self) -> None:
-        self.assertEqual(len(MAP_THEMES), 16)
+        self.assertEqual(len(MAP_THEMES), 17)
         self.assertTrue(
             {
                 "default", "cyber", "paper", "frost", "noir", "atlas",
                 "mediterranean", "nightprint", "anime", "desert", "candy",
                 "vapor", "aegean", "blueprint", "olive", "signal",
+                "osm_as_is",
             } <= set(MAP_THEMES)
         )
         self.assertEqual(MAP_THEMES["cyber"]["water"], "#00ffcc")

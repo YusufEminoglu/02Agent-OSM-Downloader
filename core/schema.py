@@ -18,6 +18,9 @@ from .query import compact_tags
 TAG_COLUMNS: Tuple[Tuple[str, str], ...] = (
     ("building", "building"),
     ("highway", "highway"),
+    ("boundary", "boundary"),
+    ("admin_level", "admin_level"),
+    ("place", "place"),
     ("amenity", "amenity"),
     ("landuse", "landuse"),
     ("leisure", "leisure"),
@@ -25,8 +28,17 @@ TAG_COLUMNS: Tuple[Tuple[str, str], ...] = (
     ("railway", "railway"),
     ("public_transport", "public_transport"),
     ("route", "route"),
+    ("shop", "shop"),
     ("tourism", "tourism"),
+    ("historic", "historic"),
     ("sport", "sport"),
+    # `barrier` was already queried by the presets without a column to land
+    # in, so barriers arrived unclassifiable. `kerb` marks the sidewalk nodes
+    # and `oneway`/`direction` carry which way the traffic runs.
+    ("barrier", "barrier"),
+    ("kerb", "kerb"),
+    ("oneway", "oneway"),
+    ("direction", "direction"),
     ("height", "height"),
     ("building_levels", "building:levels"),
 )
@@ -56,10 +68,13 @@ def feature_attributes(
         raise ValueError("A feature needs at least one matched selector.")
     tags = element.get("tags") if isinstance(element.get("tags"), dict) else {}
     first_match = ordered_matches[0]
-    matched_tags = {
-        match.key: str(tags.get(match.key, match.value))
-        for match in ordered_matches
-    }
+    matched_tags = {}
+    for match in ordered_matches:
+        matched_tags[match.key] = str(tags.get(match.key, match.value))
+        for qualifier_key, qualifier_value in match.qualifiers:
+            matched_tags[qualifier_key] = str(
+                tags.get(qualifier_key, qualifier_value)
+            )
     return [
         str(element.get("id", "")),
         str(element.get("type", "")),

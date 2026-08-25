@@ -45,7 +45,7 @@ complete user and technical reference manual.
 - A lighter palette-derived visual system with separated cards, selected-tab
   fills, contextual run summaries and tested text contrast in light and dark
   QGIS themes.
-- Sixteen built-in cartographic styles with a live six-color preview. The
+- Seventeen built-in cartographic styles with a live six-color preview. The
   twelve OSM Quick 3D palettes are joined by Aegean Blueprint, Urban Blueprint,
   Olive & Terracotta and Signal Contrast.
 - Semantic native QGIS renderers applied immediately after download: buildings
@@ -61,6 +61,7 @@ complete user and technical reference manual.
 - Palette-derived styling that follows QGIS light, dark, high-contrast and
   custom themes without forcing a fixed foreground/background pair.
 - One-click curated thematic presets for:
+  - OSM As-Is (overview, urban detail, mobility and all tagged objects)
   - Urban Context (street network, built form, trees, transit and public realm)
   - Network
   - Morphology
@@ -75,6 +76,7 @@ complete user and technical reference manual.
   - Health
   - Education
   - Emergency
+  - Places (`admin_level=2` through `admin_level=10` and place centres)
 - An offline natural-language intent router in the dock.
 - A custom `key=value` downloader for point, line or polygon data.
 - A four-filter advanced builder with ANY/OR and ALL/AND matching, mixed or

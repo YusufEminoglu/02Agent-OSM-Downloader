@@ -88,6 +88,18 @@ MAP_THEMES: Dict[str, dict] = {
             "worship": "#d9c7df", "other": "#cfd0c8",
         },
     },
+    "osm_as_is": {
+        "label": "OSM As-Is",
+        "description": "Standard OpenStreetMap-style hierarchy for broad basemap downloads.",
+        "bg": "#f8f7f2", "base": "#6f6f6f",
+        "roads_major": "#f0a35e", "roads_minor": "#ffffff",
+        "greens": "#b8d7a8", "water": "#9ecae1", "trees": "#74a85b",
+        "building_colors": {
+            "residential": "#d9d0c4", "commercial": "#d4c4d9",
+            "industrial": "#c9b99a", "civic": "#d9c2bd",
+            "worship": "#cdb8d9", "other": "#d2ccc3",
+        },
+    },
     "mediterranean": {
         "label": "Mediterranean Survey",
         "description": "Sun, sea and terracotta for coastal urban studies.",

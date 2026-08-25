@@ -21,6 +21,58 @@ class CatalogTests(unittest.TestCase):
         for group_id, _title in GROUPS:
             self.assertTrue(presets_for_group(group_id))
 
+    def test_groups_use_planning_first_order_then_alphabetical(self) -> None:
+        self.assertEqual(
+            [group_id for group_id, _title in GROUPS[:5]],
+            ["urban_context", "morphology", "network", "places", "osm_as_is"],
+        )
+        remaining_titles = [title.casefold() for _group_id, title in GROUPS[5:]]
+        self.assertEqual(remaining_titles, sorted(remaining_titles))
+        for group_id, _title in GROUPS:
+            if group_id == "urban_context":
+                self.assertEqual(
+                    presets_for_group(group_id)[0].preset_id,
+                    "urban_context",
+                )
+                titles = [
+                    preset.title.casefold()
+                    for preset in presets_for_group(group_id)[1:]
+                ]
+                self.assertEqual(titles, sorted(titles))
+                continue
+            if group_id == "places":
+                # An admin level is a number, so ordering these by title reads
+                # 10, 2, 3 ... and looks broken in the list.
+                continue
+            titles = [
+                preset.title.casefold()
+                for preset in presets_for_group(group_id)
+            ]
+            self.assertEqual(titles, sorted(titles))
+
+    def test_presets_follow_the_group_order_the_dock_shows(self) -> None:
+        # The Processing PRESET enum is built from PRESETS, so it has to list
+        # the groups in the same order the dock does.
+        group_order = [group_id for group_id, _title in GROUPS]
+        seen: list = []
+        for preset in PRESETS:
+            if preset.group_id not in seen:
+                seen.append(preset.group_id)
+        self.assertEqual(seen, group_order)
+
+    def test_admin_levels_are_listed_by_level_not_as_text(self) -> None:
+        places = presets_for_group("places")
+        levels = [
+            int(preset.preset_id.rsplit("_", 1)[1])
+            for preset in places
+            if preset.preset_id.startswith("admin_level_")
+        ]
+        self.assertEqual(levels, sorted(levels))
+        self.assertEqual(levels[0], 2)
+        self.assertEqual(levels[-1], 10)
+        # The one entry that is not a boundary comes after them.
+        self.assertEqual(places[-1].preset_id, "place_centres")
+
     def test_every_preset_has_safe_geometry_and_tags(self) -> None:
         for preset in PRESETS:
             self.assertIs(get_preset(preset.preset_id), preset)
@@ -28,6 +80,74 @@ class CatalogTests(unittest.TestCase):
             for tag in preset.tags:
                 self.assertIn(tag.geometry, ("point", "line", "polygon"))
                 self.assertTrue(tag.key)
+                for qualifier_key, qualifier_value in tag.qualifiers:
+                    self.assertTrue(qualifier_key)
+                    self.assertTrue(qualifier_value)
+
+    def test_osm_as_is_presets_are_scale_aware_and_bounded(self) -> None:
+        as_is = presets_for_group("osm_as_is")
+        self.assertEqual(
+            {preset.preset_id for preset in as_is},
+            {
+                "osm_as_is_full_visible_stack",
+                "osm_as_is_mobility",
+                "osm_as_is_overview",
+                "osm_as_is_urban_detail",
+            },
+        )
+        self.assertEqual(
+            {
+                (tag.key, tag.value, tag.geometry)
+                for tag in get_preset("osm_as_is_full_visible_stack").tags
+            },
+            {("*", "", "point"), ("*", "", "line"), ("*", "", "polygon")},
+        )
+        urban_tags = {
+            (tag.key, tag.value, tag.geometry)
+            for tag in get_preset("osm_as_is_urban_detail").tags
+        }
+        self.assertIn(("highway", "", "line"), urban_tags)
+        self.assertIn(("building", "", "polygon"), urban_tags)
+        self.assertIn(("amenity", "", "point"), urban_tags)
+
+    def test_places_exposes_real_osm_admin_levels_and_place_centres(self) -> None:
+        for level in range(2, 11):
+            preset = get_preset(f"admin_level_{level}")
+            self.assertIn(f"admin_level={level}", preset.title)
+            self.assertIn("vary by country", preset.description)
+            self.assertEqual(
+                {
+                    (tag.key, tag.value, tag.geometry, tag.qualifiers)
+                    for tag in preset.tags
+                },
+                {
+                    (
+                        "boundary",
+                        "administrative",
+                        "point",
+                        (("admin_level", str(level)),),
+                    ),
+                    (
+                        "boundary",
+                        "administrative",
+                        "line",
+                        (("admin_level", str(level)),),
+                    ),
+                    (
+                        "boundary",
+                        "administrative",
+                        "polygon",
+                        (("admin_level", str(level)),),
+                    ),
+                },
+            )
+        self.assertEqual(
+            {
+                (tag.key, tag.value, tag.geometry)
+                for tag in get_preset("place_centres").tags
+            },
+            {("place", "", "point")},
+        )
 
     def test_offline_router_matches_english_presets(self) -> None:
         self.assertEqual(
