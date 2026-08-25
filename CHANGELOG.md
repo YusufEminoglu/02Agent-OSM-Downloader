@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.3.2] - 2026-08-25
+
+### Fixed
+
+- **OSM As-Is: sports pitches, stadiums and sports centres were never
+  downloaded.** The "OSM as-is: Urban detail" preset never asked Overpass for
+  `leisure=pitch/stadium/sports_centre/track` or bare `sport=*`, so sport
+  areas were absent from the map, not just poorly styled. They are now
+  queried, and render in their own colour distinct from parks instead of
+  falling into 'green' or the near-invisible 'other' catch-all.
+- **OSM As-Is: a request-sized ground layer**, coloured like an urban block
+  and drawn under every other result layer, now backfills any category a
+  preset missed or a feature failed to classify into -- closing the same
+  kind of visual gap regardless of which tag turns out to be the cause.
+
+### Changed
+
+- **OSM As-Is** road width and label scale tuned to a midpoint: roads 1.45x
+  (was 1.4x), labels 1.7x (was 1.6x).
+
 ## [1.3.1] - 2026-08-25
 
 ### Changed

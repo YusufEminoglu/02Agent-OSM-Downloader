@@ -68,7 +68,7 @@ from ..core.query import (
     preview_query,
     tile_bbox,
 )
-from ..core.map_styling import apply_map_theme
+from ..core.map_styling import apply_map_theme, carto_ground_layer
 from ..core.map_styling import ROAD_WIDTH_MODES
 from ..core.map_themes import (
     DEFAULT_MAP_THEME,
@@ -249,6 +249,7 @@ class AgentOsmDock(QDockWidget):
         self._context = None
         self._current_label = ""
         self._current_style_scope = ""
+        self._current_extent = None
         self._place_name = ""
         self._place_candidate = None
         self._place_task = None
@@ -1689,6 +1690,7 @@ class AgentOsmDock(QDockWidget):
                 else "Select an active layer or use the current map view.",
             )
             return
+        self._current_extent = extent
         boundary_download = self._uses_exact_boundary()
         wgs_bbox = self._wgs_bbox()
         if wgs_bbox is not None and not boundary_download:
@@ -1947,6 +1949,21 @@ class AgentOsmDock(QDockWidget):
             added.append(f"{suffix}: {layer.featureCount():,}")
         if not added:
             project.layerTreeRoot().removeChildNode(group)
+            return added
+        if (
+            self._current_extent is not None
+            and self._current_style_scope != "places"
+            and self.current_map_theme() == "osm_as_is"
+        ):
+            # Added last, so it lands at the bottom of the group: whatever
+            # category a preset missed or a feature failed to classify into
+            # still reads as OSM ground instead of blank canvas.
+            ground = carto_ground_layer(
+                self._current_extent, self._current_extent.crs()
+            )
+            ground.setName(f"{self._current_label} — Ground")
+            project.addMapLayer(ground, False)
+            group.addLayer(ground)
         return added
 
     def current_map_theme(self) -> str:

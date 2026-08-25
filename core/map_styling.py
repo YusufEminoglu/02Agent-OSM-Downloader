@@ -10,10 +10,13 @@ from qgis.core import (
     Qgis,
     QgsApplication,
     QgsCategorizedSymbolRenderer,
+    QgsFeature,
     QgsFillSymbol,
+    QgsGeometry,
     QgsLineSymbol,
     QgsProperty,
     QgsSimpleLineSymbolLayer,
+    QgsSingleSymbolRenderer,
     QgsSvgMarkerSymbolLayer,
     QgsSymbolLayer,
     QgsMarkerLineSymbolLayer,
@@ -22,6 +25,7 @@ from qgis.core import (
     QgsRendererCategory,
     QgsTextBufferSettings,
     QgsTextFormat,
+    QgsVectorLayer,
     QgsVectorLayerSimpleLabeling,
     QgsWkbTypes,
 )
@@ -54,6 +58,7 @@ __all__ = [
     "POLYGON_EXPRESSION",
     "ROAD_WIDTH_MODES",
     "apply_map_theme",
+    "carto_ground_layer",
 ]
 
 
@@ -146,6 +151,7 @@ def _polygon_renderer(theme: dict):
          _fill(_shade(buildings["industrial"], 1.35), opacity=0.55)),
         ("water", "Water", _fill(theme["water"], opacity=0.76)),
         ("green", "Green space", _fill(theme["greens"], opacity=0.74)),
+        ("sport", "Sport", _fill(_shade(theme["greens"], 0.82), opacity=0.86)),
         ("parking", "Parking", _fill(_shade(theme["base"], 1.55), opacity=0.68)),
         ("pedestrian", "Pedestrian space", _fill(_shade(theme["base"], 1.78), opacity=0.66)),
         ("civic", "Civic and amenities", _fill(buildings["civic"])),
@@ -278,6 +284,7 @@ CARTO = {
     "building": ("#d9d0c9", "#c5b8ad"),
     "water": ("#aad3df", "#a0c8d8"),
     "green": ("#c8facc", "#b5e8b8"),
+    "sport": ("#aae0cb", "#8fcdb4"),
     "residential_area": ("#e0dfdf", "#d6d5d5"),
     "retail_area": ("#ffd6d1", "#f2c4bf"),
     "commercial_area": ("#f2dad9", "#e3c8c7"),
@@ -287,12 +294,12 @@ CARTO = {
     "civic_area": ("#f0f0d8", "#e2e2c4"),
 }
 #: OSM As-Is widens its whole visible stack from the plain analytical themes:
-#: roads read 1.4x wider, so a residential street reads as a street next to
+#: roads read 1.45x wider, so a residential street reads as a street next to
 #: the carto colours instead of the hairline the analytical line weights use.
-_CARTO_WIDTH_SCALE = 1.4
+_CARTO_WIDTH_SCALE = 1.45
 #: Labels grow further still -- a name at road width looks small once the
-#: carriageway underneath it is already 1.4x as wide.
-_CARTO_LABEL_SCALE = 1.6
+#: carriageway underneath it is already 1.45x as wide.
+_CARTO_LABEL_SCALE = 1.7
 
 #: `category: (fill, casing, width)` -- the road hierarchy, widest first.
 CARTO_ROADS = {
@@ -647,6 +654,29 @@ def _carto_line_renderer(theme: dict):
     return renderer
 
 
+def carto_ground_layer(extent, crs):
+    """A canvas-sized polygon in the urban-block colour, drawn under everything.
+
+    Not every download carries a `landuse` polygon for the ground it sits on
+    -- a preset that only asked for a handful of tags, or a feature that
+    lands in the near-invisible 'other' catch-all, otherwise shows through as
+    the QGIS canvas background instead of the OSM ground tone. One polygon
+    the size of the request, the same colour as an urban block, closes that
+    gap regardless of which category happened to be missing or unstyled.
+    """
+    layer = QgsVectorLayer(f"Polygon?crs={crs.authid()}", "Ground", "memory")
+    provider = layer.dataProvider()
+    feature = QgsFeature()
+    feature.setGeometry(QgsGeometry.fromRect(extent))
+    provider.addFeatures([feature])
+    layer.updateExtents()
+    fill_color, _outline = CARTO["residential_area"]
+    layer.setRenderer(
+        QgsSingleSymbolRenderer(_fill(fill_color, outline=fill_color, opacity=1.0))
+    )
+    return layer
+
+
 def _carto_polygon_renderer(theme: dict):
     """Land first, then what sits on it, then the buildings.
 
@@ -667,6 +697,7 @@ def _carto_polygon_renderer(theme: dict):
         # itself off as the urban ground.
         ("other", "Other polygons", "#eeeeec", "#e2e2df", 0),
         ("green", "Green space", *CARTO["green"], 1),
+        ("sport", "Sport", *CARTO["sport"], 1),
         ("water", "Water", *CARTO["water"], 1),
         ("civic", "Civic and amenities", *CARTO["civic_area"], 2),
         ("parking", "Parking", *CARTO["parking"], 2),

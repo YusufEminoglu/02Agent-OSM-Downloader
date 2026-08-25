@@ -109,6 +109,13 @@ class CatalogTests(unittest.TestCase):
         self.assertIn(("highway", "", "line"), urban_tags)
         self.assertIn(("building", "", "polygon"), urban_tags)
         self.assertIn(("amenity", "", "point"), urban_tags)
+        # Sports pitches, stadiums and sports centres were never queried, so
+        # a real download of this preset came back with no sport features at
+        # all -- not a styling gap, a missing selector.
+        self.assertIn(("leisure", "pitch", "polygon"), urban_tags)
+        self.assertIn(("leisure", "stadium", "polygon"), urban_tags)
+        self.assertIn(("leisure", "sports_centre", "polygon"), urban_tags)
+        self.assertIn(("sport", "", "polygon"), urban_tags)
 
     def test_places_exposes_real_osm_admin_levels_and_place_centres(self) -> None:
         for level in range(2, 11):

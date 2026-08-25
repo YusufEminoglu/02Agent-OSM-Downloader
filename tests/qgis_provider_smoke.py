@@ -678,6 +678,19 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
                 f"OSM As-Is buildings are {building}, not the standard "
                 "OSM building colour."
             )
+        # A pitch or stadium used to have no category of its own -- it fell
+        # into 'green' (indistinguishable from a park) or 'other' (barely
+        # visible), so sports areas effectively disappeared from the map.
+        if "sport" not in fills:
+            raise RuntimeError("OSM As-Is has no 'sport' polygon category.")
+        if (
+            fills["sport"].symbol().color().name().lower()
+            == fills["green"].symbol().color().name().lower()
+        ):
+            raise RuntimeError(
+                "Sports areas render in the same colour as parks, so they "
+                "still cannot be told apart on the map."
+            )
         # Boundaries belong to the Places group. OSM As-Is neither downloads
         # them nor offers the reader a legend entry for them.
         for layer, styled in (
@@ -709,7 +722,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             raise RuntimeError(
                 "Something draws below the urban blocks; they are the ground."
             )
-        for value in ("green", "water", "parking", "pedestrian", "civic"):
+        for value in ("green", "sport", "water", "parking", "pedestrian", "civic"):
             if levels[value] <= ground:
                 raise RuntimeError(
                     f"'{value}' ({levels[value]}) draws at or below the urban "
@@ -882,9 +895,43 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             for index in range(water.symbolLayerCount())
         ):
             raise RuntimeError("Waterways draw one-way road arrows.")
+        # The ground layer backfills every category the download missed or
+        # left unstyled -- a request-sized polygon, coloured like an urban
+        # block, drawn under everything else.
+        from qgis.core import QgsCoordinateReferenceSystem, QgsRectangle
+
+        from zero2agent_osm_downloader.core.map_styling import (
+            CARTO,
+            carto_ground_layer,
+        )
+
+        extent = QgsRectangle(10.0, 45.0, 10.2, 45.1)
+        crs = QgsCoordinateReferenceSystem("EPSG:4326")
+        ground = carto_ground_layer(extent, crs)
+        if not ground.isValid() or ground.featureCount() != 1:
+            raise RuntimeError(
+                "The OSM As-Is ground layer is not a single-feature polygon "
+                "layer."
+            )
+        if ground.crs().authid() != crs.authid():
+            raise RuntimeError("The ground layer does not match the request CRS.")
+        ground_geometry = next(ground.getFeatures()).geometry().boundingBox()
+        if (
+            abs(ground_geometry.xMinimum() - extent.xMinimum()) > 1e-9
+            or abs(ground_geometry.xMaximum() - extent.xMaximum()) > 1e-9
+        ):
+            raise RuntimeError(
+                "The ground layer polygon does not cover the request extent."
+            )
+        ground_color = ground.renderer().symbol().color().name().lower()
+        if ground_color != CARTO["residential_area"][0].lower():
+            raise RuntimeError(
+                f"The ground layer is {ground_color}, not the urban-block "
+                "colour it is meant to match."
+            )
         return (
-            "OSM As-Is draws cased roads, centred street names, OSM icons "
-            "and quiet junction nodes"
+            "OSM As-Is draws cased roads, centred street names, OSM icons, "
+            "quiet junction nodes and a ground layer under everything"
         )
 
     def _check_closed_ways_split_by_tags(self) -> str:
