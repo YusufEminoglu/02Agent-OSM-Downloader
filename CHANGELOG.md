@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.3] - 2026-08-25
+
+### Fixed
+
+- **OSM As-Is: an administrative boundary that reached a polygon layer
+  (most often through the "All tagged objects" preset) had no category of
+  its own.** It fell into 'other' or, if it happened to carry a matching
+  `landuse` value, was drawn as a solid urban-block colour — the size of a
+  whole district. That solid fill also sat on top of the new ground layer
+  and made it look like the ground layer had not been added at all. A
+  boundary polygon now gets its own no-fill, dashed-outline category (real
+  OSM cartography never fills an administrative area), drawn above
+  everything else, so it reads as a boundary and lets the ground layer show
+  through underneath it.
+
 ## [1.3.2] - 2026-08-25
 
 ### Fixed

@@ -83,6 +83,23 @@ def _fill(color: str, outline: str | None = None, opacity: float = 0.82):
     return symbol
 
 
+def _boundary_fill(color: str = "#9a76b5"):
+    """An administrative boundary that reached a polygon layer by accident.
+
+    Real OSM cartography never fills an administrative area -- it draws a
+    dashed outline and leaves whatever is underneath visible. A solid fill
+    here is what let a district boundary pass itself off as ground the same
+    colour as an urban block, or hide the OSM As-Is ground layer under it.
+    """
+    symbol = QgsFillSymbol.createSimple({
+        "style": "no",
+        "outline_color": color,
+        "outline_width": "0.35",
+        "outline_style": "dash",
+    })
+    return symbol
+
+
 def _line(color: str, width: float, dashed: bool = False):
     properties = {
         "color": color, "width": str(width),
@@ -155,6 +172,11 @@ def _polygon_renderer(theme: dict):
         ("parking", "Parking", _fill(_shade(theme["base"], 1.55), opacity=0.68)),
         ("pedestrian", "Pedestrian space", _fill(_shade(theme["base"], 1.78), opacity=0.66)),
         ("civic", "Civic and amenities", _fill(buildings["civic"])),
+        # Reached only when a boundary relation carries no usable
+        # `admin_level` for `_ADMIN_BRANCH` to key on -- the normal case
+        # (admin_level present) is already drawn as `admin_<level>`.
+        ("boundary", "Administrative boundary (unresolved level)",
+         _boundary_fill()),
         ("other", "Other polygons", _fill(buildings["other"], opacity=0.66)),
     ))
     return _renderer(POLYGON_EXPRESSION, entries)
@@ -715,6 +737,12 @@ def _carto_polygon_renderer(theme: dict):
         with contextlib.suppress(AttributeError, TypeError):
             symbol.symbolLayer(0).setRenderingPass(level)
         entries.append((value, label, symbol))
+    # Drawn last (on top of buildings) so the outline is never hidden by a
+    # solid fill underneath it -- there is nothing of its own to occlude.
+    boundary_symbol = _boundary_fill()
+    with contextlib.suppress(AttributeError, TypeError):
+        boundary_symbol.symbolLayer(0).setRenderingPass(4)
+    entries.append(("boundary", "Administrative boundary", boundary_symbol))
     renderer = _renderer(CARTO_POLYGON_EXPRESSION, tuple(entries))
     with contextlib.suppress(AttributeError, TypeError):
         renderer.setUsingSymbolLevels(True)

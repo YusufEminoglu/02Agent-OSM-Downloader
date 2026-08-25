@@ -672,6 +672,19 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             str(category.value()): category
             for category in polygons.renderer().categories()
         }
+        # A value the expression can emit with no matching category draws
+        # nothing at all -- the same failure mode 'sport' and 'boundary' both
+        # had before they got their own legend entries.
+        from zero2agent_osm_downloader.core.map_styling_expressions import (
+            expression_values as _expression_values,
+        )
+
+        emitted = _expression_values(polygons.renderer().classAttribute())
+        styled = set(fills)
+        if emitted - styled:
+            raise RuntimeError(
+                f"OSM As-Is polygons render nothing for {sorted(emitted - styled)}."
+            )
         building = fills["building_residential"].symbol().color().name()
         if building.lower() != "#d9d0c9":
             raise RuntimeError(
@@ -692,7 +705,12 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
                 "still cannot be told apart on the map."
             )
         # Boundaries belong to the Places group. OSM As-Is neither downloads
-        # them nor offers the reader a legend entry for them.
+        # them as their own dataset nor offers per-level `admin_<n>` legend
+        # entries -- but a boundary relation still reaches a polygon layer
+        # unasked whenever a preset (the "All tagged objects" wildcard, in
+        # particular) pulls in everything inside the extent, so it needs a
+        # single generic 'boundary' category rather than silently vanishing
+        # into 'other' or, worse, a `landuse`-keyed urban-block colour.
         for layer, styled in (
             ("polygon", polygons.renderer()),
             ("line", renderer),
@@ -707,6 +725,25 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
                 raise RuntimeError(
                     f"The OSM As-Is {layer} legend still offers {admin}."
                 )
+        if "boundary" not in fills:
+            raise RuntimeError(
+                "OSM As-Is polygons have no 'boundary' category, so an "
+                "administrative area that reaches a polygon layer falls "
+                "into 'other' or an urban-block colour instead."
+            )
+        from qgis.PyQt.QtCore import Qt as _Qt
+
+        boundary_layer = fills["boundary"].symbol().symbolLayer(0)
+        if type(boundary_layer).__name__ != "QgsSimpleFillSymbolLayer":
+            raise RuntimeError("The 'boundary' category is not a fill symbol.")
+        no_brush = getattr(
+            getattr(_Qt, "BrushStyle", _Qt), "NoBrush"
+        )
+        if boundary_layer.brushStyle() != no_brush:
+            raise RuntimeError(
+                "The 'boundary' category paints a solid fill, so it can hide "
+                "the OSM As-Is ground layer underneath it."
+            )
         if not polygons.renderer().usingSymbolLevels():
             raise RuntimeError(
                 "OSM As-Is polygons render without symbol levels, so the "

@@ -55,6 +55,13 @@ BUILDING_EXPRESSION = (
 
 _POLYGON_BODY = (
     f" WHEN ({BUILDING_EXPRESSION}) <> '' THEN ({BUILDING_EXPRESSION})"
+    # A relation tagged `boundary=administrative` reaches this body whenever
+    # it either has no `admin_level` for `_ADMIN_BRANCH` to key on (analytical
+    # themes), or the theme never runs that branch at all (OSM As-Is, which
+    # does not download Places -- see `apply_map_theme`). Left uncaught it
+    # fell into 'other' or, worse, matched a `landuse` value and painted as
+    # an urban block or green space the size of a whole district.
+    " WHEN lower(coalesce(\"boundary\",'')) = 'administrative' THEN 'boundary'"
     " WHEN lower(coalesce(\"natural\",'')) IN ('water','bay','wetland')"
     "   OR lower(coalesce(\"query_key\",'')) IN ('water','waterway') THEN 'water'"
     " WHEN lower(coalesce(\"amenity\",'')) = 'parking'"
