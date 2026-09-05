@@ -106,6 +106,10 @@ def normalize_tag(
             )
         if not value_text:
             raise QueryError("A regex value cannot be blank.")
+        try:
+            re.compile(value_text)
+        except re.error as exc:
+            raise QueryError("The regex value is not a valid pattern.") from exc
     return key_text, value_text
 
 
@@ -297,12 +301,6 @@ def is_admin_boundary_spec(spec: TagSpec) -> bool:
     )
 
 
-def admin_boundary_specs(specs: Iterable[TagSpec]) -> bool:
-    """Return True when a request is only exact administrative boundaries."""
-    rows = tuple(specs)
-    return bool(rows) and all(is_admin_boundary_spec(spec) for spec in rows)
-
-
 def advanced_specs(
     filters: Iterable[Tuple[object, object]],
     geometries: Sequence[str],
@@ -470,15 +468,6 @@ def build_queries(
 ) -> Tuple[str, ...]:
     """Build one bounded request per tile covering the whole extent."""
     safe_specs = normalized_specs(specs, value_mode)
-    if admin_boundary_specs(safe_specs):
-        return (
-            _render_query(
-                safe_specs,
-                _box_scope(validate_job_bbox(*bbox)),
-                match_mode,
-                value_mode=value_mode,
-            ),
-        )
     return tuple(
         _render_query(
             safe_specs, _box_scope(tile), match_mode, value_mode=value_mode
@@ -517,20 +506,42 @@ def build_area_query(
     An area filter follows the mapped boundary itself, so a district download
     stops at the district edge instead of at the corners of its bounding box.
 
-    The extent is applied as well, and is not optional.  An area carries no
-    size of its own, so without a second bounding filter a caller could hand in
-    the area id of an entire country and issue an unbounded request; requiring
-    the box means every area request is still covered by the job ceiling.
+    The extent is applied as well, and is not optional. This function renders
+    exactly one request and therefore enforces the single-request ceiling; use
+    :func:`build_area_queries` to tile a complete place download.
     """
     safe_specs = normalized_specs(specs, value_mode)
     checked_id = validate_area_id(area_id)
-    box = _box_scope(validate_job_bbox(*bbox))
+    box = _box_scope(validate_bbox(*bbox))
     return _render_query(
         safe_specs,
         f"(area.searchArea){box}",
         match_mode,
         preamble=f"area({checked_id})->.searchArea;",
         value_mode=value_mode,
+    )
+
+
+def build_area_queries(
+    specs: Iterable[TagSpec],
+    area_id: object,
+    bbox: Tuple[object, object, object, object],
+    match_mode: str = "any",
+    max_tile_km2: float = MAX_TILE_AREA_KM2,
+    value_mode: str = "exact",
+) -> Tuple[str, ...]:
+    """Build bounded, tiled requests clipped to one administrative area."""
+    safe_specs = normalized_specs(specs, value_mode)
+    checked_id = validate_area_id(area_id)
+    return tuple(
+        _render_query(
+            safe_specs,
+            f"(area.searchArea){_box_scope(tile)}",
+            match_mode,
+            preamble=f"area({checked_id})->.searchArea;",
+            value_mode=value_mode,
+        )
+        for tile in tile_bbox(bbox, max_tile_km2)
     )
 
 

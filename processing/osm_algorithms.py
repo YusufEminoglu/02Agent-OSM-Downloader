@@ -1,7 +1,9 @@
 """Preset and custom-tag OSM Processing algorithms."""
 from __future__ import annotations
 
+import contextlib
 import json
+import sqlite3
 import threading
 import time
 from pathlib import Path
@@ -66,7 +68,7 @@ from ..core.query import (
     QueryError,
     advanced_specs,
     bbox_area_km2,
-    build_area_query,
+    build_area_queries,
     build_queries,
     excludes_tag,
     matching_specs,
@@ -78,7 +80,7 @@ from ..core.query import (
 )
 
 USER_AGENT = (
-    "02Agent-OSM-Downloader-QGIS/1.2.0 "
+    "02Agent-OSM-Downloader-QGIS "
     "(https://github.com/YusufEminoglu/02Agent-OSM-Downloader)"
 )
 _CACHE_TTL_SECONDS = 60 * 60
@@ -118,8 +120,41 @@ def _cache() -> QueryCache:
 
 
 def _cached(query: str) -> Optional[Dict]:
-    """Return a live cache entry for this exact query, dropping stale ones."""
-    return _cache().get(query)
+    """Return a validated cache entry; cache faults never block a download."""
+    try:
+        payload = _cache().get(query)
+        if payload is None:
+            return None
+        return validate_payload(payload)
+    except QueryError:
+        with contextlib.suppress(OSError, sqlite3.Error):
+            _cache().delete(query)
+        return None
+    except (OSError, sqlite3.Error):
+        return None
+
+
+def _store_cached(query: str, payload: Dict, feedback) -> None:
+    """Best-effort cache write: storage trouble must not discard live data."""
+    try:
+        _cache().set(query, payload)
+    except (OSError, sqlite3.Error) as error:
+        feedback.pushInfo(
+            "The OSM response cache is unavailable; continuing without it "
+            f"({type(error).__name__})."
+        )
+
+
+def _cancellable_wait(seconds: float, feedback) -> None:
+    """Wait politely while checking cancellation at short intervals."""
+    deadline = time.monotonic() + max(0.0, float(seconds))
+    while True:
+        if feedback.isCanceled():
+            raise QgsProcessingException("The OSM download was canceled.")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(0.1, remaining))
 
 
 def _known_header(name: str):
@@ -226,10 +261,10 @@ def _fetch_json(query: str, feedback) -> Dict:
                 )
             else:
                 feedback.pushInfo(f"{host} had a transient error; retrying once ...")
-                time.sleep(_MIRROR_RETRY_DELAY_SECONDS)
+                _cancellable_wait(_MIRROR_RETRY_DELAY_SECONDS, feedback)
             payload, detail, transient = _attempt_mirror(endpoint, body, feedback)
             if payload is not None:
-                _cache().set(query, payload)
+                _store_cached(query, payload, feedback)
                 return payload
             failures.append(f"{host}: {detail}")
             if not (transient and attempt == 0):
@@ -272,7 +307,9 @@ def _geocode(place: str, feedback) -> Tuple[PlaceCandidate, ...]:
     with _NOMINATIM_LOCK:
         elapsed = time.monotonic() - _NOMINATIM_LAST_REQUEST
         if elapsed < NOMINATIM_MIN_INTERVAL_SECONDS:
-            time.sleep(NOMINATIM_MIN_INTERVAL_SECONDS - elapsed)
+            _cancellable_wait(
+                NOMINATIM_MIN_INTERVAL_SECONDS - elapsed, feedback
+            )
         _NOMINATIM_LAST_REQUEST = time.monotonic()
 
     client = QgsBlockingNetworkRequest()
@@ -358,13 +395,13 @@ def _fetch_all(
         feedback.pushInfo(f"Tile {index + 1} of {total} ...")
         try:
             payloads.append(_fetch_json(query, feedback))
-        except QgsProcessingException:
+        except QgsProcessingException as error:
             if feedback.isCanceled():
                 raise
             failed_tiles.append(index + 1)
             feedback.reportError(
-                f"Tile {index + 1} of {total} failed after every mirror and "
-                "is being skipped.",
+                f"Tile {index + 1} of {total} failed and is being skipped: "
+                f"{error}",
                 fatalError=False,
             )
         feedback.setProgress(
@@ -373,7 +410,7 @@ def _fetch_all(
         )
         # Only pause before a tile that will actually hit the network.
         if index + 1 < total and _cached(queries[index + 1]) is None:
-            time.sleep(_TILE_PAUSE_SECONDS)
+            _cancellable_wait(_TILE_PAUSE_SECONDS, feedback)
     if not payloads:
         raise QgsProcessingException(
             f"All {total} tiled OSM requests failed. Reduce the map extent "
@@ -1041,19 +1078,19 @@ class DownloadPlaceAlgorithm(DownloadPresetAlgorithm):
             return super()._build_queries(
                 specs, bbox, match_mode, feedback, value_mode
             )
-        # An area carries no size of its own, so the request is filtered by the
-        # extent as well.  `build_area_query` enforces the job ceiling on that
-        # extent, which is what stops a caller pairing a country-sized area id
-        # with a tiny extent and issuing an unbounded request.
+        # The extent remains mandatory because an area id carries no size of
+        # its own. It is tiled before the area filter is applied, so exact
+        # clipping follows the same per-request and per-job limits as every
+        # other download path.
+        queries = build_area_queries(
+            specs, self._area_id, bbox, match_mode, value_mode=value_mode
+        )
         feedback.pushInfo(
             "Clipping the request to the mapped boundary of the place "
-            f"({bbox_area_km2(*bbox):,.0f} km² extent, one boundary request)."
+            f"({bbox_area_km2(*bbox):,.0f} km² extent, {len(queries)} bounded "
+            f"OSM request{'s' if len(queries) != 1 else ''})."
         )
-        return (
-            build_area_query(
-                specs, self._area_id, bbox, match_mode, value_mode=value_mode
-            ),
-        )
+        return queries
 
     def processAlgorithm(self, parameters, context, feedback):
         place = self.parameterAsString(parameters, self.PLACE, context).strip()

@@ -23,6 +23,7 @@ from qgis.core import (
     QgsCoordinateReferenceSystem,
     QgsProcessingAlgorithm,
     QgsProcessingContext,
+    QgsProcessingException,
     QgsProcessingOutputString,
     QgsProcessingUtils,
     QgsProject,
@@ -64,7 +65,6 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         )
         from zero2agent_osm_downloader.core.map_styling import apply_map_theme
         from zero2agent_osm_downloader.core.map_styling_expressions import (
-            RENDERER_EXPRESSIONS,
             expression_values,
         )
         from zero2agent_osm_downloader.core.map_themes import MAP_THEMES
@@ -78,6 +78,22 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         from zero2agent_osm_downloader.processing.osm_algorithms import (
             _relation_polygon,
         )
+
+        bad_cache_query = "smoke-invalid-cache-shape"
+        osm_algorithms._cache().set(bad_cache_query, {"unexpected": []})
+        if osm_algorithms._cached(bad_cache_query) is not None:
+            raise RuntimeError("An invalid cached OSM response was accepted.")
+        if osm_algorithms._cache().get(bad_cache_query) is not None:
+            raise RuntimeError("An invalid cached OSM response was not evicted.")
+
+        canceled_feedback = SimpleNamespace(isCanceled=lambda: True)
+        canceled_wait_stopped = False
+        try:
+            osm_algorithms._cancellable_wait(1.0, canceled_feedback)
+        except QgsProcessingException:
+            canceled_wait_stopped = True
+        if not canceled_wait_stopped:
+            raise RuntimeError("A polite network wait ignored cancellation.")
 
         # This test seeds every response it needs.  Without this guard a cache
         # key that quietly stops matching turns a deterministic check into a
@@ -1355,8 +1371,6 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         # An area carries no size of its own, so the extent ceiling must still
         # apply when one is supplied. Otherwise any caller could pair a
         # country-sized area id with a small extent and escape every limit.
-        from qgis.core import QgsProcessingException
-
         refused = False
         try:
             processing.run(

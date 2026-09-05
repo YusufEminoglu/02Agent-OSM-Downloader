@@ -96,16 +96,17 @@ class QueryTests(unittest.TestCase):
         )
         self.assertNotIn('node["admin_level"="8"]', query)
 
-    def test_admin_level_requests_are_not_tiled(self) -> None:
+    def test_admin_level_requests_are_tiled(self) -> None:
         queries = build_queries(
             get_preset("admin_level_4").tags,
             (38.30, 27.00, 38.55, 27.30),
         )
-        self.assertEqual(len(queries), 1)
-        self.assertIn(
-            'relation["boundary"="administrative"]["admin_level"="4"]',
-            queries[0],
-        )
+        self.assertGreater(len(queries), 1)
+        for query in queries:
+            self.assertIn(
+                'relation["boundary"="administrative"]["admin_level"="4"]',
+                query,
+            )
 
     def test_qualified_matching_requires_every_tag(self) -> None:
         spec = next(
@@ -258,6 +259,11 @@ class QueryTests(unittest.TestCase):
             "building", "^(garage|shed)$", value_mode="regex"
         )
         self.assertEqual(value, "^(garage|shed)$")
+
+    def test_regex_value_mode_rejects_an_invalid_pattern_early(self) -> None:
+        with self.assertRaises(QueryError) as raised:
+            normalize_tag("building", "(garage|shed", value_mode="regex")
+        self.assertIn("valid pattern", str(raised.exception))
 
     def test_regex_matching_specs_uses_search_not_equality(self) -> None:
         specs = advanced_specs(

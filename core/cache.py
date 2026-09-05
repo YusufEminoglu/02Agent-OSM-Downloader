@@ -75,12 +75,26 @@ class QueryCache:
                 )
                 return None
             try:
-                return json.loads(payload_text)
+                payload = json.loads(payload_text)
             except json.JSONDecodeError:
                 self._connection.execute(
                     "DELETE FROM query_cache WHERE query_hash = ?", (key,)
                 )
                 return None
+            if not isinstance(payload, dict):
+                self._connection.execute(
+                    "DELETE FROM query_cache WHERE query_hash = ?", (key,)
+                )
+                return None
+            return payload
+
+    def delete(self, query: str) -> None:
+        """Remove one cached query, including a structurally invalid entry."""
+        key = self._key(query)
+        with self._lock:
+            self._connection.execute(
+                "DELETE FROM query_cache WHERE query_hash = ?", (key,)
+            )
 
     def set(self, query: str, payload: Dict[str, Any]) -> None:
         key = self._key(query)

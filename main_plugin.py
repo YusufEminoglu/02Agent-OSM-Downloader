@@ -9,6 +9,7 @@ from qgis.PyQt.QtGui import QAction, QIcon
 from qgis.PyQt.QtWidgets import QDockWidget, QMessageBox
 from qgis.core import QgsApplication
 
+from .core.catalog import GROUPS, PRESETS
 from .processing.provider import AgentOsmProvider
 
 
@@ -106,8 +107,9 @@ class AgentOsmDownloaderPlugin:
             (
                 "<h3>02Agent OSM Downloader</h3>"
                 "<p><b>AI-agent-ready OpenStreetMap acquisition for QGIS 4.</b></p>"
-                "<p>Choose from 15 thematic groups and 30 curated urban-analysis "
-                "presets, combine datasets, build a structured four-filter ANY/ALL "
+                f"<p>Choose from {len(GROUPS)} thematic groups and "
+                f"{len(PRESETS)} curated urban-analysis presets, combine datasets, "
+                "build a structured six-filter ANY/ALL "
                 "query, resolve named administrative places, request "
                 "a custom OSM tag, or use the English offline command "
                 "router.</p>"

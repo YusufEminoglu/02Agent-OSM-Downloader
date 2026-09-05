@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.3.5] - 2026-09-05
+
+### Fixed
+
+- Apply the documented 100 km² per-request ceiling to administrative-boundary
+  presets and exact place-boundary downloads as well as ordinary rectangular
+  downloads. Wide place extents now retain their area filter across bounded
+  tiles instead of becoming one oversized Overpass request.
+- Validate Advanced Query regular expressions before contacting Overpass.
+- Treat malformed or unavailable persistent-cache entries as cache misses, so
+  cache corruption or a read-only profile cannot discard a valid live response.
+- Keep retry, tile-pacing and Nominatim rate-limit waits responsive to Cancel.
+- Synchronize the About dialog and documentation with the live 43-preset,
+  16-group, six-filter catalogue; the About counts now come from the catalogue.
+
+### Removed
+
+- Remove the obsolete administrative-boundary no-tiling helper and an unused
+  renderer-expression import from the QGIS smoke suite.
+
 ## [1.3.4] - 2026-08-25
 
 ### Fixed

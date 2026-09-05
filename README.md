@@ -79,7 +79,7 @@ complete user and technical reference manual.
   - Places (`admin_level=2` through `admin_level=10` and place centres)
 - An offline natural-language intent router in the dock.
 - A custom `key=value` downloader for point, line or polygon data.
-- A four-filter advanced builder with ANY/OR and ALL/AND matching, mixed or
+- A six-filter advanced builder with ANY/OR and ALL/AND matching, mixed or
   geometry-specific requests, loadable examples, key/value suggestions,
   filter clearing, a live filter count and an exact query preview.
 - **Nominatim place search.** Type any place name the OpenStreetMap geocoder
@@ -101,8 +101,8 @@ complete user and technical reference manual.
   extent is visible before you start rather than after a failure.
 - Current-map, active-layer and geocoded-place extent modes.
 - Separate temporary point, line and polygon result layers.
-- A single compound Overpass request per preset, rather than one request per
-  tag.
+- A single compound Overpass query per tile and preset, rather than one network
+  request per tag.
 - Three pinned HTTPS Overpass mirrors with per-mirror diagnostics and automatic
   failover, plus the Nominatim geocoder — four fixed hosts and no way to point
   the plugin anywhere else. QGIS proxy support, cancellation, a 15-minute
@@ -126,7 +126,7 @@ selected persistent map style without changing the project background or any
 existing layer.
 
 The preset endpoint accepts multiple datasets from its live enum. The advanced
-endpoint exposes four fixed key/value rows instead of accepting a
+endpoint exposes six fixed key/value rows instead of accepting a
 JSON document or raw query. `MATCH_MODE` chooses ANY/OR or ALL/AND semantics and
 `GEOMETRY` limits the request to all geometries, points, lines or polygons.
 Unused optional rows are omitted.

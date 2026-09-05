@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import threading
 import time
@@ -29,6 +30,27 @@ class QueryCacheTests(unittest.TestCase):
     def test_miss_returns_none(self) -> None:
         cache = self._cache(ttl_seconds=60)
         self.assertIsNone(cache.get("missing"))
+
+    def test_non_object_json_is_evicted_as_corrupt(self) -> None:
+        cache = self._cache(ttl_seconds=60)
+        key = QueryCache._key("bad-shape")
+        cache._connection.execute(
+            "INSERT INTO query_cache (query_hash, stored_at, payload) VALUES (?, ?, ?)",
+            (key, time.time(), json.dumps(["not", "an", "object"])),
+        )
+        self.assertIsNone(cache.get("bad-shape"))
+        row = cache._connection.execute(
+            "SELECT COUNT(*) FROM query_cache WHERE query_hash = ?", (key,)
+        ).fetchone()
+        self.assertEqual(row[0], 0)
+
+    def test_delete_removes_only_the_selected_query(self) -> None:
+        cache = self._cache(ttl_seconds=60)
+        cache.set("keep", {"elements": []})
+        cache.set("drop", {"elements": []})
+        cache.delete("drop")
+        self.assertEqual(cache.get("keep"), {"elements": []})
+        self.assertIsNone(cache.get("drop"))
 
     def test_entry_survives_a_new_connection_to_the_same_file(self) -> None:
         self._cache(ttl_seconds=60).set("query-a", {"elements": []})

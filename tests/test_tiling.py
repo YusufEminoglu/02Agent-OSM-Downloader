@@ -11,6 +11,7 @@ from zero2agent_osm_downloader.core.query import (
     QueryError,
     bbox_area_km2,
     build_area_query,
+    build_area_queries,
     build_queries,
     merge_elements,
     tile_bbox,
@@ -86,6 +87,17 @@ class TiledQueryTests(unittest.TestCase):
             self.assertIn('way["building"]', query_text)
             self.assertNotIn("http", query_text)
 
+    def test_administrative_boundary_preset_obeys_the_tile_limit(self) -> None:
+        queries = build_queries(get_preset("admin_level_8").tags, CITY_BBOX)
+        self.assertEqual(len(queries), len(tile_bbox(CITY_BBOX)))
+        self.assertGreater(len(queries), 1)
+        self.assertTrue(
+            all(
+                'relation["boundary"="administrative"]' in query
+                for query in queries
+            )
+        )
+
     def test_merging_tiles_keeps_one_copy_of_a_shared_object(self) -> None:
         # A way crossing a tile seam is returned by both tiles.
         shared = {"type": "way", "id": 7, "tags": {"highway": "primary"}}
@@ -122,15 +134,14 @@ class BoundaryAreaQueryTests(unittest.TestCase):
 
     def test_area_query_is_also_bounded_by_the_extent(self) -> None:
         # An area has no size of its own. Without the extent filter and its
-        # ceiling, a country-sized area id paired with a tiny extent would
-        # issue an unbounded request.
+        # ceiling, a country-sized area id could issue an unbounded request.
         with self.assertRaises(QueryError) as raised:
             build_area_query(
                 get_preset("road_network").tags,
                 3_600_223_474,
-                (30.0, 20.0, 34.0, 24.0),
+                CITY_BBOX,
             )
-        self.assertIn(f"{MAX_BBOX_AREA_KM2:,.0f}", str(raised.exception))
+        self.assertIn(f"{MAX_TILE_AREA_KM2:,.0f}", str(raised.exception))
         for bad_bbox in ((38.0, 27.0, 38.0, 27.1), (91.0, 27.0, 92.0, 27.1)):
             with self.subTest(bbox=bad_bbox):
                 with self.assertRaises(QueryError):
@@ -139,6 +150,16 @@ class BoundaryAreaQueryTests(unittest.TestCase):
                         3_600_223_474,
                         bad_bbox,
                     )
+
+    def test_area_download_is_tiled_without_losing_the_boundary_filter(self) -> None:
+        queries = build_area_queries(
+            get_preset("road_network").tags, 3_600_223_474, CITY_BBOX
+        )
+        self.assertEqual(len(queries), len(tile_bbox(CITY_BBOX)))
+        self.assertGreater(len(queries), 1)
+        for query_text in queries:
+            self.assertIn("area(3600223474)->.searchArea;", query_text)
+            self.assertIn("(area.searchArea)", query_text)
 
     def test_only_real_overpass_area_ranges_are_accepted(self) -> None:
         self.assertEqual(validate_area_id(3_600_000_001), 3_600_000_001)
