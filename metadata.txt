@@ -14,8 +14,8 @@ about=
     Seventeen persistent map styles provide live palette previews and native categorized QGIS renderers for buildings, roads, rail, transit, water, green space, trees, administrative places and common points of interest. Agent Protocol v1 exposes four stable QGIS Processing endpoints that 02Agent Smart Modeler can discover, inspect and run only after a validated proposal and explicit user approval. API keys remain in 02Agent Smart Modeler's process memory or encrypted QGIS vault and are never copied into this plugin.
     Downloads use the current map extent, the active-layer extent or a geocoded place, three pinned Overpass mirrors with diagnostic failover, strict area, request, response and feature limits, cancellation, a persistent cache and temporary point, line and polygon outputs. Only four fixed hosts are ever contacted: the three Overpass mirrors and the Nominatim geocoder. The plugin accepts no editable raw Overpass query, arbitrary URL, user path, API key or pip dependency. Illustrated task guides and the full manual: https://geophilo.com/zero2agent_osm_downloader/
 
-tracker=https://github.com/YusufEminoglu/02Agent-OSM-Downloader/issues
-repository=https://github.com/YusufEminoglu/02Agent-OSM-Downloader
+tracker=https://gitlab.com/geospacephilo/zero2agent_osm_downloader/-/issues
+repository=https://gitlab.com/geospacephilo/zero2agent_osm_downloader
 homepage=https://geophilo.com/zero2agent_osm_downloader/
 
 category=Vector
