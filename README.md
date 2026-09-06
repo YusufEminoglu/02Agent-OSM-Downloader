@@ -1,5 +1,5 @@
 # 02Agent OSM Downloader
-[![Documentation](https://img.shields.io/badge/📖_Reference_Manual-13a0a0)](https://geophilo.pages.dev/zero2agent_osm_downloader/)
+[![Documentation](https://img.shields.io/badge/📖_Reference_Manual-13a0a0)](https://geophilo.com/zero2agent_osm_downloader/)
 
 02Agent OSM Downloader is a stable QGIS 3.28+ and QGIS 4 plugin for reliable, repeatable
 OpenStreetMap data acquisition. It works independently through its dock and
@@ -15,18 +15,18 @@ QGIS layers until you explicitly save or export them.
 
 ## 📖 Documentation
 
-**[Documentation site](https://geophilo.pages.dev/zero2agent_osm_downloader/)** —
+**[Documentation site](https://geophilo.com/zero2agent_osm_downloader/)** —
 five illustrated task guides built from real screenshots of the dock, plus the
 complete user and technical reference manual.
 
 | Guide | What it covers |
 | --- | --- |
-| [Your first download](https://geophilo.pages.dev/zero2agent_osm_downloader/guide-first-download.html) | Theme, datasets, extent, results |
-| [Download a named place](https://geophilo.pages.dev/zero2agent_osm_downloader/guide-place-boundary.html) | Geocoder matches and exact boundaries |
-| [Cover a whole district or city](https://geophilo.pages.dev/zero2agent_osm_downloader/guide-wide-area.html) | Tiled requests, merging and limits |
-| [Build a structured query](https://geophilo.pages.dev/zero2agent_osm_downloader/guide-advanced-query.html) | ANY/ALL matching and the query preview |
-| [Commands, styling and agents](https://geophilo.pages.dev/zero2agent_osm_downloader/guide-command-and-agent.html) | English commands, 16 map styles, Processing endpoints |
-| [Reference manual](https://geophilo.pages.dev/zero2agent_osm_downloader/REFERENCE_MANUAL.html) | Query grammar, tag semantics, cache and security model |
+| [Your first download](https://geophilo.com/zero2agent_osm_downloader/guide-first-download.html) | Theme, datasets, extent, results |
+| [Download a named place](https://geophilo.com/zero2agent_osm_downloader/guide-place-boundary.html) | Geocoder matches and exact boundaries |
+| [Cover a whole district or city](https://geophilo.com/zero2agent_osm_downloader/guide-wide-area.html) | Tiled requests, merging and limits |
+| [Build a structured query](https://geophilo.com/zero2agent_osm_downloader/guide-advanced-query.html) | ANY/ALL matching and the query preview |
+| [Commands, styling and agents](https://geophilo.com/zero2agent_osm_downloader/guide-command-and-agent.html) | English commands, 16 map styles, Processing endpoints |
+| [Reference manual](https://geophilo.com/zero2agent_osm_downloader/REFERENCE_MANUAL.html) | Query grammar, tag semantics, cache and security model |
 
 
 ## What it provides
