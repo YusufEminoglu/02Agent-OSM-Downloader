@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3.6] - 2026-09-16
+
+- Redesign plugin icon to high-end 3D tactile brand design with circular teal pedestal, zero margin, and refreshed documentation links.
+
 ## [1.3.5] - 2026-09-05
 
 ### Fixed
