@@ -1,0 +1,8 @@
+# Repository-only content, not part of the installed plugin.
+#
+# docs/ is the source of the published manual and landing page; .github/ holds
+# the CI workflows. No shipped code path opens either -- every Help link in the
+# plugin resolves to the online manual -- yet together they were most of the
+# archive. Same convention as zero2cartolab and qgis_25d_styling.
+docs
+.github
