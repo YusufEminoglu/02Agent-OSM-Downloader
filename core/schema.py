@@ -41,6 +41,12 @@ TAG_COLUMNS: Tuple[Tuple[str, str], ...] = (
     ("direction", "direction"),
     ("height", "height"),
     ("building_levels", "building:levels"),
+    ("waterway", "waterway"),
+    ("water", "water"),
+    ("cycleway", "cycleway"),
+    ("emergency", "emergency"),
+    ("healthcare", "healthcare"),
+    ("traffic_calming", "traffic_calming"),
 )
 
 HEAD_COLUMNS: Tuple[str, ...] = (

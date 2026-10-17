@@ -49,6 +49,7 @@ from qgis.core import (
 from ..core.catalog import (
     GROUPS,
     PRESETS,
+    TagSpec,
     group_context,
     get_preset,
     interpret_prompt,
@@ -253,6 +254,7 @@ class AgentOsmDock(QDockWidget):
         self._place_name = ""
         self._place_candidate = None
         self._place_task = None
+        self._extra_preset_ids: tuple[str, ...] = ()
         self._theme_refreshing = False
         self._build_ui()
         self._populate_groups()
@@ -501,8 +503,15 @@ class AgentOsmDock(QDockWidget):
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self.cancel)
+        self.clear_cache_button = QPushButton("Clear cache")
+        self.clear_cache_button.setObjectName("quietButton")
+        self.clear_cache_button.setToolTip(
+            "Clear cached Overpass and Nominatim responses stored on disk."
+        )
+        self.clear_cache_button.clicked.connect(self._clear_cache)
         buttons.addWidget(self.download_button, 1)
         buttons.addWidget(self.cancel_button)
+        buttons.addWidget(self.clear_cache_button)
         run_form.addRow(buttons)
 
         self.progress = QProgressBar()
@@ -966,6 +975,7 @@ class AgentOsmDock(QDockWidget):
         self._group_changed()
 
     def _group_changed(self) -> None:
+        self._extra_preset_ids = ()
         group_id = self.group_combo.currentData()
         self.dataset_list.blockSignals(True)
         self.dataset_list.clear()
@@ -998,6 +1008,7 @@ class AgentOsmDock(QDockWidget):
         self._dataset_changed()
 
     def _clear_datasets(self) -> None:
+        self._extra_preset_ids = ()
         self.dataset_list.blockSignals(True)
         for index in range(self.dataset_list.count()):
             self.dataset_list.item(index).setCheckState(
@@ -1007,11 +1018,15 @@ class AgentOsmDock(QDockWidget):
         self._dataset_changed()
 
     def _selected_preset_ids(self) -> tuple[str, ...]:
-        return tuple(
+        checked = [
             str(self.dataset_list.item(index).data(Qt.ItemDataRole.UserRole) or "")
             for index in range(self.dataset_list.count())
             if self.dataset_list.item(index).checkState() == Qt.CheckState.Checked
-        )
+        ]
+        for extra_id in self._extra_preset_ids:
+            if extra_id and extra_id not in checked:
+                checked.append(extra_id)
+        return tuple(checked)
 
     def _dataset_changed(self, *_args) -> None:
         preset_ids = self._selected_preset_ids()
@@ -1019,9 +1034,14 @@ class AgentOsmDock(QDockWidget):
             theme_index = self.map_theme_combo.findData("osm_as_is")
             if theme_index >= 0 and self.map_theme_combo.currentIndex() != theme_index:
                 self.map_theme_combo.setCurrentIndex(theme_index)
-        self.dataset_count.setText(
-            f"{len(preset_ids)} of {self.dataset_list.count()} selected"
-        )
+        if self._extra_preset_ids:
+            self.dataset_count.setText(
+                f"{len(preset_ids)} selected (across themes)"
+            )
+        else:
+            self.dataset_count.setText(
+                f"{len(preset_ids)} of {self.dataset_list.count()} selected"
+            )
         if not preset_ids:
             self.description.setText(
                 "Select one or more datasets to build a combined request."
@@ -1035,6 +1055,7 @@ class AgentOsmDock(QDockWidget):
         self._refresh_run_summary()
 
     def _select_preset(self, preset_id: str) -> None:
+        self._extra_preset_ids = ()
         preset = get_preset(preset_id)
         group_index = self.group_combo.findData(preset.group_id)
         if group_index >= 0:
@@ -1189,6 +1210,25 @@ class AgentOsmDock(QDockWidget):
             )
             self.tabs.setCurrentWidget(self.download_tab)
             return
+        if intent.mode == "custom" and intent.exclude_key:
+            spec = TagSpec(
+                intent.key,
+                "" if intent.value == "*" else intent.value,
+                intent.geometry,
+            )
+            self._route_exclusion_to_query_tab((spec,), intent)
+            if intent.place_name:
+                self._place_extent_ui(intent.place_name)
+                self.command_place_label.setText(
+                    f"Place: {intent.place_name}  ·  resolving map extent..."
+                )
+            self._set_status(
+                f"Matched {intent.key}={intent.value or '*'}, excluding "
+                f"{intent.exclude_key}={intent.exclude_value or '*'}. "
+                "Review the Query tab and download."
+            )
+            self.tabs.setCurrentWidget(self.query_tab)
+            return
         if intent.mode == "custom":
             self.custom_check.setChecked(True)
             self.key_edit.setText(intent.key)
@@ -1197,6 +1237,11 @@ class AgentOsmDock(QDockWidget):
                 intent.geometry
             )
             self.geometry_combo.setCurrentIndex(geometry_index)
+            if intent.place_name:
+                self._place_extent_ui(intent.place_name)
+                self.command_place_label.setText(
+                    f"Place: {intent.place_name}  ·  resolving map extent..."
+                )
             self._set_status(
                 "Matched a custom OSM tag. Review and download."
             )
@@ -1218,15 +1263,22 @@ class AgentOsmDock(QDockWidget):
         self._resolve_place_extent(place_name)
 
     def _check_extra_presets(self, extra_preset_ids: tuple[str, ...]) -> None:
-        """Additionally check same-group presets the command also named."""
+        """Additionally check presets the command also named (same or cross-group)."""
         if not extra_preset_ids:
+            self._extra_preset_ids = ()
             return
+        visible_ids = set()
         self.dataset_list.blockSignals(True)
         for index in range(self.dataset_list.count()):
             item = self.dataset_list.item(index)
-            if item.data(Qt.ItemDataRole.UserRole) in extra_preset_ids:
+            item_id = str(item.data(Qt.ItemDataRole.UserRole) or "")
+            visible_ids.add(item_id)
+            if item_id in extra_preset_ids:
                 item.setCheckState(Qt.CheckState.Checked)
         self.dataset_list.blockSignals(False)
+        self._extra_preset_ids = tuple(
+            pid for pid in extra_preset_ids if pid not in visible_ids
+        )
         self._dataset_changed()
 
     def _route_exclusion_to_query_tab(self, positive_tags, intent) -> None:
@@ -1421,16 +1473,8 @@ class AgentOsmDock(QDockWidget):
         self._refresh_extent_note()
 
     def _uses_exact_boundary(self) -> bool:
-        """True when the pending download follows a mapped place boundary.
-
-        Only curated dataset downloads can clip to a boundary; the advanced
-        query and custom-tag endpoints take a rectangle.
-        """
+        """True when the pending download follows a mapped place boundary."""
         if self._extent_mode() != "place":
-            return False
-        if self.tabs.currentWidget() is self.query_tab:
-            return False
-        if self.custom_check.isChecked():
             return False
         if self._place_clip() != "boundary":
             return False
@@ -1471,26 +1515,28 @@ class AgentOsmDock(QDockWidget):
             )
             return
         area = bbox_area_km2(*bbox)
-        if self._uses_exact_boundary():
-            candidate = self._current_place_candidate()
-            note = (
-                f"Temporary layers  •  exact boundary of {candidate.name} "
-                f"inside a {area:,.0f} km² rectangle  •  1 request"
-            )
-            if area > MAX_BBOX_AREA_KM2:
-                note = (
+        try:
+            tiles = len(tile_bbox(bbox))
+        except QueryError as error:
+            if self._uses_exact_boundary():
+                candidate = self._current_place_candidate()
+                self.extent_note.setText(
                     f"{candidate.name} spans about {area:,.0f} km², beyond the "
                     f"{MAX_BBOX_AREA_KM2:,.0f} km² limit. Choose a smaller "
                     "administrative unit."
                 )
-            self.extent_note.setText(note)
-            return
-        try:
-            tiles = len(tile_bbox(bbox))
-        except QueryError as error:
-            self.extent_note.setText(str(error))
+            else:
+                self.extent_note.setText(str(error))
             return
         plural = "s" if tiles != 1 else ""
+        if self._uses_exact_boundary():
+            candidate = self._current_place_candidate()
+            self.extent_note.setText(
+                f"Temporary layers  •  exact boundary of {candidate.name} "
+                f"inside a {area:,.0f} km² rectangle  •  "
+                f"{tiles} bounded request{plural}"
+            )
+            return
         self.extent_note.setText(
             f"Temporary layers  •  {area:,.1f} km²  •  "
             f"{tiles} bounded request{plural}"
@@ -1570,10 +1616,8 @@ class AgentOsmDock(QDockWidget):
                 self.tabs.widget(index) in (self.download_tab, self.query_tab)
             )
         if hasattr(self, "place_clip_combo"):
-            # Boundary clipping applies to curated dataset downloads; an
-            # advanced query always uses the place rectangle.
             self.place_clip_combo.setEnabled(
-                self.tabs.widget(index) is not self.query_tab
+                self.tabs.widget(index) in (self.download_tab, self.query_tab)
             )
         self._refresh_run_summary()
         self._refresh_extent_note()
@@ -1609,6 +1653,10 @@ class AgentOsmDock(QDockWidget):
         if not hasattr(self, "run_summary"):
             return
         current = self.tabs.currentWidget()
+        candidate = (
+            self._current_place_candidate()
+            if self._extent_mode() == "place" else None
+        )
         if current is self.query_tab:
             filters = self._query_filters()
             mode = str(self.query_match_combo.currentData() or "any")
@@ -1622,6 +1670,8 @@ class AgentOsmDock(QDockWidget):
                     f"{summary}  (excluding {exclude_key}="
                     f"{exclude_value or '*'})"
                 )
+            if summary and candidate is not None:
+                summary = f"{summary}  ·  {candidate.name}"
             self.run_summary.setText(
                 self._display_label(summary or "Add at least one query filter.")
             )
@@ -1631,17 +1681,16 @@ class AgentOsmDock(QDockWidget):
             if self.custom_check.isChecked():
                 key = self.key_edit.text().strip() or "OSM key"
                 value = self.value_edit.text().strip() or "*"
-                self.run_summary.setText(f"{key}={value}")
+                summary = f"{key}={value}"
+                if candidate is not None:
+                    summary = f"{summary}  ·  {candidate.name}"
+                self.run_summary.setText(summary)
                 self.download_button.setText("Download custom tag")
             else:
                 preset_ids = self._selected_preset_ids()
                 title = ", ".join(
                     get_preset(preset_id).title for preset_id in preset_ids
                 ) or "Choose a dataset"
-                candidate = (
-                    self._current_place_candidate()
-                    if self._extent_mode() == "place" else None
-                )
                 if candidate is not None:
                     title = f"{title}  ·  {candidate.name}"
                 self.run_summary.setText(f"Preset  •  {title}")
@@ -1692,8 +1741,12 @@ class AgentOsmDock(QDockWidget):
             return
         self._current_extent = extent
         boundary_download = self._uses_exact_boundary()
+        candidate = (
+            self._current_place_candidate()
+            if self._extent_mode() == "place" else None
+        )
         wgs_bbox = self._wgs_bbox()
-        if wgs_bbox is not None and not boundary_download:
+        if wgs_bbox is not None:
             try:
                 tile_bbox(wgs_bbox)
             except QueryError as error:
@@ -1733,17 +1786,20 @@ class AgentOsmDock(QDockWidget):
                 "EXCLUDE_KEY": exclude_key,
                 "EXCLUDE_VALUE": exclude_value,
             }
+            if boundary_download and candidate is not None:
+                parameters["AREA_ID"] = str(candidate.area_id)
             for index in range(MAX_ADVANCED_FILTERS):
                 key, value = filters[index] if index < len(filters) else ("", "")
                 parameters[f"KEY_{index + 1}"] = key
                 parameters[f"VALUE_{index + 1}"] = value
             operator = " OR " if mode == "any" else " AND "
-            self._current_label = self._display_label(
-                operator.join(
-                    f"{key}={value or '*'}" for key, value in filters
-                )
-                + (f" NOT {exclude_key}={exclude_value or '*'}" if exclude_key else "")
-            )
+            label = operator.join(
+                f"{key}={value or '*'}" for key, value in filters
+            ) + (f" NOT {exclude_key}={exclude_value or '*'}" if exclude_key else "")
+            if candidate is not None:
+                label = f"{label} — {candidate.name}"
+            self._current_label = self._display_label(label)
+            self._current_style_scope = ""
         elif self.custom_check.isChecked():
             algorithm_id = "zero2agentosm:download_custom_tag"
             key = self.key_edit.text().strip()
@@ -1772,9 +1828,12 @@ class AgentOsmDock(QDockWidget):
                 "VALUE": value,
                 "GEOMETRY": self.geometry_combo.currentIndex(),
             }
-            self._current_label = self._display_label(
-                f"{key}={parameters['VALUE'] or '*'}"
-            )
+            if boundary_download and candidate is not None:
+                parameters["AREA_ID"] = str(candidate.area_id)
+            label = f"{key}={parameters['VALUE'] or '*'}"
+            if candidate is not None:
+                label = f"{label} — {candidate.name}"
+            self._current_label = self._display_label(label)
             self._current_style_scope = ""
         else:
             preset_ids = self._selected_preset_ids()
@@ -1798,10 +1857,6 @@ class AgentOsmDock(QDockWidget):
                     f"{error} Select fewer related datasets and try again.",
                 )
                 return
-            candidate = (
-                self._current_place_candidate()
-                if self._extent_mode() == "place" else None
-            )
             if boundary_download and candidate is not None:
                 # Only the boundary path needs the place endpoint, and it is
                 # handed the already-resolved area so it does not geocode the
@@ -1995,9 +2050,10 @@ class AgentOsmDock(QDockWidget):
             f"{values['label']} — {values['description']}"
         )
         QgsSettings().setValue(_MAP_THEME_SETTING, theme_id)
+        self._restyle_project_layers()
 
     def _road_width_changed(self, *_args) -> None:
-        """Persist the road-width strategy for future result layers."""
+        """Persist the road-width strategy for future and existing result layers."""
         if not hasattr(self, "road_width_combo"):
             return
         mode = self.current_road_width_mode()
@@ -2007,6 +2063,33 @@ class AgentOsmDock(QDockWidget):
             if mode == "highway"
             else "Road lines use one consistent width."
         )
+        self._restyle_project_layers()
+
+    def _restyle_project_layers(self) -> None:
+        """Restyle existing 02Agent vector layers in the current QGIS project."""
+        project = QgsProject.instance()
+        if project is None:
+            return
+        theme_id = self.current_map_theme()
+        road_width_mode = self.current_road_width_mode()
+        for layer in project.mapLayers().values():
+            if not isinstance(layer, QgsVectorLayer):
+                continue
+            if not layer.customProperty("zero2agent/map_theme"):
+                continue
+            self._style_layer(layer, theme_id, road_width_mode)
+
+    def _clear_cache(self) -> None:
+        """Clear the persistent SQLite query cache on disk."""
+        from ..processing.osm_algorithms import clear_cache
+
+        removed = clear_cache()
+        if removed:
+            self._set_status(
+                f"Cleared {removed:,} cached OSM response{'s' if removed != 1 else ''}."
+            )
+        else:
+            self._set_status("The OSM response cache is already empty.")
 
     def _add_basemap(self) -> None:
         """Add or reveal the marked OpenStreetMap XYZ layer."""

@@ -145,6 +145,14 @@ def _store_cached(query: str, payload: Dict, feedback) -> None:
         )
 
 
+def clear_cache() -> int:
+    """Clear the persistent Overpass response cache and return the count removed."""
+    try:
+        return _cache().clear()
+    except (OSError, sqlite3.Error):
+        return 0
+
+
 def _cancellable_wait(seconds: float, feedback) -> None:
     """Wait politely while checking cancellation at short intervals."""
     deadline = time.monotonic() + max(0.0, float(seconds))
@@ -593,6 +601,10 @@ def _relation_points(element: Dict) -> List[QgsGeometry]:
             if not polygon.contains(geometry):
                 continue
         points.append(geometry)
+    if not points and polygon is not None and not polygon.isEmpty():
+        surface_point = polygon.pointOnSurface()
+        if surface_point is not None and not surface_point.isEmpty():
+            points.append(surface_point)
     return points
 
 
@@ -741,6 +753,7 @@ def _fields() -> QgsFields:
 
 class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
     EXTENT = "EXTENT"
+    AREA_ID = "AREA_ID"
     EXCLUDE_KEY = "EXCLUDE_KEY"
     EXCLUDE_VALUE = "EXCLUDE_VALUE"
     OUTPUT_POINTS = "OUTPUT_POINTS"
@@ -748,6 +761,10 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
     OUTPUT_POLYGONS = "OUTPUT_POLYGONS"
     ALGORITHM_NAME = ""
     DISPLAY_NAME = ""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._area_id = 0
 
     def name(self) -> str:
         return self.ALGORITHM_NAME
@@ -788,15 +805,25 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
             f"mirrors. One request covers {MAX_TILE_AREA_KM2:,.0f} km²; a wider "
             "extent is split into tiled requests and merged, up to "
             f"{MAX_BBOX_AREA_KM2:,.0f} km² and {MAX_TILES} requests per "
-            "download. An optional exclude key/value drops matching features "
-            "from the result after it is fetched. No raw query, URL, path, "
-            "API key, or external dependency is accepted."
+            "download. An optional resolved area id clips the request to the "
+            "exact mapped boundary, and an optional exclude key/value drops "
+            "matching features from the result after it is fetched. No raw "
+            "query, URL, path, API key, or external dependency is accepted."
         )
 
     def _add_common_parameters(self) -> None:
         self.addParameter(
             QgsProcessingParameterExtent(self.EXTENT, "Download extent")
         )
+        if self.parameterDefinition(self.AREA_ID) is None:
+            self.addParameter(
+                QgsProcessingParameterString(
+                    self.AREA_ID,
+                    "Resolved OSM area id (optional, clips to mapped boundary)",
+                    defaultValue="",
+                    optional=True,
+                )
+            )
         self.addParameter(
             QgsProcessingParameterString(
                 self.EXCLUDE_KEY,
@@ -850,6 +877,19 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
         except QueryError as exc:
             raise QgsProcessingException(str(exc)) from exc
 
+    def _resolved_area_id(self, parameters, context) -> int:
+        if self._area_id:
+            return self._area_id
+        resolved = self.parameterAsString(
+            parameters, self.AREA_ID, context
+        ).strip()
+        if not resolved:
+            return 0
+        try:
+            return validate_area_id(resolved)
+        except QueryError as exc:
+            raise QgsProcessingException(str(exc)) from exc
+
     def _build_queries(
         self,
         specs: Tuple[TagSpec, ...],
@@ -860,6 +900,16 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
     ) -> Tuple[str, ...]:
         """Return every bounded request needed to cover the extent."""
         area = bbox_area_km2(*bbox)
+        if self._area_id:
+            queries = build_area_queries(
+                specs, self._area_id, bbox, match_mode, value_mode=value_mode
+            )
+            feedback.pushInfo(
+                "Clipping the request to the mapped boundary of the place "
+                f"({area:,.0f} km² extent, {len(queries)} bounded "
+                f"OSM request{'s' if len(queries) != 1 else ''})."
+            )
+            return queries
         queries = build_queries(specs, bbox, match_mode, value_mode=value_mode)
         feedback.pushInfo(
             f"Request extent: {area:,.1f} km² "
@@ -872,6 +922,7 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
         preset_id, theme, specs, match_mode = self._request(parameters, context)
         value_mode = self._value_mode(parameters, context)
         exclude_key, exclude_value = self._exclude_tag(parameters, context)
+        self._area_id = self._resolved_area_id(parameters, context)
         extent = self.parameterAsExtent(parameters, self.EXTENT, context)
         extent_crs = self.parameterAsExtentCrs(
             parameters, self.EXTENT, context
@@ -898,7 +949,10 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
                 specs, bbox, match_mode, feedback, value_mode
             )
         except QueryError as exc:
+            self._area_id = 0
             raise QgsProcessingException(str(exc)) from exc
+        finally:
+            self._area_id = 0
 
         fields = _fields()
         sink_specs = {
@@ -1071,27 +1125,6 @@ class DownloadPlaceAlgorithm(DownloadPresetAlgorithm):
             "bounded tiles as needed."
         )
 
-    def _build_queries(
-        self, specs, bbox, match_mode, feedback, value_mode: str = "exact"
-    ):
-        if not self._area_id:
-            return super()._build_queries(
-                specs, bbox, match_mode, feedback, value_mode
-            )
-        # The extent remains mandatory because an area id carries no size of
-        # its own. It is tiled before the area filter is applied, so exact
-        # clipping follows the same per-request and per-job limits as every
-        # other download path.
-        queries = build_area_queries(
-            specs, self._area_id, bbox, match_mode, value_mode=value_mode
-        )
-        feedback.pushInfo(
-            "Clipping the request to the mapped boundary of the place "
-            f"({bbox_area_km2(*bbox):,.0f} km² extent, {len(queries)} bounded "
-            f"OSM request{'s' if len(queries) != 1 else ''})."
-        )
-        return queries
-
     def processAlgorithm(self, parameters, context, feedback):
         place = self.parameterAsString(parameters, self.PLACE, context).strip()
         if not place:
@@ -1141,6 +1174,7 @@ class DownloadPlaceAlgorithm(DownloadPresetAlgorithm):
                 QgsCoordinateReferenceSystem("EPSG:4326"),
             )
 
+        working[self.AREA_ID] = str(self._area_id) if self._area_id else ""
         try:
             return super().processAlgorithm(working, context, feedback)
         finally:

@@ -1402,9 +1402,94 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             raise RuntimeError(
                 "An oversized boundary request bypassed the extent ceiling."
             )
+
+        from zero2agent_osm_downloader.core.query import advanced_specs
+        from zero2agent_osm_downloader.processing.osm_algorithms import (
+            _relation_points,
+        )
+
+        adv_area_query = build_area_query(
+            advanced_specs((("amenity", "school"),), ("polygon",), "any"),
+            area_id,
+            place_bbox,
+        )
+        osm_algorithms._cache().set(
+            adv_area_query,
+            {
+                "elements": [
+                    {
+                        "type": "way",
+                        "id": 901,
+                        "tags": {"amenity": "school", "name": "Boundary School"},
+                        "geometry": [
+                            {"lat": 38.4130, "lon": 27.1230},
+                            {"lat": 38.4130, "lon": 27.1240},
+                            {"lat": 38.4140, "lon": 27.1240},
+                            {"lat": 38.4140, "lon": 27.1230},
+                            {"lat": 38.4130, "lon": 27.1230},
+                        ],
+                    }
+                ]
+            },
+        )
+        adv_area_results = processing.run(
+            "zero2agentosm:download_advanced",
+            {
+                "MATCH_MODE": 0,
+                "GEOMETRY": 3,
+                "KEY_1": "amenity",
+                "VALUE_1": "school",
+                "AREA_ID": str(area_id),
+                "EXTENT": QgsReferencedRectangle(
+                    QgsRectangle(27.1200, 38.4100, 27.1260, 38.4160),
+                    QgsCoordinateReferenceSystem.fromEpsgId(4326),
+                ),
+                "OUTPUT_POINTS": "TEMPORARY_OUTPUT",
+                "OUTPUT_LINES": "TEMPORARY_OUTPUT",
+                "OUTPUT_POLYGONS": "TEMPORARY_OUTPUT",
+            },
+            context=context,
+            feedback=feedback,
+            is_child_algorithm=True,
+        )
+        adv_polygons = QgsProcessingUtils.mapLayerFromString(
+            adv_area_results["OUTPUT_POLYGONS"], context, True
+        )
+        if adv_polygons is None or adv_polygons.featureCount() != 1:
+            raise RuntimeError(
+                "Advanced query with AREA_ID did not clip to boundary."
+            )
+
+        # Relations without an explicit label/admin_centre node member must
+        # still emit a pointOnSurface representative point.
+        fallback_pts = _relation_points(
+            {
+                "type": "relation",
+                "id": 902,
+                "tags": {"boundary": "administrative", "admin_level": "8"},
+                "members": [
+                    {
+                        "type": "way",
+                        "role": "outer",
+                        "geometry": [
+                            {"lat": 38.4130, "lon": 27.1230},
+                            {"lat": 38.4130, "lon": 27.1240},
+                            {"lat": 38.4140, "lon": 27.1240},
+                            {"lat": 38.4140, "lon": 27.1230},
+                            {"lat": 38.4130, "lon": 27.1230},
+                        ],
+                    }
+                ],
+            }
+        )
+        if len(fallback_pts) != 1 or fallback_pts[0].isEmpty():
+            raise RuntimeError(
+                "Relation without node members did not fall back to pointOnSurface."
+            )
+
         return (
-            "a pre-resolved boundary download produced 1 polygon and an "
-            "oversized one was refused"
+            "a pre-resolved boundary download produced 1 polygon, advanced "
+            "AREA_ID clipping succeeded, and an oversized one was refused"
         )
 
 

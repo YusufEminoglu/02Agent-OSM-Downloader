@@ -66,6 +66,8 @@ _POLYGON_BODY = (
     # an urban block or green space the size of a whole district.
     " WHEN lower(coalesce(\"boundary\",'')) = 'administrative' THEN 'boundary'"
     " WHEN lower(coalesce(\"natural\",'')) IN ('water','bay','wetland')"
+    "   OR coalesce(\"water\",'') <> ''"
+    "   OR coalesce(\"waterway\",'') <> ''"
     "   OR lower(coalesce(\"query_key\",'')) IN ('water','waterway') THEN 'water'"
     " WHEN lower(coalesce(\"amenity\",'')) = 'parking'"
     "   OR lower(coalesce(\"landuse\",'')) = 'parking' THEN 'parking'"
@@ -92,7 +94,9 @@ _POLYGON_BODY = (
     " WHEN lower(coalesce(\"landuse\",'')) IN ('residential','garages',"
     "'education','religious','institutional','civic_admin','construction',"
     "'brownfield','greyfield','railway','military') THEN 'urban_residential'"
-    " WHEN lower(coalesce(\"amenity\",'')) <> '' THEN 'civic'"
+    " WHEN lower(coalesce(\"amenity\",'')) <> ''"
+    "   OR coalesce(\"healthcare\",'') <> ''"
+    "   OR coalesce(\"emergency\",'') <> '' THEN 'civic'"
     " ELSE 'other' END"
 )
 
@@ -113,7 +117,8 @@ PLACES_POLYGON_EXPRESSION = (
 )
 
 _LINE_BODY = (
-    " WHEN lower(coalesce(\"query_key\",'')) IN ('water','waterway')"
+    " WHEN coalesce(\"waterway\",'') <> ''"
+    "   OR lower(coalesce(\"query_key\",'')) IN ('water','waterway')"
     "   OR lower(coalesce(\"natural\",'')) = 'water' THEN 'water'"
     " WHEN coalesce(\"railway\",'') <> '' THEN 'rail'"
     " WHEN coalesce(\"route\",'') <> '' THEN 'transit'"
@@ -126,7 +131,8 @@ _LINE_BODY = (
     "'living_street','road') THEN 'residential'"
     " WHEN lower(coalesce(\"highway\",'')) IN ('service','track') THEN 'service'"
     " WHEN lower(coalesce(\"highway\",'')) IN ('footway','path','pedestrian','steps',"
-    "'corridor','bridleway','cycleway') THEN 'active'"
+    "'corridor','bridleway','cycleway')"
+    "   OR coalesce(\"cycleway\",'') <> '' THEN 'active'"
     " ELSE 'other' END"
 )
 
@@ -149,21 +155,22 @@ _POINT_BODY = (
     " WHEN coalesce(\"place\",'') <> '' THEN 'place'"
     " WHEN lower(coalesce(\"natural\",'')) = 'tree' THEN 'tree'"
     " WHEN coalesce(\"public_transport\",'') <> '' OR lower(coalesce(\"railway\",''))"
-    "   IN ('station','halt','tram_stop')"
+    "   IN ('station','halt','tram_stop','subway_entrance')"
     "   OR lower(coalesce(\"highway\",'')) = 'bus_stop'"
-    "   OR lower(coalesce(\"amenity\",'')) IN ('parking','fuel','taxi',"
-    "'bus_station','ferry_terminal') THEN 'transport'"
+    "   OR lower(coalesce(\"amenity\",'')) IN ('parking','parking_entrance','fuel',"
+    "'charging_station','car_rental','car_wash','bicycle_parking','bicycle_rental',"
+    "'bicycle_repair_station','taxi','bus_station','ferry_terminal') THEN 'transport'"
     " WHEN lower(coalesce(\"amenity\",'')) IN ('hospital','clinic','doctors',"
-    "'pharmacy','dentist') THEN 'health'"
+    "'pharmacy','dentist') OR coalesce(\"healthcare\",'') <> '' THEN 'health'"
     " WHEN lower(coalesce(\"amenity\",'')) IN ('school','university','college',"
     "'kindergarten','library') THEN 'education'"
     " WHEN lower(coalesce(\"amenity\",'')) IN ('place_of_worship') THEN 'worship'"
     " WHEN lower(coalesce(\"amenity\",'')) IN ('fire_station','police',"
-    "'ambulance_station') THEN 'emergency'"
+    "'ambulance_station','shelter') OR coalesce(\"emergency\",'') <> '' THEN 'emergency'"
     " WHEN lower(coalesce(\"amenity\",'')) IN ('restaurant','cafe','bar',"
     "'pub','fast_food','ice_cream','biergarten','food_court') THEN 'food'"
     " WHEN coalesce(\"shop\",'') <> '' THEN 'shop'"
-    " WHEN coalesce(\"tourism\",'') <> '' THEN 'tourism'"
+    " WHEN coalesce(\"tourism\",'') <> '' OR coalesce(\"historic\",'') <> '' THEN 'tourism'"
     " WHEN coalesce(\"sport\",'') <> '' THEN 'sport'"
     # Junction and traffic nodes are the road network's own furniture, not
     # places. Left in the catch-all they became a dot per crossing and per
@@ -174,7 +181,8 @@ _POINT_BODY = (
     " WHEN lower(coalesce(\"highway\",'')) IN ('traffic_signals',"
     "'mini_roundabout','turning_circle','turning_loop','stop','give_way',"
     "'motorway_junction','speed_camera','street_lamp','passing_place',"
-    "'elevator','milestone') OR coalesce(\"direction\",'') <> ''"
+    "'elevator','milestone') OR coalesce(\"traffic_calming\",'') <> ''"
+    "   OR coalesce(\"direction\",'') <> ''"
     " THEN 'junction'"
     # Kerbs, bollards, gates and gaps: the edge of the footway and the things
     # standing on it. They are furniture, not places, and left in the

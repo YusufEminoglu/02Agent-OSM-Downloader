@@ -843,26 +843,58 @@ def _best_preset(normalized: str) -> Tuple[str, float]:
     return preset_id, min(1.0, 0.45 + score * 0.12)
 
 
+def _own_score(normalized: str, preset: Preset) -> int:
+    """Score a preset by its own title and keywords, ignoring group_title."""
+    return sum(
+        max(1, len(_normalized(term).split()))
+        for term in preset.keywords + (preset.title,)
+        if _contains_phrase(normalized, term)
+    )
+
+
 def _top_presets(
     normalized: str, primary_id: str, limit: int = 2
 ) -> Tuple[str, ...]:
-    """Return other presets in the same theme group the command also names.
+    """Return additional presets the command also names.
 
-    Restricted to the primary match's own group: the Presets tab only shows
-    one theme group's checkboxes at a time, so a cross-group suggestion here
-    could never actually be checked in the dock. Within one group, e.g.
-    "download parks and water" naming both Green spaces and Blue network is
-    directly representable as two checked datasets.
+    Same-group presets come first; cross-group presets are included when the
+    command joins datasets with 'and' and matches the second preset's own
+    title or keywords.
     """
     if not primary_id or primary_id not in PRESETS_BY_ID:
         return ()
     group_id = PRESETS_BY_ID[primary_id].group_id
+    scored = _scored_presets(normalized)
     extras = [
         preset_id
-        for score, preset_id in _scored_presets(normalized)
+        for _score, preset_id in scored
         if preset_id != primary_id
         and PRESETS_BY_ID[preset_id].group_id == group_id
     ]
+    if len(extras) < limit and _contains_phrase(normalized, "and"):
+        primary_terms = {
+            _normalized(term)
+            for term in (
+                PRESETS_BY_ID[primary_id].keywords
+                + (PRESETS_BY_ID[primary_id].title,)
+            )
+            if _contains_phrase(normalized, term)
+        }
+        for _score, preset_id in scored:
+            if preset_id == primary_id or preset_id in extras:
+                continue
+            candidate = PRESETS_BY_ID[preset_id]
+            if candidate.group_id == "osm_as_is":
+                continue
+            candidate_terms = {
+                _normalized(term)
+                for term in candidate.keywords + (candidate.title,)
+                if _contains_phrase(normalized, term)
+            }
+            if candidate_terms and not (candidate_terms <= primary_terms):
+                extras.append(preset_id)
+                if len(extras) >= limit:
+                    break
     return tuple(extras[:limit])
 
 
@@ -921,7 +953,7 @@ def _extract_place(raw: str, preset_id: str) -> str:
     if connector:
         candidate = connector.group(1).strip(" ,;:-")
         candidate = re.split(
-            r"\b(?:download|get|fetch|load|with|where)\b",
+            r"\b(?:download|get|fetch|load|with|where|as)\b",
             candidate,
             maxsplit=1,
             flags=re.IGNORECASE,
@@ -953,16 +985,25 @@ def interpret_prompt(text: object) -> PromptIntent:
     raw = str(text or "").strip()
     if not raw:
         return PromptIntent("none")
+    raw, exclude_key, exclude_value = _extract_exclusion(raw)
     tag_match = _TAG_RE.search(raw)
     if tag_match:
         key = tag_match.group(1)
         value = tag_match.group(2).strip()
+        without_tag = (
+            raw[: tag_match.start()] + " " + raw[tag_match.end():]
+        ).strip()
+        place_name = _extract_place(without_tag, "custom")
         return PromptIntent(
-            "custom", key=key, value=value,
-            geometry=_geometry_hint(raw, key), confidence=1.0,
+            "custom",
+            key=key,
+            value=value,
+            geometry=_geometry_hint(raw, key),
+            place_name=place_name,
+            confidence=1.0,
+            exclude_key=exclude_key,
+            exclude_value=exclude_value,
         )
-
-    raw, exclude_key, exclude_value = _extract_exclusion(raw)
 
     normalized = _normalized(raw)
     words = tuple(normalized.split())

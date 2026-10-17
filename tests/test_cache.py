@@ -126,6 +126,17 @@ class QueryCacheTests(unittest.TestCase):
         # Readable back from the original (creator) thread too.
         self.assertEqual(cache.get("from-worker"), {"elements": [7]})
 
+    def test_count_and_clear_remove_all_cached_entries(self) -> None:
+        cache = self._cache(ttl_seconds=60)
+        self.assertEqual(cache.count(), 0)
+        cache.set("query-1", {"elements": [1]})
+        cache.set("query-2", {"elements": [2]})
+        self.assertEqual(cache.count(), 2)
+        removed = cache.clear()
+        self.assertEqual(removed, 2)
+        self.assertEqual(cache.count(), 0)
+        self.assertIsNone(cache.get("query-1"))
+
 
 if __name__ == "__main__":
     unittest.main()

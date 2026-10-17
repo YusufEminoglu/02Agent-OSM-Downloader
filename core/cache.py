@@ -116,6 +116,22 @@ class QueryCache:
                     (count - self._limit,),
                 )
 
+    def count(self) -> int:
+        """Return the number of entries currently in the cache."""
+        with self._lock:
+            return int(
+                self._connection.execute(
+                    "SELECT COUNT(*) FROM query_cache"
+                ).fetchone()[0]
+            )
+
+    def clear(self) -> int:
+        """Remove all cached entries and return how many were removed."""
+        with self._lock:
+            removed = self.count()
+            self._connection.execute("DELETE FROM query_cache")
+            return removed
+
     def purge_expired(self) -> None:
         cutoff = time.time() - self._ttl_seconds
         with self._lock:

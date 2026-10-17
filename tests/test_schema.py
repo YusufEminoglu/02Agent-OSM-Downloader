@@ -90,6 +90,33 @@ class SchemaTests(unittest.TestCase):
         missing = STYLING_COLUMNS - set(FIELD_NAMES)
         self.assertEqual(missing, set())
 
+    def test_new_thematic_tag_columns_are_extracted(self) -> None:
+        element = {
+            "type": "way",
+            "id": 99,
+            "tags": {
+                "waterway": "river",
+                "water": "river",
+                "cycleway": "track",
+                "emergency": "ambulance_station",
+                "healthcare": "clinic",
+                "traffic_calming": "bump",
+            },
+        }
+        values = feature_attributes(
+            element,
+            "osm_as_is_full_visible_stack",
+            "OSM As-Is",
+            (TagSpec("*", "", "line"),),
+        )
+        row = dict(zip(FIELD_NAMES, values))
+        self.assertEqual(row["waterway"], "river")
+        self.assertEqual(row["water"], "river")
+        self.assertEqual(row["cycleway"], "track")
+        self.assertEqual(row["emergency"], "ambulance_station")
+        self.assertEqual(row["healthcare"], "clinic")
+        self.assertEqual(row["traffic_calming"], "bump")
+
 
 if __name__ == "__main__":
     unittest.main()

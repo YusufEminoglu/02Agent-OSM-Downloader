@@ -28,15 +28,17 @@
         "PRESET": "multi_enum_from_live_algorithm",
         "EXTENT": [
           "map_extent",
-          "layer_extent"
+          "layer_extent",
+          "resolved_place_extent"
         ],
+        "AREA_ID": "validated_osm_area_id_or_blank",
         "EXCLUDE_KEY": "validated_osm_tag_or_blank",
         "EXCLUDE_VALUE": "validated_osm_tag_or_blank",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
       },
-      "notes": "EXCLUDE_KEY/EXCLUDE_VALUE are optional and shared by all four endpoints: when EXCLUDE_KEY is set, any fetched feature carrying that tag (any value, or the given value only) is dropped after the OSM response arrives — this is a client-side filter, not part of the Overpass query text."
+      "notes": "AREA_ID is optional and shared by all four endpoints to clip the request to a pre-resolved OSM boundary. EXCLUDE_KEY/EXCLUDE_VALUE are optional and shared by all four endpoints: when EXCLUDE_KEY is set, any fetched feature carrying that tag (any value, or the given value only) is dropped after the OSM response arrives — this is a client-side filter, not part of the Overpass query text."
     },
     {
       "id": "zero2agentosm:download_place",
@@ -68,15 +70,17 @@
         "GEOMETRY": "enum_from_live_algorithm",
         "EXTENT": [
           "map_extent",
-          "layer_extent"
+          "layer_extent",
+          "resolved_place_extent"
         ],
+        "AREA_ID": "validated_osm_area_id_or_blank",
         "EXCLUDE_KEY": "validated_osm_tag_or_blank",
         "EXCLUDE_VALUE": "validated_osm_tag_or_blank",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
       },
-      "notes": "EXCLUDE_KEY/EXCLUDE_VALUE behave as on download_preset."
+      "notes": "AREA_ID and EXCLUDE_KEY/EXCLUDE_VALUE behave as on download_preset."
     },
     {
       "id": "zero2agentosm:download_advanced",
@@ -89,15 +93,17 @@
         "VALUE_1..VALUE_6": "validated_osm_tag_or_blank",
         "EXTENT": [
           "map_extent",
-          "layer_extent"
+          "layer_extent",
+          "resolved_place_extent"
         ],
+        "AREA_ID": "validated_osm_area_id_or_blank",
         "EXCLUDE_KEY": "validated_osm_tag_or_blank",
         "EXCLUDE_VALUE": "validated_osm_tag_or_blank",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
       },
-      "notes": "VALUE_MODE true renders every filled VALUE_N as an Overpass regex (~) selector instead of an exact-match (=) one; regex values still cannot contain quotes, backslashes or semicolons. EXCLUDE_KEY/EXCLUDE_VALUE behave as on download_preset."
+      "notes": "VALUE_MODE true renders every filled VALUE_N as an Overpass regex (~) selector instead of an exact-match (=) one; regex values still cannot contain quotes, backslashes or semicolons. AREA_ID and EXCLUDE_KEY/EXCLUDE_VALUE behave as on download_preset."
     }
   ],
   "safety": {

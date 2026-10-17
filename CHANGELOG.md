@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.0] - 2026-10-17
+
+### Added
+
+- **Brand-aligned 3D studio icon**: Replaced the legacy robot icon with a new 512x512 RGBA circular deep-teal pedestal 3D urban diorama and frosted-glass acquisition prism icon matching the `02CadGis`, `02 Geo3D Analyzer`, and `PlanX GeoStats Lab` visual language.
+- **Exact boundary clipping (`AREA_ID`) across all four endpoints and dock workflows**: `download_preset`, `download_custom_tag`, and `download_advanced` now accept an optional resolved OSM `AREA_ID` alongside `download_place`, and the dock preserves exact administrative-boundary clipping on the Query tab and Custom tag mode (including commands with `"without X"`).
+- **Expanded attribute schema & cartographic classification**: Added `waterway`, `water`, `cycleway`, `emergency`, `healthcare`, and `traffic_calming` columns to `TAG_COLUMNS` and wired them directly into polygon, line, point, and POI label-color expressions so wildcard (`OSM As-Is`) and thematic downloads classify rivers, cycleways, clinics, and emergency facilities accurately instead of dropping them into `'other'`.
+- **Representative point fallback for area relations**: `_relation_points` now falls back to `pointOnSurface()` when an administrative or multipolygon relation has no explicit `label` or `admin_centre` node member.
+- **Cross-theme multi-dataset commands & custom-tag place/exclusion routing**: Commands such as `"download buildings and parks in Konak"` now retain cross-group dataset selections, and custom `key=value` commands also extract named places and `"without X"` exclusions.
+- **Live project layer restyling & cache management**: Changing `Map style` or `Road width` immediately restyles existing `02Agent` layers in the current QGIS project, and a new `Clear cache` button in the dock clears cached Overpass/Nominatim responses on disk.
+
 ## [1.3.6] - 2026-09-16
 
 - Redesign plugin icon to high-end 3D tactile brand design with circular teal pedestal, zero margin, and refreshed documentation links.

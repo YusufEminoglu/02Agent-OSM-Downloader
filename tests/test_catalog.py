@@ -286,6 +286,23 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(intent.exclude_key, "")
         self.assertEqual(intent.exclude_value, "")
 
+    def test_cross_group_compound_command_keeps_second_preset(self) -> None:
+        intent = interpret_prompt("download buildings and parks in Konak")
+        self.assertEqual(intent.mode, "place")
+        self.assertEqual(intent.place_name, "Konak")
+        combined = {intent.preset_id, *intent.extra_preset_ids}
+        self.assertEqual(combined, {"buildings", "green_spaces"})
+
+    def test_custom_tag_command_extracts_place_and_exclusion(self) -> None:
+        intent = interpret_prompt(
+            "download building=apartments polygon without charging in Konak"
+        )
+        self.assertEqual(intent.mode, "custom")
+        self.assertEqual((intent.key, intent.value), ("building", "apartments"))
+        self.assertEqual(intent.geometry, "polygon")
+        self.assertEqual(intent.place_name, "Konak")
+        self.assertEqual((intent.exclude_key, intent.exclude_value), ("amenity", "fuel"))
+
 
 if __name__ == "__main__":
     unittest.main()
