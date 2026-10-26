@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.5.0] - 2026-10-26
+
+### Added
+
+- **Save to GeoPackage.** A new *Save to* choice writes every result layer as
+  its own table into one `.gpkg`, stores its style inside the file as the
+  default (`layer_styles`), and adds the file-backed layers to the project.
+  Saving again into the same file adds tables instead of overwriting. If the
+  file cannot be written, the downloaded layers are kept as temporary layers
+  and the reason is shown - a file problem never costs the data.
+- **Attribution and data date on every layer.** The OpenStreetMap ODbL
+  attribution and the date of the OSM database the server answered from
+  (`osm3s.timestamp_osm_base`, oldest across tiles) are written into each
+  result layer's metadata and shown when the download finishes. Processing
+  returns the date as `OSM_TIMESTAMP`.
+- **Three new areas:** the selected features of the active layer, a rectangle
+  drawn on the map, and **Around a point** - a radius of 50 m to 5 km around
+  the map centre, the selection or a searched place. The circle's bounding
+  box is requested, so every size limit, tiling rule and cache path applies,
+  and only features that touch the circle are kept. Processing parameters:
+  `AROUND_X`, `AROUND_Y`, `AROUND_METERS`.
+- **Recent downloads and Run again.** The last fifteen downloads are
+  remembered with their exact request; one click repeats it with today's
+  data.
+- **Turkish commands.** The Command tab accepts Turkish ("Konak'taki parkları
+  indir", "Kadıköy'de otobüs duraklarını göster", "... hariç") and routes it
+  exactly as its English equivalent; English behaviour is unchanged.
+
+### Changed
+
+- A download that includes the unfiltered *All tagged objects* preset over
+  more than 2 km² asks for confirmation first.
+- Hub description and tags now describe what you can download and where.
+
 ## [1.4.0] - 2026-10-17
 
 ### Added

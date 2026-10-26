@@ -28,13 +28,22 @@ from qgis.core import (
     QgsProcessingParameterEnum,
     QgsProcessingParameterExtent,
     QgsProcessingParameterFeatureSink,
+    QgsProcessingParameterNumber,
     QgsProcessingParameterString,
+    QgsProcessingOutputString,
     QgsReferencedRectangle,
     QgsRectangle,
     QgsProject,
     QgsWkbTypes,
 )
 
+from ..core.around import (
+    MAX_RADIUS_M,
+    circle_bbox,
+    circle_ring,
+    validate_centre,
+    validate_radius,
+)
 from ..core.cache import QueryCache
 from ..core.catalog import (
     PRESETS_BY_ID,
@@ -75,6 +84,7 @@ from ..core.query import (
     merge_elements,
     normalize_tag,
     normalized_specs,
+    osm_timestamp,
     validate_area_id,
     validate_payload,
 )
@@ -756,6 +766,10 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
     AREA_ID = "AREA_ID"
     EXCLUDE_KEY = "EXCLUDE_KEY"
     EXCLUDE_VALUE = "EXCLUDE_VALUE"
+    AROUND_X = "AROUND_X"
+    AROUND_Y = "AROUND_Y"
+    AROUND_METERS = "AROUND_METERS"
+    OSM_TIMESTAMP = "OSM_TIMESTAMP"
     OUTPUT_POINTS = "OUTPUT_POINTS"
     OUTPUT_LINES = "OUTPUT_LINES"
     OUTPUT_POLYGONS = "OUTPUT_POLYGONS"
@@ -807,7 +821,11 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
             f"{MAX_BBOX_AREA_KM2:,.0f} km² and {MAX_TILES} requests per "
             "download. An optional resolved area id clips the request to the "
             "exact mapped boundary, and an optional exclude key/value drops "
-            "matching features from the result after it is fetched. No raw "
+            "matching features from the result after it is fetched. An "
+            "optional around search (longitude, latitude in WGS84 and a radius "
+            f"up to {MAX_RADIUS_M:,.0f} m) requests the circle's bounding box "
+            "and keeps only the features that touch the circle. The OSM data "
+            "date reported by the server is returned as OSM_TIMESTAMP. No raw "
             "query, URL, path, API key, or external dependency is accepted."
         )
 
@@ -838,6 +856,30 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
                 "Exclude OSM tag value (blank or * means any value)",
                 defaultValue="",
                 optional=True,
+            )
+        )
+        for name, label in (
+            (self.AROUND_X, "Around search: centre longitude (WGS84, optional)"),
+            (self.AROUND_Y, "Around search: centre latitude (WGS84, optional)"),
+        ):
+            self.addParameter(
+                QgsProcessingParameterNumber(
+                    name, label,
+                    QgsProcessingParameterNumber.Type.Double,
+                    defaultValue=0.0, optional=True,
+                )
+            )
+        self.addParameter(
+            QgsProcessingParameterNumber(
+                self.AROUND_METERS,
+                f"Around search: radius in metres (0 = off, up to {MAX_RADIUS_M:,.0f})",
+                QgsProcessingParameterNumber.Type.Double,
+                defaultValue=0.0, minValue=0.0, maxValue=MAX_RADIUS_M, optional=True,
+            )
+        )
+        self.addOutput(
+            QgsProcessingOutputString(
+                self.OSM_TIMESTAMP, "OSM data timestamp (UTC, from the server)"
             )
         )
         self.addParameter(
@@ -918,6 +960,21 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
         )
         return queries
 
+    def _around(self, parameters, context):
+        """(lon, lat, radius) of an around search, or None when it is off."""
+        radius = self.parameterAsDouble(parameters, self.AROUND_METERS, context)
+        if not radius:
+            return None
+        try:
+            radius = validate_radius(radius)
+            lon, lat = validate_centre(
+                self.parameterAsDouble(parameters, self.AROUND_X, context),
+                self.parameterAsDouble(parameters, self.AROUND_Y, context),
+            )
+        except QueryError as exc:
+            raise QgsProcessingException(str(exc)) from exc
+        return lon, lat, radius
+
     def processAlgorithm(self, parameters, context, feedback):
         preset_id, theme, specs, match_mode = self._request(parameters, context)
         value_mode = self._value_mode(parameters, context)
@@ -945,6 +1002,20 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
                 wgs_extent.yMinimum(), wgs_extent.xMinimum(),
                 wgs_extent.yMaximum(), wgs_extent.xMaximum(),
             )
+            around = self._around(parameters, context)
+            circle = None
+            if around is not None:
+                # The circle's own bounding box replaces the extent, so every
+                # size ceiling and tiling rule below applies to what is
+                # actually requested.
+                lon, lat, radius = around
+                bbox = circle_bbox(lon, lat, radius)
+                circle = QgsGeometry.fromPolygonXY([[
+                    QgsPointXY(x, y) for x, y in circle_ring(lon, lat, radius)
+                ]])
+                feedback.pushInfo(
+                    f"Around search: {radius:,.0f} m from {lat:.5f}, {lon:.5f}."
+                )
             queries = self._build_queries(
                 specs, bbox, match_mode, feedback, value_mode
             )
@@ -982,6 +1053,9 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
         feedback.setProgress(5)
         payload = _fetch_all(queries, feedback)
         feedback.setProgress(40)
+        data_date = osm_timestamp([payload])
+        if data_date:
+            feedback.pushInfo(f"OSM data as of {data_date} (UTC).")
         to_target = (
             QgsCoordinateTransform(
                 wgs84, extent_crs, context.transformContext()
@@ -1010,6 +1084,8 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
                     continue
                 for geometry in geometries:
                     if geometry is None or geometry.isEmpty():
+                        continue
+                    if circle is not None and not geometry.intersects(circle):
                         continue
                     if to_target is not None and geometry.transform(to_target) != 0:
                         continue
@@ -1043,6 +1119,7 @@ class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
                 "request covers no data."
             )
         feedback.setProgress(100)
+        destinations[self.OSM_TIMESTAMP] = data_date
         return destinations
 
 

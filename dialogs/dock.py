@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+from datetime import datetime
 from typing import Optional
 
 from qgis.PyQt.QtCore import QEvent, QSize, Qt, QUrl
@@ -26,6 +27,7 @@ from qgis.PyQt.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSpinBox,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -38,6 +40,7 @@ from qgis.core import (
     QgsProcessingAlgRunnerTask,
     QgsProcessingContext,
     QgsProcessingFeedback,
+    QgsPointXY,
     QgsProject,
     QgsReferencedRectangle,
     QgsRectangle,
@@ -45,6 +48,11 @@ from qgis.core import (
     QgsTask,
     QgsVectorLayer,
 )
+from qgis.gui import QgsFileWidget, QgsMapToolExtent
+
+from ..core import history as download_history
+from ..core.around import MAX_RADIUS_M, MIN_RADIUS_M, circle_bbox
+from ..core.persist import apply_provenance, write_geopackage
 
 from ..core.catalog import (
     GROUPS,
@@ -64,6 +72,7 @@ from ..core.query import (
     QueryError,
     advanced_specs,
     bbox_area_km2,
+    is_heavy_wildcard,
     normalize_tag,
     normalized_specs,
     preview_query,
@@ -86,6 +95,9 @@ from .theme import apply_adaptive_theme
 
 _MAP_THEME_SETTING = "zero2agent_osm_downloader/map_theme"
 _ROAD_WIDTH_SETTING = "zero2agent_osm_downloader/road_width_mode"
+_SAVE_MODE_SETTING = "zero2agent_osm_downloader/save_mode"
+_GPKG_PATH_SETTING = "zero2agent_osm_downloader/geopackage_path"
+_HISTORY_SETTING = "zero2agent_osm_downloader/recent_downloads"
 
 
 class _PlaceResolveTask(QgsTask):
@@ -256,6 +268,10 @@ class AgentOsmDock(QDockWidget):
         self._place_task = None
         self._extra_preset_ids: tuple[str, ...] = ()
         self._theme_refreshing = False
+        self._drawn_extent = None
+        self._extent_tool = None
+        self._previous_map_tool = None
+        self._pending_request = None
         self._build_ui()
         self._populate_groups()
 
@@ -378,6 +394,9 @@ class AgentOsmDock(QDockWidget):
         self.extent_combo.addItem("Current map view", "map")
         self.extent_combo.addItem("Active layer extent", "active")
         self.extent_combo.addItem("Named place (geocoded)", "place")
+        self.extent_combo.addItem("Selected features (active layer)", "selection")
+        self.extent_combo.addItem("Draw a rectangle on the map", "drawn")
+        self.extent_combo.addItem("Around a point (radius)", "around")
         self.extent_combo.setToolTip(
             "Requests are transformed to WGS84. Anything larger than "
             f"{MAX_TILE_AREA_KM2:,.0f} km² is split into tiled requests, up to "
@@ -423,6 +442,66 @@ class AgentOsmDock(QDockWidget):
         place_layout.addWidget(self.place_clip_combo)
         run_form.addRow(self.place_panel)
         self.place_panel.setVisible(False)
+
+        self.draw_panel = QWidget()
+        draw_layout = QHBoxLayout(self.draw_panel)
+        draw_layout.setContentsMargins(0, 0, 0, 0)
+        self.draw_button = QPushButton("Draw on map")
+        self.draw_button.setObjectName("quietButton")
+        self.draw_button.setToolTip("Drag a rectangle on the map canvas.")
+        self.draw_button.clicked.connect(self._start_drawing)
+        self.draw_label = QLabel("No rectangle drawn yet.")
+        self.draw_label.setObjectName("mutedText")
+        self.draw_label.setWordWrap(True)
+        draw_layout.addWidget(self.draw_button)
+        draw_layout.addWidget(self.draw_label, 1)
+        run_form.addRow(self.draw_panel)
+        self.draw_panel.setVisible(False)
+
+        self.around_panel = QWidget()
+        around_layout = QHBoxLayout(self.around_panel)
+        around_layout.setContentsMargins(0, 0, 0, 0)
+        self.around_centre_combo = QComboBox()
+        self.around_centre_combo.addItem("Map view centre", "map")
+        self.around_centre_combo.addItem("Centre of selected features", "selection")
+        self.around_centre_combo.addItem("Searched place", "place")
+        self.around_centre_combo.setToolTip(
+            "Features that touch a circle around this point are kept."
+        )
+        self.around_centre_combo.currentIndexChanged.connect(self._extent_mode_changed)
+        self.around_radius = QSpinBox()
+        self.around_radius.setRange(int(MIN_RADIUS_M), int(MAX_RADIUS_M))
+        self.around_radius.setSingleStep(50)
+        self.around_radius.setValue(500)
+        self.around_radius.setSuffix(" m")
+        self.around_radius.setAccessibleName("Search radius in metres")
+        self.around_radius.valueChanged.connect(self._refresh_extent_note)
+        around_layout.addWidget(self.around_centre_combo, 1)
+        around_layout.addWidget(self.around_radius)
+        run_form.addRow(self.around_panel)
+        self.around_panel.setVisible(False)
+
+        save_row = QHBoxLayout()
+        self.save_mode_combo = QComboBox()
+        self.save_mode_combo.addItem("Temporary layers", "temporary")
+        self.save_mode_combo.addItem("GeoPackage file", "gpkg")
+        self.save_mode_combo.setToolTip(
+            "Temporary layers disappear when QGIS closes. A GeoPackage keeps "
+            "the data and its style; one file can collect many downloads."
+        )
+        self.gpkg_widget = QgsFileWidget()
+        self.gpkg_widget.setStorageMode(
+            getattr(QgsFileWidget, "StorageMode", QgsFileWidget).SaveFile
+        )
+        self.gpkg_widget.setFilter("GeoPackage (*.gpkg)")
+        self.gpkg_widget.setFilePath(str(QgsSettings().value(_GPKG_PATH_SETTING, "") or ""))
+        stored_save = str(QgsSettings().value(_SAVE_MODE_SETTING, "temporary") or "temporary")
+        self.save_mode_combo.setCurrentIndex(max(0, self.save_mode_combo.findData(stored_save)))
+        self.save_mode_combo.currentIndexChanged.connect(self._save_mode_changed)
+        self.gpkg_widget.fileChanged.connect(self._save_mode_changed)
+        save_row.addWidget(self.save_mode_combo)
+        save_row.addWidget(self.gpkg_widget, 1)
+        run_form.addRow("Save to", save_row)
 
         self.basemap_button = QPushButton("Add OSM basemap")
         self.basemap_button.setToolTip(
@@ -519,6 +598,21 @@ class AgentOsmDock(QDockWidget):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         run_form.addRow(self.progress)
+
+        recent_row = QHBoxLayout()
+        self.recent_combo = QComboBox()
+        self.recent_combo.setAccessibleName("Recent downloads")
+        self.recent_combo.setToolTip(
+            "Run a previous download again with today's OSM data."
+        )
+        self.rerun_button = QPushButton("Run again")
+        self.rerun_button.setObjectName("quietButton")
+        self.rerun_button.clicked.connect(self._rerun_recent)
+        recent_row.addWidget(self.recent_combo, 1)
+        recent_row.addWidget(self.rerun_button)
+        run_form.addRow("Recent", recent_row)
+        self._populate_recent()
+        self._save_mode_changed()
         layout.addWidget(self.run_group)
 
         self.status = QLabel("Ready.")
@@ -822,7 +916,7 @@ class AgentOsmDock(QDockWidget):
         heading.setObjectName("heroEyebrow")
         prompt_layout.addWidget(heading)
         hint = QLabel(
-            "Describe a preset in English, or enter a safe "
+            "Describe a preset in English or Turkish, or enter a safe "
             "key=value tag. Add \"without X\" to exclude a tag, and small "
             "misspellings are tolerated. The command is interpreted locally."
         )
@@ -861,6 +955,8 @@ class AgentOsmDock(QDockWidget):
             "building=* polygon",
             "Download wheelchair=yes points",
             "Download parks and playgrounds in Seoul, South Korea",
+            "Konak'taki parkları indir",
+            "Kadıköy'de otobüs duraklarını göster",
         ):
             self.command_example_combo.addItem(example)
         load_command = QPushButton("Load example")
@@ -1380,8 +1476,16 @@ class AgentOsmDock(QDockWidget):
         return str(self.place_clip_combo.currentData() or "boundary")
 
     def _extent_mode_changed(self, *_args) -> None:
-        place_mode = self._extent_mode() == "place"
+        mode = self._extent_mode()
+        around_place = (
+            mode == "around"
+            and str(self.around_centre_combo.currentData() or "") == "place"
+        )
+        place_mode = mode == "place" or around_place
         self.place_panel.setVisible(place_mode)
+        self.place_clip_combo.setVisible(mode == "place")
+        self.draw_panel.setVisible(mode == "drawn")
+        self.around_panel.setVisible(mode == "around")
         if place_mode and not self.place_edit.text().strip() and self._place_name:
             self.place_edit.setText(self._place_name)
         self._refresh_run_summary()
@@ -1511,7 +1615,7 @@ class AgentOsmDock(QDockWidget):
         bbox = self._wgs_bbox()
         if bbox is None:
             self.extent_note.setText(
-                "Temporary layers  •  choose an extent to see the request size."
+                f"{self._output_note()}  •  choose an extent to see the request size."
             )
             return
         area = bbox_area_km2(*bbox)
@@ -1532,13 +1636,19 @@ class AgentOsmDock(QDockWidget):
         if self._uses_exact_boundary():
             candidate = self._current_place_candidate()
             self.extent_note.setText(
-                f"Temporary layers  •  exact boundary of {candidate.name} "
+                f"{self._output_note()}  •  exact boundary of {candidate.name} "
                 f"inside a {area:,.0f} km² rectangle  •  "
                 f"{tiles} bounded request{plural}"
             )
             return
+        if self._extent_mode() == "around":
+            self.extent_note.setText(
+                f"{self._output_note()}  •  {self.around_radius.value():,} m radius  •  "
+                f"{tiles} bounded request{plural}"
+            )
+            return
         self.extent_note.setText(
-            f"Temporary layers  •  {area:,.1f} km²  •  "
+            f"{self._output_note()}  •  {area:,.1f} km²  •  "
             f"{tiles} bounded request{plural}"
         )
 
@@ -1711,6 +1821,19 @@ class AgentOsmDock(QDockWidget):
                 QgsRectangle(west, south, east, north),
                 QgsCoordinateReferenceSystem("EPSG:4326"),
             )
+        if mode == "drawn":
+            return self._drawn_extent
+        if mode == "around":
+            centre = self._around_centre()
+            if centre is None:
+                return None
+            south, west, north, east = circle_bbox(
+                centre[0], centre[1], float(self.around_radius.value())
+            )
+            return QgsReferencedRectangle(
+                QgsRectangle(west, south, east, north),
+                QgsCoordinateReferenceSystem("EPSG:4326"),
+            )
         if self.iface is None:
             return None
         if mode == "active":
@@ -1718,11 +1841,106 @@ class AgentOsmDock(QDockWidget):
             if layer is None:
                 return None
             return QgsReferencedRectangle(layer.extent(), layer.crs())
+        if mode == "selection":
+            layer = self.iface.activeLayer()
+            if not isinstance(layer, QgsVectorLayer) or layer.selectedFeatureCount() == 0:
+                return None
+            box = layer.boundingBoxOfSelected()
+            if box.isEmpty() or box.width() <= 0 or box.height() <= 0:
+                return None
+            return QgsReferencedRectangle(box, layer.crs())
         canvas = self.iface.mapCanvas()
         return QgsReferencedRectangle(
             canvas.extent(),
             canvas.mapSettings().destinationCrs(),
         )
+
+    def _around_centre(self):
+        """(lon, lat) in WGS84 of the around-search centre, or None."""
+        source = str(self.around_centre_combo.currentData() or "map")
+        wgs84 = QgsCoordinateReferenceSystem("EPSG:4326")
+        if source == "place":
+            candidate = self._current_place_candidate()
+            if candidate is None:
+                return None
+            south, west, north, east = candidate.bbox
+            return (west + east) / 2.0, (south + north) / 2.0
+        if self.iface is None:
+            return None
+        if source == "selection":
+            layer = self.iface.activeLayer()
+            if not isinstance(layer, QgsVectorLayer) or layer.selectedFeatureCount() == 0:
+                return None
+            point, crs = layer.boundingBoxOfSelected().center(), layer.crs()
+        else:
+            canvas = self.iface.mapCanvas()
+            point, crs = canvas.center(), canvas.mapSettings().destinationCrs()
+        if crs.isValid() and crs != wgs84:
+            try:
+                point = QgsCoordinateTransform(
+                    crs, wgs84, QgsProject.instance()
+                ).transform(QgsPointXY(point))
+            except (QgsCsException, RuntimeError, ValueError):
+                return None
+        return point.x(), point.y()
+
+    def _missing_extent_message(self) -> str:
+        mode = self._extent_mode()
+        if mode == "place":
+            return "Search for a place first."
+        if mode == "selection":
+            return ("Select one or more features in the active layer first. A "
+                    "single point has no area - use 'Around a point' for it.")
+        if mode == "drawn":
+            return "Click 'Draw on map' and drag a rectangle first."
+        if mode == "around":
+            source = str(self.around_centre_combo.currentData() or "map")
+            if source == "place":
+                return "Search for a place first; its centre is the search centre."
+            if source == "selection":
+                return "Select one or more features in the active layer first."
+        return "Select an active layer or use the current map view."
+
+    def _start_drawing(self) -> None:
+        if self.iface is None:
+            return
+        canvas = self.iface.mapCanvas()
+        self._previous_map_tool = canvas.mapTool()
+        tool = QgsMapToolExtent(canvas)
+        tool.extentChanged.connect(self._extent_drawn)
+        self._extent_tool = tool
+        canvas.setMapTool(tool)
+        self._set_status("Drag a rectangle on the map …")
+
+    def _extent_drawn(self, rectangle) -> None:
+        if rectangle is None or rectangle.isEmpty():
+            return
+        crs = (
+            self.iface.mapCanvas().mapSettings().destinationCrs()
+            if self.iface is not None else QgsCoordinateReferenceSystem("EPSG:4326")
+        )
+        self._drawn_extent = QgsReferencedRectangle(QgsRectangle(rectangle), crs)
+        if self.iface is not None and self._previous_map_tool is not None:
+            with contextlib.suppress(RuntimeError, TypeError):
+                self.iface.mapCanvas().setMapTool(self._previous_map_tool)
+        self._extent_tool = None
+        self.draw_label.setText("Rectangle drawn — see the request size below.")
+        self._set_status("Rectangle captured. Review the request and download.")
+        self._refresh_run_summary()
+        self._refresh_extent_note()
+
+    def _confirm_heavy_request(self, area_km2: float) -> bool:
+        answer = QMessageBox.question(
+            self,
+            "Large unfiltered download",
+            f"'All tagged objects' downloads every tagged OSM object in "
+            f"{area_km2:,.1f} km² - typically ten to fifty times the features "
+            "of a filtered dataset over the same ground, and slow to draw. "
+            "Continue, or choose a smaller area or a filtered dataset?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
 
     def _download(self) -> None:
         if self._task is not None:
@@ -1732,11 +1950,7 @@ class AgentOsmDock(QDockWidget):
         extent = self._extent()
         if extent is None:
             QMessageBox.warning(
-                self,
-                "02Agent OSM Downloader",
-                "Search for a place first."
-                if self._extent_mode() == "place"
-                else "Select an active layer or use the current map view.",
+                self, "02Agent OSM Downloader", self._missing_extent_message()
             )
             return
         self._current_extent = extent
@@ -1857,6 +2071,14 @@ class AgentOsmDock(QDockWidget):
                     f"{error} Select fewer related datasets and try again.",
                 )
                 return
+            heavy_bbox = self._wgs_bbox()
+            heavy_area = bbox_area_km2(*heavy_bbox) if heavy_bbox else 0.0
+            if is_heavy_wildcard(
+                (tag for index in preset_indexes for tag in PRESETS[index].tags),
+                heavy_area,
+            ) and not self._confirm_heavy_request(heavy_area):
+                self._set_status("Large unfiltered download canceled.")
+                return
             if boundary_download and candidate is not None:
                 # Only the boundary path needs the place endpoint, and it is
                 # handed the already-resolved area so it does not geocode the
@@ -1886,6 +2108,25 @@ class AgentOsmDock(QDockWidget):
                 self._current_label = (
                     f"{self._current_label} — {candidate.name}"
                 )
+        if self._extent_mode() == "around":
+            centre = self._around_centre()
+            if centre is None:
+                QMessageBox.warning(
+                    self, "02Agent OSM Downloader", self._missing_extent_message()
+                )
+                return
+            radius = int(self.around_radius.value())
+            parameters["AROUND_X"] = round(centre[0], 7)
+            parameters["AROUND_Y"] = round(centre[1], 7)
+            parameters["AROUND_METERS"] = float(radius)
+            self._current_label = f"{self._current_label} — within {radius:,} m"
+        self._submit(algorithm_id, parameters, extent)
+
+    def _submit(self, algorithm_id: str, parameters: dict, extent) -> None:
+        """Run one download request; remembered for 'Run again' on success."""
+        self._current_extent = extent
+        self._pending_request = (algorithm_id, dict(parameters), extent)
+        parameters = dict(parameters)
         parameters.update(
             {
                 "EXTENT": extent,
@@ -1956,7 +2197,11 @@ class AgentOsmDock(QDockWidget):
         self.progress.setValue(100 if successful else 0)
         if successful:
             detail = ", ".join(added) if added else "no matching features"
-            self._set_status(f"Finished — {detail}.")
+            stamp = str((results or {}).get("OSM_TIMESTAMP") or "") if isinstance(results, dict) else ""
+            when = f" OSM data as of {stamp.replace('T', ' ').rstrip('Z')} UTC." if stamp else ""
+            self._set_status(f"Finished — {detail}.{when}")
+            if added:
+                self._remember_download(detail)
         elif not self.status.text().startswith("Results could not"):
             self._set_status(
                 "Download failed or was canceled. Check the Processing log."
@@ -1980,6 +2225,8 @@ class AgentOsmDock(QDockWidget):
             "OUTPUT_LINES": "Lines",
             "OUTPUT_POLYGONS": "Polygons",
         }
+        stamp = str(results.get("OSM_TIMESTAMP") or "")
+        styled = []
         for output, suffix in names.items():
             value = results.get(output)
             layer = context.takeResultLayer(value) if value else None
@@ -1999,8 +2246,8 @@ class AgentOsmDock(QDockWidget):
                 self.current_map_theme(),
                 self.current_road_width_mode(),
             )
-            project.addMapLayer(layer, False)
-            group.addLayer(layer)
+            apply_provenance(layer, stamp, self._current_label)
+            styled.append((layer, suffix.lower()))
             added.append(f"{suffix}: {layer.featureCount():,}")
         if not added:
             project.layerTreeRoot().removeChildNode(group)
@@ -2017,9 +2264,104 @@ class AgentOsmDock(QDockWidget):
                 self._current_extent, self._current_extent.crs()
             )
             ground.setName(f"{self._current_label} — Ground")
-            project.addMapLayer(ground, False)
-            group.addLayer(ground)
+            styled.append((ground, "ground"))
+        layers = [layer for layer, _suffix in styled]
+        if self._save_mode() == "gpkg":
+            path = self.gpkg_widget.filePath().strip()
+            try:
+                layers = write_geopackage(styled, path, self._current_label, project)
+                added.append(f"saved to {path}")
+            except RuntimeError as error:
+                # The data is downloaded; a file problem must not lose it.
+                # The layers stay as temporary layers and the reason is shown.
+                added.append(f"NOT saved ({error}) - kept as temporary layers")
+        for layer in layers:
+            project.addMapLayer(layer, False)
+            group.addLayer(layer)
         return added
+
+    def _save_mode(self) -> str:
+        return str(self.save_mode_combo.currentData() or "temporary")
+
+    def _output_note(self) -> str:
+        if self._save_mode() == "gpkg":
+            path = self.gpkg_widget.filePath().strip()
+            return f"Saved to {path.split('/')[-1].split(chr(92))[-1]}" if path else "GeoPackage (choose a file)"
+        return "Temporary layers"
+
+    def _save_mode_changed(self, *_args) -> None:
+        gpkg = self._save_mode() == "gpkg"
+        self.gpkg_widget.setVisible(gpkg)
+        settings = QgsSettings()
+        settings.setValue(_SAVE_MODE_SETTING, self._save_mode())
+        settings.setValue(_GPKG_PATH_SETTING, self.gpkg_widget.filePath().strip())
+        self.download_button.setToolTip(
+            "Download and save point, line and polygon layers into the GeoPackage."
+            if gpkg else "Create temporary point, line, and polygon layers."
+        )
+        self._refresh_extent_note()
+
+    def _history(self) -> list:
+        return download_history.loads(QgsSettings().value(_HISTORY_SETTING, "[]"))
+
+    def _populate_recent(self) -> None:
+        entries = self._history()
+        self.recent_combo.clear()
+        for entry in entries:
+            when = entry["when"].replace("T", " ")[:16]
+            self.recent_combo.addItem(f"{entry['label']}  ·  {when}", entry)
+        if not entries:
+            self.recent_combo.addItem("No downloads yet", None)
+        self.recent_combo.setEnabled(bool(entries))
+        self.rerun_button.setEnabled(bool(entries))
+
+    @staticmethod
+    def _extent_record(extent) -> dict:
+        rectangle, crs = QgsRectangle(extent), extent.crs()
+        if not crs.isValid() or not crs.authid():
+            wgs84 = QgsCoordinateReferenceSystem("EPSG:4326")
+            rectangle = QgsCoordinateTransform(
+                crs, wgs84, QgsProject.instance()
+            ).transformBoundingBox(rectangle)
+            crs = wgs84
+        return {
+            "xmin": rectangle.xMinimum(), "ymin": rectangle.yMinimum(),
+            "xmax": rectangle.xMaximum(), "ymax": rectangle.yMaximum(),
+            "crs": crs.authid(),
+        }
+
+    def _remember_download(self, summary: str) -> None:
+        if self._pending_request is None:
+            return
+        algorithm_id, parameters, extent = self._pending_request
+        self._pending_request = None
+        try:
+            entry = download_history.make_entry(
+                self._current_label, algorithm_id, parameters,
+                self._extent_record(extent),
+                datetime.now().isoformat(timespec="seconds"),
+                summary, self._current_style_scope,
+            )
+        except (ValueError, QgsCsException, RuntimeError):
+            return
+        entries = download_history.add(self._history(), entry)
+        QgsSettings().setValue(_HISTORY_SETTING, download_history.dumps(entries))
+        self._populate_recent()
+
+    def _rerun_recent(self) -> None:
+        if self._task is not None:
+            return
+        entry = self.recent_combo.currentData()
+        if not isinstance(entry, dict):
+            return
+        box = entry["extent"]
+        extent = QgsReferencedRectangle(
+            QgsRectangle(box["xmin"], box["ymin"], box["xmax"], box["ymax"]),
+            QgsCoordinateReferenceSystem(box["crs"]),
+        )
+        self._current_label = entry["label"]
+        self._current_style_scope = entry.get("style_scope", "")
+        self._submit(entry["algorithm"], dict(entry["parameters"]), extent)
 
     def current_map_theme(self) -> str:
         """Return the selected persistent cartographic theme identifier."""

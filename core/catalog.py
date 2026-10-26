@@ -985,6 +985,10 @@ def interpret_prompt(text: object) -> PromptIntent:
     raw = str(text or "").strip()
     if not raw:
         return PromptIntent("none")
+    # A Turkish command is rewritten into the English form this router
+    # already understands; an English one comes back as None and is untouched.
+    from .command_tr import translate as _translate_turkish
+    raw = _translate_turkish(raw) or raw
     raw, exclude_key, exclude_value = _extract_exclusion(raw)
     tag_match = _TAG_RE.search(raw)
     if tag_match:

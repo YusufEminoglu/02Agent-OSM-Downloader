@@ -582,8 +582,10 @@ def merge_elements(payloads: Iterable[Any]) -> Dict[str, Any]:
     Keeping the first copy of each (type, id) leaves exactly one feature.
     """
     merged: Dict[Tuple[str, str], Any] = {}
+    payloads_seen = []
     for payload in payloads:
         data = validate_payload(payload)
+        payloads_seen.append(data)
         elements = data.get("elements", [])
         for element in elements:
             key = (str(element.get("type", "")), str(element.get("id", "")))
@@ -594,7 +596,41 @@ def merge_elements(payloads: Iterable[Any]) -> Dict[str, Any]:
                 f"The request returned more than {MAX_TOTAL_FEATURES:,} OSM "
                 "objects. Reduce the extent or select fewer datasets."
             )
-    return {"elements": list(merged.values())}
+    result: Dict[str, Any] = {"elements": list(merged.values())}
+    stamp = osm_timestamp(payloads_seen)
+    if stamp:
+        result["osm3s"] = {"timestamp_osm_base": stamp}
+    return result
+
+
+def osm_timestamp(payloads: Iterable[Any]) -> str:
+    """The data date of a response, as Overpass reports it (ISO 8601, UTC).
+
+    ``osm3s.timestamp_osm_base`` is the moment of the OSM database the server
+    answered from. Tiles can come from different mirrors at different minutes;
+    the *oldest* is reported, because the merged result is only guaranteed to
+    be at least that fresh. An absent or malformed field yields "".
+    """
+    stamps = []
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        meta = payload.get("osm3s")
+        stamp = meta.get("timestamp_osm_base") if isinstance(meta, dict) else None
+        if isinstance(stamp, str) and re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", stamp):
+            stamps.append(stamp)
+    return min(stamps) if stamps else ""
+
+
+#: Area above which a wildcard ("all tagged objects") request asks first. An
+#: unfiltered pull carries every tagged object - typically ten to fifty times
+#: the features of a filtered preset over the same ground.
+HEAVY_WILDCARD_KM2 = 2.0
+
+
+def is_heavy_wildcard(specs: Iterable[TagSpec], area_km2: float) -> bool:
+    """True when ``specs`` include a wildcard and the area is above the limit."""
+    return area_km2 > HEAVY_WILDCARD_KM2 and any(spec.key == "*" for spec in specs)
 
 
 def compact_tags(tags: object) -> str:

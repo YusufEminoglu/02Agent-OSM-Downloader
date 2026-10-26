@@ -11,7 +11,20 @@ The plugin publishes a versioned, machine-readable
 Processing registry rather than plugin UI automation.
 
 The plugin is designed for bounded, reviewable downloads: results are temporary
-QGIS layers until you explicitly save or export them.
+QGIS layers, or go straight into a GeoPackage with their style when you choose
+*Save to → GeoPackage file*.
+
+## Quick start
+
+1. Open the dock from the **02Agent** toolbar icon.
+2. Pick a theme and tick datasets — *Buildings*, *Road network*, *Green
+   spaces*, *Bus transit*, … — or type a request on the **Command** tab:
+   `download parks in Konak` or, in Turkish, `Konak'taki parkları indir`.
+3. Choose the **Extent**: the map view, a named place (its real boundary),
+   the selected features, a rectangle you draw, or a radius around a point.
+4. Press **Download**. Layers arrive styled, with the OpenStreetMap
+   attribution and the data date in their metadata. **Recent → Run again**
+   repeats any earlier download with today's data.
 
 ## 📖 Documentation
 
