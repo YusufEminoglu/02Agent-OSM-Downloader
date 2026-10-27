@@ -3,12 +3,13 @@ name=02AgentOSM - OpenStreetMap Downloader
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Download OpenStreetMap data into QGIS in a few clicks: roads, buildings, parks, transit and 40+ ready datasets for the map view, a place boundary, a drawn box or a radius, styled on arrival.
-version=1.5.0
+version=1.5.1
 author=Geophilo
 email=yusuf.eminoglu@deu.edu.tr
 
-about=02AgentOSM gets OpenStreetMap data for the area you care about and styles it on arrival. Pick one of 43 ready datasets in 16 themes, from street networks and buildings to schools, hospitals, heritage and cycling, or combine several in one request. Choose where: the map view, a place name with its real boundary, your selected features, a rectangle you draw or a radius around a point. Large areas are split into tiles and merged seamlessly, up to 2,500 km² per job.
+about=02AgentOSM gets OpenStreetMap data for the area you care about and styles it on arrival. Pick one of 43 curated presets in 16 themes, from street networks and buildings to schools, hospitals, heritage and cycling, or combine several in one request. Choose where: the map view, a place name with its real boundary, your selected features, a rectangle you draw or a radius around a point. Large areas are split into tiles and merged seamlessly, up to 2,500 km² per job.
     Keep the result as temporary layers or save it to a GeoPackage with its style inside; every layer records the OSM attribution and data date. Run a recent download again with today's data in one click, or type a short English or Turkish request such as "parks in Konak". An advanced panel combines up to six tags with ANY/ALL matching and exclusions, and seventeen map styles restyle the layers live.
+    Agent Protocol v1 exposes four Processing endpoints that 02SmartModeler can run after a validated proposal and your approval.
     Needs an internet connection. Only the three Overpass mirrors and the Nominatim geocoder are contacted; commands are interpreted on your computer.
     Manual: https://geophilo.com/zero2agent_osm_downloader/manual.html
 
@@ -17,7 +18,7 @@ repository=https://gitlab.com/geophilo1/zero2agent_osm_downloader
 homepage=https://geophilo.com/zero2agent_osm_downloader/
 
 category=Vector
-tags=openstreetmap,osm,download,overpass,nominatim,geopackage,roads,buildings,poi,amenities,points of interest,land use,parks,public transport,boundary,administrative boundaries,places,cycling,urban planning,urban analysis,basemap,query-builder,advanced-query,ai,agent,smartmodeler,processing,data-downloader,geophilo
+tags=openstreetmap,osm,download,overpass,nominatim,geopackage,roads,buildings,poi,amenities,points of interest,land use,parks,public transport,boundary,administrative boundaries,places,cycling,urban planning,urban analysis,basemap,query-builder,advanced-query,ai,agent,smartmodeler,processing,data-downloader,geophilo,qgis
 icon=icons/icon.png
 
 experimental=False
