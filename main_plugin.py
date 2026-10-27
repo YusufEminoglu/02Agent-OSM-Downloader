@@ -122,6 +122,6 @@ class AgentOsmDownloaderPlugin:
                 "<p>02Agent Smart Modeler discovers these endpoints through the live "
                 "QGIS Processing registry, validates their signatures, and runs "
                 "them only after an explicit approval card.</p>"
-                "<p>GPL-3.0-or-later &bull; Yusuf Eminoglu</p>"
+                "<p>GPL-3.0-or-later &bull; Geophilo</p>"
             ),
         )
