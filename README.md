@@ -34,12 +34,12 @@ complete user and technical reference manual.
 
 | Guide | What it covers |
 | --- | --- |
-| [Your first download](https://geophilo.com/zero2agent_osm_downloader/guide-first-download.html) | Theme, datasets, extent, results |
-| [Download a named place](https://geophilo.com/zero2agent_osm_downloader/guide-place-boundary.html) | Geocoder matches and exact boundaries |
-| [Cover a whole district or city](https://geophilo.com/zero2agent_osm_downloader/guide-wide-area.html) | Tiled requests, merging and limits |
-| [Build a structured query](https://geophilo.com/zero2agent_osm_downloader/guide-advanced-query.html) | ANY/ALL matching and the query preview |
-| [Commands, styling and agents](https://geophilo.com/zero2agent_osm_downloader/guide-command-and-agent.html) | English commands, 16 map styles, Processing endpoints |
-| [Reference manual](https://geophilo.com/zero2agent_osm_downloader/REFERENCE_MANUAL.html) | Query grammar, tag semantics, cache and security model |
+| [Your first download](https://geophilo.com/zero2agent_osm_downloader/tasks/first-download.html) | Theme, datasets, extent, results |
+| [Download a named place](https://geophilo.com/zero2agent_osm_downloader/tasks/place-boundary.html) | Geocoder matches and exact boundaries |
+| [Cover a whole district or city](https://geophilo.com/zero2agent_osm_downloader/tasks/wide-area.html) | Tiled requests, merging and limits |
+| [Build a structured query](https://geophilo.com/zero2agent_osm_downloader/tasks/advanced-query.html) | ANY/ALL matching and the query preview |
+| [Commands, styling and agents](https://geophilo.com/zero2agent_osm_downloader/tasks/command-and-agent.html) | English commands, 16 map styles, Processing endpoints |
+| [Reference manual](https://geophilo.com/zero2agent_osm_downloader/manual.html) | Query grammar, tag semantics, cache and security model |
 
 
 ## What it provides
