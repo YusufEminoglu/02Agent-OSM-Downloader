@@ -52,6 +52,59 @@ def contrast_ratio(first: QColor, second: QColor) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
+#: WCAG AA for normal text.
+MIN_TEXT_CONTRAST = 4.5
+
+
+#: Text colours to fall back on, dark first.
+_FALLBACK_TEXT = ("#102019", "#FFFFFF", "#000000")
+
+
+def _readable(color: QColor, *backgrounds: QColor) -> QColor:
+    """``color`` if it reads on every background, else a contrasting text colour.
+
+    A QGIS theme can pair its text and window colours badly for this dock:
+    under Blend of Gray the palette's text is near-black on a near-black
+    surface (1.03:1). Text that fails AA on any background is replaced by the
+    fallback colour whose weakest contrast over those backgrounds is best.
+    """
+    if all(contrast_ratio(color, item) >= MIN_TEXT_CONTRAST for item in backgrounds):
+        return QColor(color)
+    return max(
+        (QColor(name) for name in _FALLBACK_TEXT),
+        key=lambda candidate: min(contrast_ratio(candidate, item) for item in backgrounds),
+    )
+
+
+def _muted(text: QColor, amount: float, *backgrounds: QColor) -> QColor:
+    """Text mixed toward the first background, but never below AA contrast."""
+    while amount > 0.0:
+        candidate = _mix(text, backgrounds[0], amount)
+        if all(contrast_ratio(candidate, item) >= MIN_TEXT_CONTRAST for item in backgrounds):
+            return candidate
+        amount = round(amount - 0.05, 2)
+    return QColor(text)
+
+
+def _ink(color: QColor, toward: QColor, *backgrounds: QColor) -> QColor:
+    """``color`` moved toward ``toward`` until it reads on every background.
+
+    The accent green doubles as a text colour: links, the header eyebrow,
+    the count pill, the quiet buttons. As it stands it fell short of AA on
+    some of the surfaces it is drawn on (the count pill measured 4.02:1 in
+    the light theme, 3.57:1 in QGIS 4's dark default). Mixing it toward the
+    text colour darkens it on light themes and lightens it on dark ones,
+    one small step at a time, so it stays as green as it can.
+    """
+    amount = 0.0
+    while amount <= 1.0:
+        candidate = _mix(color, toward, amount)
+        if all(contrast_ratio(candidate, item) >= MIN_TEXT_CONTRAST for item in backgrounds):
+            return candidate
+        amount = round(amount + 0.05, 2)
+    return _readable(toward, *backgrounds)
+
+
 def dock_color_tokens(palette: QPalette | None = None) -> dict[str, str]:
     """Return the palette-derived colors used by the dock stylesheet."""
     active = palette or QApplication.palette()
@@ -81,21 +134,26 @@ def dock_color_tokens(palette: QPalette | None = None) -> dict[str, str]:
     input_surface = _mix(base, white, 0.04) if dark else base
     hero = _mix(surface, accent, 0.13 if dark else 0.09)
     tab_active = _mix(surface, accent, 0.20 if dark else 0.12)
-    # A separate, deliberately muted purple-grey used only for the small
-    # corner "+ OSM basemap" button, so it reads as its own quick action
-    # rather than blending into the green preset/download accent.
-    corner_accent = QColor("#B7A9CC" if dark else "#7E7196")
-    corner_soft = _mix(surface, corner_accent, 0.22 if dark else 0.14)
-    corner_soft_hover = _mix(surface, corner_accent, 0.34 if dark else 0.24)
-    border = _mix(text, surface, 0.76 if dark else 0.84)
-    subtle = _mix(text, surface, 0.40 if dark else 0.37)
     status = _mix(accent, surface, 0.76 if dark else 0.86)
+    # Text on every surface it is drawn on: the dock background, the cards,
+    # the header, the status card and the tab highlight. The palette's own
+    # text colour is kept whenever it reads; muted and input text follow.
+    text = _readable(text, surface, card, hero, status, tab_active)
+    border = _mix(text, surface, 0.76 if dark else 0.84)
+    subtle = _muted(text, 0.40 if dark else 0.37, surface, card, hero)
     code_surface = _mix(input_surface, surface, 0.16 if dark else 0.08)
-    if contrast_ratio(input_text, input_surface) < 4.5:
-        input_text = QColor(text)
-    if contrast_ratio(button_text, button) < 4.5:
-        button_text = QColor(text)
+    if contrast_ratio(input_text, input_surface) < MIN_TEXT_CONTRAST:
+        input_text = _readable(text, input_surface)
+    if contrast_ratio(button_text, button) < MIN_TEXT_CONTRAST:
+        button_text = _readable(text, button)
     selection = highlight if highlight.isValid() else accent
+    # The accent as text, on every surface it is drawn on as text. The plain
+    # accent stays for fills and borders, under its own contrasting text.
+    accent_ink = _ink(accent, text, surface, card, hero, status, tab_active)
+    accent_hover_ink = _ink(accent_hover, text, surface, card, hero, status, tab_active)
+    # A plain button under the mouse: the accent on the button's own colour,
+    # which a theme can make light while the dock's surfaces are dark.
+    button_hover_text = _ink(accent, button_text, button)
 
     return {
         "surface": _hex(surface),
@@ -114,9 +172,9 @@ def dock_color_tokens(palette: QPalette | None = None) -> dict[str, str]:
         "accent": _hex(accent),
         "accent_hover": _hex(accent_hover),
         "accent_text": _hex(accent_text),
-        "corner_accent": _hex(corner_accent),
-        "corner_soft": _hex(corner_soft),
-        "corner_soft_hover": _hex(corner_soft_hover),
+        "accent_ink": _hex(accent_ink),
+        "accent_hover_ink": _hex(accent_hover_ink),
+        "button_hover_text": _hex(button_hover_text),
         "status": _hex(status),
         "selection": _hex(selection),
     }
@@ -126,9 +184,17 @@ def dock_stylesheet(palette: QPalette | None = None) -> str:
     """Build an airy stylesheet from the current application palette."""
     values = dock_color_tokens(palette)
     return """
-QWidget#agentOsmRoot {
+QWidget#agentOsmShell, QWidget#agentOsmRoot {
     background: %(surface)s;
     color: %(text)s;
+}
+QLabel, QCheckBox {
+    color: %(text)s;
+}
+QFrame#agentOsmFooter {
+    background: %(surface)s;
+    border: none;
+    border-top: 1px solid %(border)s;
 }
 QFrame#heroPanel {
     background: %(hero)s;
@@ -144,7 +210,7 @@ QLabel#heroMark {
     font-weight: 800;
 }
 QLabel#heroEyebrow {
-    color: %(accent)s;
+    color: %(accent_ink)s;
     font-size: 8pt;
     font-weight: 700;
 }
@@ -153,18 +219,9 @@ QLabel#heroTitle {
     font-size: 16pt;
     font-weight: 700;
 }
-QLabel#heroBadge {
-    color: %(accent)s;
-    background: %(status)s;
-    border: 1px solid %(accent)s;
-    border-radius: 8px;
-    padding: 3px 7px;
-    font-size: 7pt;
-    font-weight: 750;
-}
 QPushButton#mapFeaturesButton {
     background: transparent;
-    color: %(accent)s;
+    color: %(accent_ink)s;
     border: 1px solid %(border)s;
     border-radius: 6px;
     padding: 4px 7px;
@@ -175,15 +232,26 @@ QPushButton#mapFeaturesButton:hover {
     background: %(tab_active)s;
     border-color: %(accent)s;
 }
-QLabel#heroHint {
-    color: %(subtle)s;
-    padding-left: 46px;
+QPushButton#linkButton {
+    background: transparent;
+    color: %(accent_ink)s;
+    border: none;
+    padding: 1px 2px;
+    min-height: 0px;
+    font-size: 8pt;
+}
+QPushButton#linkButton:hover {
+    color: %(accent_hover_ink)s;
+    text-decoration: underline;
+}
+QPushButton#linkButton:focus {
+    border: 1px dotted %(accent)s;
 }
 QLabel#mutedText, QLabel#descriptionText, QLabel#connectionDetail {
     color: %(subtle)s;
 }
 QLabel#countPill {
-    color: %(accent)s;
+    color: %(accent_ink)s;
     background: %(status)s;
     border: 1px solid %(border)s;
     border-radius: 8px;
@@ -191,7 +259,7 @@ QLabel#countPill {
     font-weight: 650;
 }
 QLabel#endpointPill {
-    color: %(accent)s;
+    color: %(accent_ink)s;
     background: %(status)s;
     border: 1px solid %(accent)s;
     border-radius: 9px;
@@ -210,9 +278,9 @@ QTabBar::tab {
     border: none;
     border-bottom: 2px solid transparent;
     border-radius: 6px;
-    padding: 7px 10px;
-    margin: 2px 2px 3px 2px;
-    min-width: 64px;
+    padding: 6px 8px;
+    margin: 2px 1px 3px 1px;
+    min-width: 48px;
 }
 QTabBar::tab:selected {
     color: %(text)s;
@@ -220,7 +288,7 @@ QTabBar::tab:selected {
     border-bottom-color: %(accent)s;
     font-weight: 600;
 }
-QTabBar::tab:hover { color: %(accent)s; }
+QTabBar::tab:hover { color: %(accent_ink)s; }
 QGroupBox {
     background: %(card)s;
     color: %(text)s;
@@ -233,6 +301,7 @@ QGroupBox::title {
     subcontrol-origin: margin;
     left: 9px;
     padding: 0 5px;
+    color: %(text)s;
     font-weight: 600;
 }
 QFrame#customTagPanel {
@@ -259,13 +328,13 @@ QPushButton#customToggleButton {
 }
 QPushButton#customToggleButton:hover {
     background: %(status)s;
-    color: %(accent)s;
+    color: %(accent_ink)s;
 }
 QPushButton#customToggleButton:checked {
-    color: %(accent)s;
+    color: %(accent_ink)s;
 }
 QLabel#customTagBadge {
-    color: %(accent)s;
+    color: %(accent_ink)s;
     background: %(status)s;
     border: 1px solid %(border)s;
     border-radius: 7px;
@@ -313,7 +382,7 @@ QPushButton {
     padding: 7px 11px;
     min-height: 17px;
 }
-QPushButton:hover { border-color: %(accent)s; color: %(accent)s; }
+QPushButton:hover { border-color: %(accent)s; color: %(button_hover_text)s; }
 QPushButton:focus { border: 2px solid %(accent)s; }
 QPushButton:disabled { color: %(disabled)s; }
 QPushButton#primaryButton {
@@ -326,9 +395,15 @@ QPushButton#primaryButton:hover {
     background: %(accent_hover)s;
     color: %(accent_text)s;
 }
+QPushButton#primaryButton:disabled {
+    background: %(tab_active)s;
+    color: %(disabled)s;
+    border-color: %(border)s;
+    font-weight: 400;
+}
 QPushButton#quietButton {
     background: transparent;
-    color: %(accent)s;
+    color: %(accent_ink)s;
     border-color: %(border)s;
     padding: 4px 9px;
 }
@@ -336,20 +411,9 @@ QPushButton#quietButton:hover {
     background: %(tab_active)s;
     border-color: %(accent)s;
 }
-QPushButton#cornerButton {
-    background: %(corner_soft)s;
-    color: %(corner_accent)s;
-    border: 1px solid %(corner_accent)s;
-    border-radius: 5px;
-    padding: 3px 8px;
-    margin: 0px 4px 7px 0;
-    font-size: 7pt;
-    font-weight: 600;
-}
-QPushButton#cornerButton:hover {
-    background: %(corner_soft_hover)s;
-    color: %(corner_accent)s;
-    border-color: %(corner_accent)s;
+QPushButton#quietButton:disabled {
+    color: %(disabled)s;
+    border-color: %(border)s;
 }
 QLabel#runSummary {
     color: %(text)s;
@@ -364,6 +428,9 @@ QLabel#statusCard {
     border-left: 3px solid %(accent)s;
     border-radius: 5px;
     padding: 7px 9px;
+}
+QLabel#statusNotice {
+    padding: 0px 9px 0px 12px;
 }
 QProgressBar {
     border: none;

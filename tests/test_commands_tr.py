@@ -30,6 +30,16 @@ class TurkishCommandTests(unittest.TestCase):
         ("Bodrum'da spor tesisleri", "download sport in Bodrum"),
         ("Bayraklı'daki kiliseler", "download church in Bayraklı"),
         ("Karşıyaka'da arazi kullanımı", "download land use in Karşıyaka"),
+        # Everyday things, through the same word table as English.
+        ("Konak'ta restoranları indir", "download restaurants in Konak"),
+        ("Bornova'daki kafeleri göster", "download cafes in Bornova"),
+        ("Buca'daki marketleri indir", "download supermarkets in Buca"),
+        ("Beşiktaş'taki bankaları göster", "download banks in Beşiktaş"),
+        ("Nişantaşı'ndaki mağazaları göster", "download shops in Nişantaşı"),
+        ("Kadıköy'deki kütüphaneleri getir", "download libraries in Kadıköy"),
+        ("Bornova'da oyun alanlarını indir", "download playgrounds in Bornova"),
+        ("Antalya'daki plajları göster", "download beaches in Antalya"),
+        ("Konak'taki üniversiteleri indir", "download universities in Konak"),
     )
 
     def test_turkish_and_english_route_to_the_same_request(self) -> None:
@@ -39,7 +49,22 @@ class TurkishCommandTests(unittest.TestCase):
                 en = interpret_prompt(english)
                 self.assertEqual(tr.mode, en.mode)
                 self.assertEqual(tr.preset_id, en.preset_id)
+                self.assertEqual((tr.key, tr.value), (en.key, en.value))
                 self.assertEqual(tr.place_name, en.place_name)
+                # Neither language falls back to place centres for these.
+                self.assertNotEqual(tr.preset_id, "place_centres")
+
+    def test_unknown_turkish_words_are_not_dropped(self) -> None:
+        # Dropping "yemek yerleri" would leave a bare place name, and a bare
+        # place name means "place centres"; kept, the router can say it did
+        # not understand.
+        self.assertEqual(translate("Konak'ta yemek yerleri indir"),
+                         "download yemek yerleri in Konak")
+        self.assertEqual(interpret_prompt("Konak'ta yemek yerleri indir").mode, "place_only")
+
+    def test_english_market_words_stay_english(self) -> None:
+        self.assertIsNone(translate("market square in Krakow"))
+        self.assertIsNone(translate("supermarkets in Madrid"))
 
     def test_the_place_keeps_its_own_spelling(self) -> None:
         # Nominatim matches "Kadıköy", not the ASCII fold "kadikoy".

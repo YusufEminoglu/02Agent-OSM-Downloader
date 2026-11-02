@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import json
 import unittest
+from urllib.parse import urlsplit
 
 from zero2agent_osm_downloader.core.catalog import (
     TagSpec,
     get_preset,
     presets_for_group,
 )
+from zero2agent_osm_downloader.core.places import build_place_query
 from zero2agent_osm_downloader.core.query import (
     MAX_ADVANCED_FILTERS,
     MAX_FEATURES,
     MAX_REGEX_VALUE_LENGTH,
     OVERPASS_ENDPOINTS,
+    OVERPASS_MAXSIZE_BYTES,
+    OVERPASS_TIMEOUT_SECONDS,
+    PLACE_SEARCH_TIMEOUT_SECONDS,
     QueryError,
+    TileRequest,
     advanced_specs,
     build_query,
     build_queries,
@@ -24,6 +30,8 @@ from zero2agent_osm_downloader.core.query import (
     validate_bbox,
     validate_payload,
     wildcard_excluded,
+    wildcard_reads_relation,
+    with_overpass_header,
 )
 
 SMALL_BBOX = (38.410, 27.120, 38.416, 27.126)
@@ -73,6 +81,54 @@ class QueryTests(unittest.TestCase):
         self.assertTrue(wildcard_excluded({"place": "town"}))
         self.assertFalse(wildcard_excluded({"highway": "footway"}))
         self.assertFalse(wildcard_excluded({"boundary": "national_park"}))
+
+    def test_wildcard_reads_area_relations_only(self) -> None:
+        query = build_query(
+            get_preset("osm_as_is_full_visible_stack").tags, SMALL_BBOX
+        )
+        area_filter = '["type"~"^(multipolygon|boundary)$"]'
+        # One relation selector (line and polygon share it), and only there.
+        self.assertEqual(query.count(area_filter), 1)
+        relation_lines = [line for line in query.splitlines() if area_filter in line]
+        self.assertEqual(len(relation_lines), 1)
+        self.assertTrue(relation_lines[0].strip().startswith('relation[~"."~"."]'))
+        # A named relation selector is not limited.
+        self.assertNotIn(area_filter, build_query(get_preset("urban_transit").tags, SMALL_BBOX))
+
+    def test_client_matching_reads_the_same_relations_as_the_query(self) -> None:
+        wildcard = (TagSpec("*", "", "line"), TagSpec("*", "", "polygon"))
+        rings = [{"type": "way", "role": "outer"}, {"type": "way", "role": "inner"}]
+        lines = [{"type": "way", "role": ""}]
+        for tags, members, expected in (
+            ({"type": "multipolygon", "landuse": "forest"}, rings, True),
+            ({"type": "boundary", "boundary": "postal_code"}, rings, True),
+            ({"type": "route", "route": "bus"}, lines, False),
+            ({"type": "restriction", "restriction": "no_left_turn"}, lines, False),
+            ({"type": "public_transport", "public_transport": "stop_area"}, [], False),
+            ({"type": "site", "amenity": "university"}, rings, False),
+            ({"type": "Multipolygon", "landuse": "forest"}, rings, False),
+            # Postpass strips `type`: rings are the area signal there.
+            ({"building": "yes", "name": "Kızlarağası Hanı"}, rings, True),
+            ({"route": "ferry", "name": "Bostanlı - Konak"}, lines, False),
+        ):
+            with self.subTest(tags=tags):
+                self.assertEqual(wildcard_reads_relation(tags, members), expected)
+                found = matching_specs(tags, wildcard, "polygon", element_type="relation",
+                                       members=members)
+                self.assertEqual(bool(found), expected)
+        # A way or node is not a relation, and a named spec is never limited.
+        self.assertTrue(matching_specs({"route": "bus"}, wildcard, "line"))
+        self.assertTrue(matching_specs(
+            {"type": "route", "route": "bus"}, (TagSpec("route", "bus", "line"),), "line",
+            element_type="relation", members=lines,
+        ))
+
+    def test_the_wildcard_exclusions_compare_as_the_server_does(self) -> None:
+        # `["boundary"!="administrative"]` is exact, so the server sends a
+        # mis-cased boundary and the client keeps it instead of dropping it.
+        self.assertTrue(wildcard_excluded({"boundary": "administrative"}))
+        self.assertFalse(wildcard_excluded({"boundary": "Administrative"}))
+        self.assertTrue(wildcard_excluded({"place": ""}))
 
     def test_no_osm_as_is_preset_asks_for_boundaries_or_places(self) -> None:
         for preset in presets_for_group("osm_as_is"):
@@ -186,6 +242,19 @@ class QueryTests(unittest.TestCase):
         self.assertTrue(decoded["_truncated"])
         self.assertEqual(decoded["name"], "Izmir")
 
+    def test_an_oversized_value_does_not_take_the_later_keys_with_it(self) -> None:
+        tags = {"aaa": "first", "amenity": "cafe", "description": "d" * 17_000,
+                "name": "After", "wikidata": "Q1", "zzz": "z"}
+        text = compact_tags(tags)
+        self.assertLessEqual(len(text), 16_000)
+        decoded = json.loads(text)
+        self.assertNotIn("description", decoded)
+        self.assertEqual(
+            decoded,
+            {"_truncated": True, "aaa": "first", "amenity": "cafe", "name": "After",
+             "wikidata": "Q1", "zzz": "z"},
+        )
+
     def test_matching_specs_uses_key_value_and_geometry(self) -> None:
         specs = (
             TagSpec("amenity", "school", "point"),
@@ -220,9 +289,70 @@ class QueryTests(unittest.TestCase):
             2,
         )
 
-    def test_mirrors_are_fixed_https_hosts(self) -> None:
-        self.assertEqual(len(OVERPASS_ENDPOINTS), 3)
+    def test_hosts_are_one_per_operator_in_the_order_asked(self) -> None:
+        self.assertEqual(
+            OVERPASS_ENDPOINTS,
+            (
+                "https://overpass.private.coffee/api/interpreter",
+                "https://overpass-api.de/api/interpreter",
+            ),
+        )
         self.assertTrue(all(item.startswith("https://") for item in OVERPASS_ENDPOINTS))
+        # overpass.kumi.systems is an alias of overpass.private.coffee: the
+        # same machine and certificate, so it never was a second chance.
+        self.assertFalse(any("kumi" in item for item in OVERPASS_ENDPOINTS))
+        operators = {
+            ".".join(urlsplit(item).hostname.split(".")[-2:])
+            for item in OVERPASS_ENDPOINTS
+        }
+        self.assertEqual(len(operators), len(OVERPASS_ENDPOINTS))
+
+    def test_every_request_claims_a_bounded_time_and_memory(self) -> None:
+        query = build_query(get_preset("buildings").tags, SMALL_BBOX)
+        self.assertEqual(
+            query.splitlines()[0],
+            "[out:json][timeout:40][maxsize:134217728];",
+        )
+        self.assertEqual(OVERPASS_MAXSIZE_BYTES, 128 * 1024 * 1024)
+        self.assertEqual(OVERPASS_TIMEOUT_SECONDS, 40)
+
+    def test_tile_request_renders_a_shorter_claim_but_one_cache_key(self) -> None:
+        request = TileRequest(get_preset("buildings").tags, SMALL_BBOX)
+        short = request.render(timeout_s=10)
+        self.assertTrue(short.startswith("[out:json][timeout:10][maxsize:134217728];"))
+        self.assertEqual(
+            short.split("\n", 1)[1], request.render().split("\n", 1)[1]
+        )
+        self.assertEqual(request.cache_key(), request.render())
+        self.assertEqual(request.cache_key(), build_query(get_preset("buildings").tags, SMALL_BBOX))
+        with self.assertRaises(QueryError):
+            request.render(timeout_s=0)
+
+    def test_tile_request_validates_everything_it_renders(self) -> None:
+        with self.assertRaises(QueryError):
+            TileRequest((TagSpec('building"];out;', "", "polygon"),), SMALL_BBOX)
+        with self.assertRaises(QueryError):
+            TileRequest(get_preset("buildings").tags, (38.5, 27.1, 38.4, 27.2))
+        with self.assertRaises(QueryError):
+            TileRequest(get_preset("buildings").tags, SMALL_BBOX, area_id=223474)
+        with self.assertRaises(QueryError):
+            TileRequest(get_preset("buildings").tags, SMALL_BBOX, depth=3)
+        with self.assertRaises(QueryError):
+            TileRequest(get_preset("buildings").tags, SMALL_BBOX, match_mode="most")
+        # Specs are normalised on the way in, so equal requests compare equal.
+        loose = TileRequest((TagSpec(" building ", "*", "polygon"),), SMALL_BBOX)
+        self.assertEqual(loose.specs, (TagSpec("building", "", "polygon"),))
+
+    def test_place_search_is_re_headed_with_a_short_claim(self) -> None:
+        original = build_place_query("Konak")
+        query = with_overpass_header(original, PLACE_SEARCH_TIMEOUT_SECONDS)
+        self.assertTrue(query.startswith("[out:json][timeout:15][maxsize:134217728];"))
+        self.assertEqual(
+            query.split("\n", 1)[1], original.split("\n", 1)[1]
+        )
+        self.assertEqual(query.count("[out:json]"), 1)
+        with self.assertRaises(QueryError):
+            with_overpass_header("node(1);out;", 15)
 
     def test_advanced_filter_cap_is_six(self) -> None:
         self.assertEqual(MAX_ADVANCED_FILTERS, 6)
@@ -248,11 +378,28 @@ class QueryTests(unittest.TestCase):
         with self.assertRaises(QueryError):
             normalize_tag("building", "x\\y", value_mode="regex")
         with self.assertRaises(QueryError):
-            normalize_tag("building", "", value_mode="regex")
-        with self.assertRaises(QueryError):
             normalize_tag(
                 "building", "x" * (MAX_REGEX_VALUE_LENGTH + 1), value_mode="regex"
             )
+
+    def test_regex_value_mode_reads_blank_and_star_as_any_value(self) -> None:
+        # The fields say "blank or * means any value"; in regex mode a bare *
+        # was refused as an invalid pattern.  Both become ["key"], and a
+        # normalised spec normalises again to itself.
+        for value in ("", "*", " * "):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    normalize_tag("building", value, value_mode="regex"),
+                    ("building", ""),
+                )
+        specs = advanced_specs((("building:levels", "*"),), ("polygon",), value_mode="regex")
+        self.assertEqual(specs, (TagSpec("building:levels", "", "polygon"),))
+        query = build_query(specs, SMALL_BBOX, value_mode="regex")
+        self.assertIn('way["building:levels"](', query)
+        self.assertEqual(
+            matching_specs({"building:levels": "2"}, specs, "polygon", value_mode="regex"),
+            specs,
+        )
 
     def test_regex_value_mode_allows_regex_metacharacters(self) -> None:
         key, value = normalize_tag(

@@ -1,0 +1,47 @@
+{
+ "postpass_properties": {
+  "generator": "Postpass API 0.2",
+  "timestamp": "2026-11-02T07:47:26Z"
+ },
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": null
+   },
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 6520862,
+    "tags": {
+     "ref": "District 8",
+     "name": "North Kona",
+     "name:ko": "노스코나",
+     "name:ru": "Северный Кона",
+     "boundary": "census",
+     "name:haw": "Kona Akau",
+     "wikidata": "Q3198591"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": null
+   },
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 6526819,
+    "tags": {
+     "ref": "District 2",
+     "name": "North Hilo",
+     "name:en": "North Hilo",
+     "name:ko": "노스힐로",
+     "name:ru": "Северный Хило",
+     "boundary": "census",
+     "name:haw": "Hilo Akau"
+    }
+   }
+  }
+ ]
+}

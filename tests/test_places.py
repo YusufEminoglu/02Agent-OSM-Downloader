@@ -3,9 +3,31 @@ from __future__ import annotations
 import unittest
 
 from zero2agent_osm_downloader.core.places import (
+    PlaceCandidate,
     build_place_query,
     parse_place_candidates,
 )
+
+_BOX = (38.39, 27.06, 38.45, 27.19)
+
+
+class AreaIdTests(unittest.TestCase):
+    """Overpass area ids: relation + 3,600,000,000 and way + 2,400,000,000."""
+
+    def test_relation_and_way_offsets(self) -> None:
+        relation = PlaceCandidate("Konak", "Konak", "town", "6", _BOX,
+                                  "relation", 1269255, "nominatim", True)
+        self.assertEqual(relation.area_id, 3_601_269_255)
+        way = PlaceCandidate("Park", "Park", "park", "", _BOX, "way", 42,
+                             "nominatim", True)
+        self.assertEqual(way.area_id, 2_400_000_042)
+
+    def test_no_area_without_an_area_flag_or_for_a_node(self) -> None:
+        for osm_type, has_area in (("relation", False), ("way", False), ("node", True)):
+            with self.subTest(osm_type=osm_type, has_area=has_area):
+                candidate = PlaceCandidate("X", "X", "town", "", _BOX,
+                                           osm_type, 99, "nominatim", has_area)
+                self.assertEqual(candidate.area_id, 0)
 
 
 class PlaceTests(unittest.TestCase):

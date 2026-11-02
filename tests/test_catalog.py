@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from zero2agent_osm_downloader.core.catalog import (
+    COMMAND_EXAMPLES,
     GROUPS,
     PRESETS,
     PRESETS_BY_ID,
@@ -11,15 +12,39 @@ from zero2agent_osm_downloader.core.catalog import (
     interpret_prompt,
     presets_for_group,
 )
+from zero2agent_osm_downloader.core.query import MAX_SELECTORS, normalized_specs
 
 
 class CatalogTests(unittest.TestCase):
     def test_catalog_ids_are_unique_and_every_group_is_populated(self) -> None:
         self.assertEqual(len(PRESETS), len(PRESETS_BY_ID))
-        self.assertGreaterEqual(len(GROUPS), 14)
-        self.assertGreaterEqual(len(PRESETS), 27)
+        # 43 through 1.5.x, plus Everyday amenities (15-minute city) in 1.6.
+        self.assertEqual(len(PRESETS), 44)
+        self.assertEqual(len(GROUPS), 16)
         for group_id, _title in GROUPS:
             self.assertTrue(presets_for_group(group_id))
+
+    def test_everyday_amenities_covers_the_daily_needs_it_names(self) -> None:
+        preset = get_preset("everyday_amenities")
+        self.assertEqual(preset.title, "Everyday amenities (15-minute city)")
+        self.assertEqual(preset.group_id, "urban_context")
+        pairs = {(tag.key, tag.value) for tag in preset.tags}
+        for need in (
+            ("shop", "supermarket"), ("shop", "bakery"), ("amenity", "pharmacy"),
+            ("amenity", "doctors"), ("amenity", "clinic"), ("amenity", "school"),
+            ("amenity", "kindergarten"), ("leisure", "park"),
+            ("leisure", "playground"), ("highway", "bus_stop"),
+            ("amenity", "library"), ("amenity", "post_office"),
+        ):
+            with self.subTest(need=need):
+                self.assertIn(need, pairs)
+        # The same selectors the query builder accepts, within its limit.
+        self.assertEqual(len(normalized_specs(preset.tags)), len(preset.tags))
+        self.assertLessEqual(len(preset.tags), MAX_SELECTORS)
+        self.assertEqual(
+            interpret_prompt("15-minute city amenities in Bornova").preset_id,
+            "everyday_amenities",
+        )
 
     def test_groups_use_planning_first_order_then_alphabetical(self) -> None:
         self.assertEqual(
@@ -230,8 +255,11 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(parks.mode, "place")
         self.assertEqual(parks.preset_id, "green_spaces")
         self.assertEqual(parks.place_name, "Konak")
+        # Trees are trees: this used to pass as a "place" command that
+        # quietly downloaded place centres in London.
         trees = interpret_prompt("Download trees of London")
-        self.assertEqual(trees.mode, "place")
+        self.assertEqual(trees.mode, "custom")
+        self.assertEqual((trees.key, trees.value, trees.geometry), ("natural", "tree", "point"))
         self.assertEqual(trees.place_name, "London")
         self.assertEqual(
             interpret_prompt("Download public transport in Van").place_name,
@@ -302,6 +330,164 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(intent.geometry, "polygon")
         self.assertEqual(intent.place_name, "Konak")
         self.assertEqual((intent.exclude_key, intent.exclude_value), ("amenity", "fuel"))
+
+
+def _route(intent) -> tuple:
+    """(mode, every preset chosen, custom tag, extra tags, place) of an intent."""
+    presets = frozenset(
+        item for item in (intent.preset_id, *intent.extra_preset_ids) if item
+    )
+    tag = f"{intent.key}={intent.value}" if intent.mode == "custom" else ""
+    extra = frozenset(f"{key}={value}" for key, value, _geometry in intent.extra_tags)
+    return intent.mode, presets, tag, extra, intent.place_name
+
+
+class CommandWordsTests(unittest.TestCase):
+    """Commands download what their words name, or say they cannot."""
+
+    #: Every example the Command tab ships, with the route its words ask for.
+    SHIPPED = {
+        "Download admin level 8 boundaries in Konak, Izmir, Turkey":
+            ("place", {"admin_level_8"}, "", set(), "Konak, Izmir, Turkey"),
+        "Download admin level 6 boundaries in Van, Turkey":
+            ("place", {"admin_level_6"}, "", set(), "Van, Turkey"),
+        "Download buildings in London, United Kingdom":
+            ("place", {"buildings"}, "", set(), "London, United Kingdom"),
+        "Download roads and buildings in Paris, France":
+            ("place", {"urban_context", "buildings"}, "", set(), "Paris, France"),
+        "Download public transport in Tokyo, Japan":
+            ("place", {"public_transport_all", "bus_transit", "rail_transit"}, "",
+             set(), "Tokyo, Japan"),
+        "Download parks in Nairobi, Kenya":
+            ("place", {"green_spaces"}, "", set(), "Nairobi, Kenya"),
+        "Download healthcare in Toronto, Canada":
+            ("place", {"healthcare"}, "", set(), "Toronto, Canada"),
+        "Download schools in Melbourne, Australia":
+            ("place", {"education"}, "", set(), "Melbourne, Australia"),
+        "Download cycle network in Copenhagen, Denmark":
+            ("place", {"cycle_network"}, "", set(), "Copenhagen, Denmark"),
+        "Download green and blue infrastructure in Amsterdam, Netherlands":
+            ("place", {"green_spaces", "blue_network"}, "", set(), "Amsterdam, Netherlands"),
+        "Download buildings in New York City, United States":
+            ("place", {"buildings"}, "", set(), "New York City, United States"),
+        "Download place centres in São Paulo, Brazil":
+            ("place", {"place_centres"}, "", set(), "São Paulo, Brazil"),
+        "Download public transport in Singapore":
+            ("place", {"public_transport_all", "bus_transit", "rail_transit"}, "",
+             set(), "Singapore"),
+        "Download roads in Cape Town, South Africa":
+            ("place", {"road_network"}, "", set(), "Cape Town, South Africa"),
+        "Download restaurants and cafes in Rome, Italy":
+            ("custom", set(), "amenity=restaurant", {"amenity=cafe"}, "Rome, Italy"),
+        "Download everyday amenities in Barcelona, Spain":
+            ("place", {"everyday_amenities"}, "", set(), "Barcelona, Spain"),
+        "building=* polygon": ("custom", set(), "building=*", set(), ""),
+        "Download wheelchair=yes points": ("custom", set(), "wheelchair=yes", set(), ""),
+        "Download parks and playgrounds in Seoul, South Korea":
+            ("place", {"green_spaces"}, "", {"leisure=playground"}, "Seoul, South Korea"),
+        "Konak'taki parkları indir": ("place", {"green_spaces"}, "", set(), "Konak"),
+        "Kadıköy'de otobüs duraklarını göster":
+            ("place", {"urban_transit"}, "", set(), "Kadıköy"),
+        "Üsküdar'daki eczaneleri göster":
+            ("custom", set(), "amenity=pharmacy", set(), "Üsküdar"),
+    }
+
+    def test_every_shipped_example_routes_as_its_words_say(self) -> None:
+        self.assertEqual(len(COMMAND_EXAMPLES), len(set(COMMAND_EXAMPLES)))
+        # A new example needs an expected route here before it can ship.
+        self.assertEqual(set(COMMAND_EXAMPLES), set(self.SHIPPED))
+        for text in COMMAND_EXAMPLES:
+            mode, presets, tag, extra, place = self.SHIPPED[text]
+            with self.subTest(example=text):
+                self.assertEqual(
+                    _route(interpret_prompt(text)),
+                    (mode, frozenset(presets), tag, frozenset(extra), place),
+                )
+
+    def test_everyday_requests_download_what_they_name(self) -> None:
+        # The A3 audit list: each of these used to become "Place centres".
+        cases = {
+            "download roads in Berlin": ("place", {"road_network"}, ""),
+            "streets in Lyon": ("place", {"road_network"}, ""),
+            "trees in Barcelona": ("custom", set(), "natural=tree"),
+            "restaurants in Paris": ("custom", set(), "amenity=restaurant"),
+            "cafes near Konak": ("custom", set(), "amenity=cafe"),
+            "coffee shops in Seattle": ("custom", set(), "amenity=cafe"),
+            "shops in London": ("custom", set(), "shop=*"),
+            "supermarkets in Madrid": ("custom", set(), "shop=supermarket"),
+            "banks in Rome": ("custom", set(), "amenity=bank"),
+            "pharmacies in Ankara": ("custom", set(), "amenity=pharmacy"),
+            "pharmacy in Ankara": ("custom", set(), "amenity=pharmacy"),
+            "universities in Boston": ("custom", set(), "amenity=university"),
+            "libraries in Dublin": ("custom", set(), "amenity=library"),
+            "playgrounds in Vienna": ("custom", set(), "leisure=playground"),
+            "beaches in Antalya": ("custom", set(), "natural=beach"),
+            "Konak'ta restoranları indir": ("custom", set(), "amenity=restaurant"),
+            "Bornova'daki kafeleri göster": ("custom", set(), "amenity=cafe"),
+            "Buca'daki marketleri indir": ("custom", set(), "shop=supermarket"),
+        }
+        for text, (mode, presets, tag) in cases.items():
+            with self.subTest(command=text):
+                route = _route(interpret_prompt(text))
+                self.assertEqual(route[:3], (mode, frozenset(presets), tag))
+                self.assertTrue(route[4])
+
+    def test_a_place_name_holding_a_dataset_word_does_not_choose_the_data(self) -> None:
+        # "City" is a Place centres keyword and "Tree" starts "Treeton".
+        intent = interpret_prompt("restaurants in Mexico City")
+        self.assertEqual((intent.mode, intent.key, intent.value),
+                         ("custom", "amenity", "restaurant"))
+        self.assertEqual(intent.place_name, "Mexico City")
+        self.assertEqual(interpret_prompt("roads in Treeton").preset_id, "road_network")
+
+    def test_found_the_place_but_not_the_data(self) -> None:
+        for text, place in (
+            ("sidewalks in Seattle", "Seattle"),
+            ("power lines in Oslo", "Oslo"),
+            ("get everything in Konak", "Konak"),
+            ("all data for Karsiyaka", "Karsiyaka"),
+            ("Konak'ta yemek yerleri indir", "Konak"),
+        ):
+            with self.subTest(command=text):
+                intent = interpret_prompt(text)
+                self.assertEqual(intent.mode, "place_only")
+                self.assertEqual(intent.place_name, place)
+                self.assertEqual(intent.preset_id, "")
+
+    def test_place_centres_only_for_a_place_on_its_own(self) -> None:
+        for text in ("Bornova", "london", "download Bornova"):
+            with self.subTest(command=text):
+                intent = interpret_prompt(text)
+                self.assertEqual((intent.mode, intent.preset_id), ("place", "place_centres"))
+        # Over the audit's 50 commands, place centres never stands in for a
+        # request that named something else.
+        for text in (
+            "download roads in Berlin", "trees in Barcelona", "restaurants in Paris",
+            "sidewalks in Seattle", "farmland in Iowa", "get everything in Konak",
+            "universities in Boston", "Konak'ta restoranları indir",
+        ):
+            with self.subTest(command=text):
+                self.assertNotEqual(interpret_prompt(text).preset_id, "place_centres")
+
+    def test_a_preset_and_a_named_tag_travel_together(self) -> None:
+        intent = interpret_prompt("Download parks and playgrounds in Seoul")
+        self.assertEqual(intent.preset_id, "green_spaces")
+        self.assertEqual(intent.extra_tags, (("leisure", "playground", "polygon"),))
+        # A tag the preset already downloads is not added twice.
+        roads_trees = interpret_prompt("download roads and trees in Izmir")
+        self.assertEqual(roads_trees.preset_id, "urban_context")
+        self.assertEqual(roads_trees.extra_tags, ())
+        self.assertNotIn("road_network", roads_trees.extra_preset_ids)
+        # A phrase a preset owns is not read again as a named thing.
+        amenities = interpret_prompt("street amenities in Paris")
+        self.assertEqual(amenities.preset_id, "urban_amenities")
+        self.assertEqual((amenities.extra_preset_ids, amenities.extra_tags), ((), ()))
+
+    def test_named_things_can_be_excluded(self) -> None:
+        intent = interpret_prompt("download parks without playgrounds in Seoul")
+        self.assertEqual(intent.preset_id, "green_spaces")
+        self.assertEqual((intent.exclude_key, intent.exclude_value), ("leisure", "playground"))
+        self.assertEqual(intent.place_name, "Seoul")
 
 
 if __name__ == "__main__":

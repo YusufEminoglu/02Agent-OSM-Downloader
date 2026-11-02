@@ -1,0 +1,99 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-11-02T06:58:39Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "way",
+  "id": 867516394,
+  "bounds": {
+    "minlat": 38.4206691,
+    "minlon": 27.1317155,
+    "maxlat": 38.4207691,
+    "maxlon": 27.1318471
+  },
+  "nodes": [
+    8086098017,
+    8086098020,
+    8086098021,
+    8086098018,
+    8086098017
+  ],
+  "geometry": [
+    { "lat": 38.4206916, "lon": 27.1318471 },
+    { "lat": 38.4207691, "lon": 27.1317960 },
+    { "lat": 38.4207320, "lon": 27.1317155 },
+    { "lat": 38.4206691, "lon": 27.1317489 },
+    { "lat": 38.4206916, "lon": 27.1318471 }
+  ],
+  "tags": {
+    "building": "retail",
+    "building:levels": "2",
+    "roof:levels": "0"
+  }
+},
+{
+  "type": "way",
+  "id": 867516395,
+  "bounds": {
+    "minlat": 38.4206510,
+    "minlon": 27.1316623,
+    "maxlat": 38.4207320,
+    "maxlon": 27.1317489
+  },
+  "nodes": [
+    8086098021,
+    8086098022,
+    8086098023,
+    8086098018,
+    8086098021
+  ],
+  "geometry": [
+    { "lat": 38.4207320, "lon": 27.1317155 },
+    { "lat": 38.4207155, "lon": 27.1316623 },
+    { "lat": 38.4206510, "lon": 27.1316971 },
+    { "lat": 38.4206691, "lon": 27.1317489 },
+    { "lat": 38.4207320, "lon": 27.1317155 }
+  ],
+  "tags": {
+    "building": "retail",
+    "building:levels": "2",
+    "roof:levels": "0"
+  }
+},
+{
+  "type": "way",
+  "id": 867516396,
+  "bounds": {
+    "minlat": 38.4206306,
+    "minlon": 27.1315993,
+    "maxlat": 38.4207155,
+    "maxlon": 27.1316971
+  },
+  "nodes": [
+    8086098022,
+    8086098024,
+    8086098025,
+    8086098023,
+    8086098022
+  ],
+  "geometry": [
+    { "lat": 38.4207155, "lon": 27.1316623 },
+    { "lat": 38.4206950, "lon": 27.1315993 },
+    { "lat": 38.4206306, "lon": 27.1316322 },
+    { "lat": 38.4206510, "lon": 27.1316971 },
+    { "lat": 38.4207155, "lon": 27.1316623 }
+  ],
+  "tags": {
+    "building": "retail",
+    "building:levels": "2",
+    "roof:levels": "0"
+  }
+}
+
+  ]
+}

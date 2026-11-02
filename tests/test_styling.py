@@ -7,11 +7,14 @@ stay free of urban-morphology categories.
 """
 from __future__ import annotations
 
+import re
 import unittest
 
 from zero2agent_osm_downloader.core.map_styling_expressions import (
     ADMIN_LEVEL_STYLES,
     BUILDING_EXPRESSION,
+    BUILDING_GUARD,
+    CARTO_POLYGON_EXPRESSION,
     PLACES_LINE_EXPRESSION,
     PLACES_POINT_EXPRESSION,
     PLACES_POLYGON_EXPRESSION,
@@ -117,6 +120,48 @@ class BuildingExpressionTests(unittest.TestCase):
         civic_branch = BUILDING_EXPRESSION.split("THEN 'building_civic'")[0]
         self.assertIn("'school'", civic_branch)
         self.assertIn("'government'", civic_branch)
+
+    def test_polygon_expressions_evaluate_the_building_class_once(self) -> None:
+        # Testing the class for '' and then evaluating it again for the value
+        # doubled the polygon renderer's cost for every building (A2-11).
+        for name, expression in (
+            ("POLYGON_EXPRESSION", POLYGON_EXPRESSION),
+            ("CARTO_POLYGON_EXPRESSION", CARTO_POLYGON_EXPRESSION),
+        ):
+            with self.subTest(expression=name):
+                self.assertEqual(expression.count(BUILDING_EXPRESSION), 1)
+                self.assertIn(
+                    f" WHEN {BUILDING_GUARD} THEN ({BUILDING_EXPRESSION})",
+                    expression,
+                )
+                self.assertNotIn(f"({BUILDING_EXPRESSION}) <> ''", expression)
+
+    def test_the_guard_holds_exactly_when_the_class_is_not_empty(self) -> None:
+        # Why the guard classifies every row as the old double evaluation
+        # did: BUILDING_EXPRESSION must answer '' only from its ELSE, its last
+        # branch must be the guard itself, and every earlier branch must need
+        # a non-empty `building` value. Then '' <=> guard false, for any
+        # value, NULL included (`coalesce` turns NULL into '').
+        self.assertTrue(BUILDING_EXPRESSION.endswith(" ELSE '' END"))
+        self.assertNotIn("", re.findall(r"THEN '([^']*)'", BUILDING_EXPRESSION))
+        conditions = re.findall(r" WHEN (.*?) THEN ", BUILDING_EXPRESSION)
+        self.assertGreaterEqual(len(conditions), 2)
+        self.assertEqual(conditions[-1], BUILDING_GUARD)
+        listed = re.compile(r"^lower\(coalesce\(\"building\",''\)\) IN \((.+)\)$")
+        for condition in conditions[:-1]:
+            with self.subTest(condition=condition[:60]):
+                match = listed.match(condition)
+                self.assertIsNotNone(match)
+                values = re.findall(r"'([^']*)'", match.group(1))
+                self.assertTrue(values)
+                self.assertNotIn("", values)
+        self.assertEqual(set(re.findall(r'"(\w+)"', BUILDING_EXPRESSION)), {"building"})
+
+    def test_every_building_class_stays_in_the_polygon_legends(self) -> None:
+        classes = expression_values(BUILDING_EXPRESSION)
+        self.assertEqual(len(classes), 6)
+        for expression in (POLYGON_EXPRESSION, CARTO_POLYGON_EXPRESSION):
+            self.assertLessEqual(classes, expression_values(expression))
 
 
 if __name__ == "__main__":

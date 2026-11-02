@@ -280,6 +280,44 @@ PRESETS: Tuple[Preset, ...] = (
         ),
     ),
     Preset(
+        "everyday_amenities",
+        "urban_context",
+        "Urban Context",
+        "Everyday amenities (15-minute city)",
+        "Daily needs within walking distance: groceries, bakeries, "
+        "pharmacies, doctors and clinics, schools, kindergartens, parks, "
+        "playgrounds, public transport stops, libraries and post offices.",
+        _tags(
+            ("shop", "supermarket", "point"),
+            ("shop", "supermarket", "polygon"),
+            ("shop", "convenience", "point"),
+            ("shop", "greengrocer", "point"),
+            ("shop", "bakery", "point"),
+            ("amenity", "pharmacy", "point"),
+            ("amenity", "doctors", "point"),
+            ("amenity", "clinic", "point"),
+            ("amenity", "clinic", "polygon"),
+            ("amenity", "school", "point"),
+            ("amenity", "school", "polygon"),
+            ("amenity", "kindergarten", "point"),
+            ("amenity", "kindergarten", "polygon"),
+            ("leisure", "park", "polygon"),
+            ("leisure", "playground", "point"),
+            ("leisure", "playground", "polygon"),
+            ("highway", "bus_stop", "point"),
+            ("public_transport", "platform", "point"),
+            ("railway", "station", "point"),
+            ("railway", "tram_stop", "point"),
+            ("amenity", "library", "point"),
+            ("amenity", "library", "polygon"),
+            ("amenity", "post_office", "point"),
+        ),
+        (
+            "15 minute city", "fifteen minute city", "everyday amenities",
+            "daily needs", "proximity",
+        ),
+    ),
+    Preset(
         "road_network", "network", "Network", "Road network",
         "All OSM highway ways for network analysis.",
         _tags(("highway", "", "line")),
@@ -503,7 +541,9 @@ PRESETS: Tuple[Preset, ...] = (
             ("amenity", "doctors", "point"), ("amenity", "pharmacy", "point"),
             ("healthcare", "", "point"), ("healthcare", "", "polygon"),
         ),
-        ("health", "hospital", "clinic", "pharmacy"),
+        # "pharmacy" is not a keyword here: it names one tag, and the word
+        # table below downloads exactly that tag for it.
+        ("health", "hospital", "clinic"),
     ),
     Preset(
         "education", "education", "Education", "Education",
@@ -517,7 +557,9 @@ PRESETS: Tuple[Preset, ...] = (
             ("amenity", "kindergarten", "polygon"),
             ("amenity", "library", "point"), ("amenity", "library", "polygon"),
         ),
-        ("education", "school", "university", "college"),
+        # "university" is left to the word table below, which downloads
+        # universities alone rather than every kind of school.
+        ("education", "school", "college"),
     ),
     Preset(
         "emergency", "emergency", "Emergency", "Emergency services",
@@ -686,6 +728,14 @@ _TAG_RE = re.compile(
 
 @dataclass(frozen=True)
 class PromptIntent:
+    """What a command asked for.
+
+    ``mode`` is "preset", "custom", "place" (a dataset and a place),
+    "place_only" (a place, but no recognisable dataset) or "none".
+    ``extra_tags`` holds further (key, value, geometry) tags the command also
+    named, such as "playgrounds" in "parks and playgrounds".
+    """
+
     mode: str
     preset_id: str = ""
     key: str = ""
@@ -696,6 +746,7 @@ class PromptIntent:
     extra_preset_ids: Tuple[str, ...] = ()
     exclude_key: str = ""
     exclude_value: str = ""
+    extra_tags: Tuple[Tuple[str, str, str], ...] = ()
 
 
 def presets_for_group(group_id: str) -> Tuple[Preset, ...]:
@@ -753,6 +804,69 @@ _COMMAND_WORDS = {
     "download", "get", "fetch", "load", "data", "osm", "from", "for",
     "in", "at", "near", "within", "around", "of",
 }
+#: Words that carry no request of their own: a command made of these, the
+#: command words and a place name asked only for the place.
+_FILLER_WORDS = {"the", "a", "an", "and", "show", "me", "please"}
+
+#: Everyday things people ask for by name that no preset title or keyword
+#: names on its own, each mapped to what it means in OSM: a preset id, or one
+#: (key, value, geometry) tag.  Whole words only, plurals listed, so
+#: "restaurants in Paris" downloads restaurants instead of falling through to
+#: place centres.  Turkish words reach this table through command_tr.
+NAMED_THINGS: Tuple[Tuple[Tuple[str, ...], object], ...] = (
+    (("road", "roads", "street", "streets"), "road_network"),
+    (("restaurant", "restaurants"), ("amenity", "restaurant", "point")),
+    (
+        ("cafe", "cafes", "coffee shop", "coffee shops"),
+        ("amenity", "cafe", "point"),
+    ),
+    (
+        ("pharmacy", "pharmacies", "chemist", "chemists"),
+        ("amenity", "pharmacy", "point"),
+    ),
+    (("bank", "banks"), ("amenity", "bank", "point")),
+    (("shop", "shops", "store", "stores"), ("shop", "*", "point")),
+    (
+        ("supermarket", "supermarkets", "grocery", "groceries"),
+        ("shop", "supermarket", "point"),
+    ),
+    (("university", "universities"), ("amenity", "university", "polygon")),
+    (("library", "libraries"), ("amenity", "library", "point")),
+    (("playground", "playgrounds"), ("leisure", "playground", "polygon")),
+    (("tree", "trees"), ("natural", "tree", "point")),
+    (("beach", "beaches"), ("natural", "beach", "polygon")),
+)
+_NAMED_THING_INDEX: Dict[str, object] = {
+    phrase: target for phrases, target in NAMED_THINGS for phrase in phrases
+}
+_NAMED_THING_LONGEST = max(len(phrase.split()) for phrase in _NAMED_THING_INDEX)
+
+#: The examples the Command tab ships.  Each one must route as its words say;
+#: tests/test_catalog.py holds the expected route of every entry.
+COMMAND_EXAMPLES: Tuple[str, ...] = (
+    "Download admin level 8 boundaries in Konak, Izmir, Turkey",
+    "Download admin level 6 boundaries in Van, Turkey",
+    "Download buildings in London, United Kingdom",
+    "Download roads and buildings in Paris, France",
+    "Download public transport in Tokyo, Japan",
+    "Download parks in Nairobi, Kenya",
+    "Download healthcare in Toronto, Canada",
+    "Download schools in Melbourne, Australia",
+    "Download cycle network in Copenhagen, Denmark",
+    "Download green and blue infrastructure in Amsterdam, Netherlands",
+    "Download buildings in New York City, United States",
+    "Download place centres in São Paulo, Brazil",
+    "Download public transport in Singapore",
+    "Download roads in Cape Town, South Africa",
+    "Download restaurants and cafes in Rome, Italy",
+    "Download everyday amenities in Barcelona, Spain",
+    "building=* polygon",
+    "Download wheelchair=yes points",
+    "Download parks and playgrounds in Seoul, South Korea",
+    "Konak'taki parkları indir",
+    "Kadıköy'de otobüs duraklarını göster",
+    "Üsküdar'daki eczaneleri göster",
+)
 
 
 def _scored_presets(normalized: str) -> list:
@@ -833,14 +947,6 @@ def _fuzzy_preset(normalized: str) -> Tuple[str, float]:
         return "", 0.0
     best_id = max(weights, key=lambda preset_id: (weights[preset_id], preset_id))
     return best_id, min(0.6, 0.4 + 0.1 * weights[best_id])
-
-
-def _best_preset(normalized: str) -> Tuple[str, float]:
-    scored = _scored_presets(normalized)
-    if not scored:
-        return _fuzzy_preset(normalized)
-    score, preset_id = scored[0]
-    return preset_id, min(1.0, 0.45 + score * 0.12)
 
 
 def _own_score(normalized: str, preset: Preset) -> int:
@@ -932,10 +1038,104 @@ def _extract_exclusion(raw: str) -> Tuple[str, str, str]:
     # to help.
     scored = _scored_presets(_normalized(clause))
     if not scored:
-        return remaining, "", ""
+        named_presets, named_tags = _named_things(_normalized(clause))
+        if named_tags:
+            key, value, _geometry = named_tags[0]
+            return remaining, key, "" if value == "*" else value
+        if not named_presets:
+            return remaining, "", ""
+        scored = [(1, named_presets[0])]
     _, preset_id = scored[0]
     representative = get_preset(preset_id).tags[0]
     return remaining, representative.key, representative.value
+
+
+def _named_things(normalized: str) -> Tuple[tuple, tuple]:
+    """``(preset ids, tags)`` the word table finds in ``normalized``, in order.
+
+    The longest phrase wins at each position, so "coffee shops" is read as
+    cafes rather than as cafes plus shops.
+    """
+    words = normalized.split()
+    presets: list = []
+    tags: list = []
+    index = 0
+    while index < len(words):
+        length, target = 1, None
+        for length in range(min(_NAMED_THING_LONGEST, len(words) - index), 0, -1):
+            target = _NAMED_THING_INDEX.get(" ".join(words[index:index + length]))
+            if target is not None:
+                break
+        if target is None:
+            index += 1
+            continue
+        index += length
+        bucket = presets if isinstance(target, str) else tags
+        if target not in bucket:
+            bucket.append(target)
+    return tuple(presets), tuple(tags)
+
+
+def _without_matched_terms(normalized: str, preset_ids: Iterable[str]) -> str:
+    """``normalized`` minus every phrase that matched one of these presets.
+
+    The word table must only read what the catalogue left over, or a phrase a
+    preset already owns ("street amenities") would be counted twice.
+    """
+    terms = sorted(
+        {
+            _normalized(term)
+            for preset_id in preset_ids
+            for term in (
+                PRESETS_BY_ID[preset_id].keywords
+                + (PRESETS_BY_ID[preset_id].title, PRESETS_BY_ID[preset_id].group_title)
+            )
+            if _contains_phrase(normalized, term)
+        },
+        key=lambda term: -len(term),
+    )
+    padded = f" {normalized} "
+    for term in terms:
+        padded = padded.replace(f" {term} ", " ")
+    return " ".join(padded.split())
+
+
+def _covered(tag: Tuple[str, str, str], preset_ids: Iterable[str]) -> bool:
+    """True when one of these presets already downloads ``tag``."""
+    key, value, _geometry = tag
+    value = "" if value == "*" else value
+    return any(
+        spec.key == key and spec.value in (value, "")
+        for preset_id in preset_ids
+        for spec in PRESETS_BY_ID[preset_id].tags
+    )
+
+
+_CONNECTOR_RE = re.compile(
+    r"\b(?:in|at|near|within|around|for|of)\b\s+(.+)$", re.IGNORECASE
+)
+_PLACE_END_RE = re.compile(
+    r"\b(?:download|get|fetch|load|with|where|as)\b", re.IGNORECASE
+)
+
+
+def _connector_place(text: str) -> Tuple[str, str]:
+    """``(place, rest)`` for a place named after "in", "near", "of" and so on.
+
+    ``rest`` is the command without the connector and the place, keeping
+    anything that follows the place ("in Paris download parks"), so the
+    datasets are read from the request alone.  A place name that happens to
+    contain a dataset word ("Mexico City", "Treeton") then cannot choose the
+    dataset.
+    """
+    match = _CONNECTOR_RE.search(text)
+    if not match:
+        return "", text
+    tail = match.group(1)
+    end = _PLACE_END_RE.search(tail)
+    place = (tail[: end.start()] if end else tail).strip(" ,;:-")[:120]
+    after = tail[end.start():] if end else ""
+    return place, f"{text[: match.start()]} {after}".strip()
 
 
 def _extract_place(raw: str, preset_id: str) -> str:
@@ -945,20 +1145,9 @@ def _extract_place(raw: str, preset_id: str) -> str:
         return ""
     # Explicit location connectors allow arbitrary administrative names,
     # including names not shipped in a fixed list.
-    connector = re.search(
-        r"\b(?:in|at|near|within|around|for|of)\b\s+(.+)$",
-        text,
-        flags=re.IGNORECASE,
-    )
-    if connector:
-        candidate = connector.group(1).strip(" ,;:-")
-        candidate = re.split(
-            r"\b(?:download|get|fetch|load|with|where|as)\b",
-            candidate,
-            maxsplit=1,
-            flags=re.IGNORECASE,
-        )[0].strip(" ,;:-")
-        return candidate[:120]
+    place, _rest = _connector_place(text)
+    if place:
+        return place
 
     if preset_id:
         return ""
@@ -1009,7 +1198,10 @@ def interpret_prompt(text: object) -> PromptIntent:
             exclude_value=exclude_value,
         )
 
-    normalized = _normalized(raw)
+    # The datasets are read from the request without its place, so a place
+    # such as "Mexico City" cannot pull in place centres by itself.
+    place_name, request = _connector_place(" ".join(raw.split()).strip(" ,;:-"))
+    normalized = _normalized(request)
     words = tuple(normalized.split())
     has_road = any(
         word.startswith(("road", "street")) for word in words
@@ -1020,20 +1212,77 @@ def interpret_prompt(text: object) -> PromptIntent:
     has_tree = any(
         word.startswith("tree") for word in words
     )
-    preset_id, confidence = _best_preset(normalized)
+    scored = _scored_presets(normalized)
+    named_presets, named_tags = _named_things(
+        _without_matched_terms(normalized, (item[1] for item in scored))
+    )
+    preset_id, confidence = "", 0.0
+    if scored:
+        preset_id, confidence = scored[0][1], min(1.0, 0.45 + scored[0][0] * 0.12)
+    elif named_presets:
+        preset_id, confidence = named_presets[0], 0.9
+    elif not named_tags:
+        # A typo is only guessed at when no word was recognised exactly.
+        preset_id, confidence = _fuzzy_preset(normalized)
     if has_road and (has_building or has_tree):
         preset_id, confidence = "urban_context", 1.0
-    place_name = _extract_place(raw, preset_id)
     extra_preset_ids = _top_presets(normalized, preset_id)
+    chosen = tuple(item for item in (preset_id, *extra_preset_ids) if item)
+    extra_preset_ids += tuple(
+        item for item in named_presets
+        if item not in chosen
+        and not all(_covered((spec.key, spec.value, spec.geometry), chosen)
+                    for spec in PRESETS_BY_ID[item].tags)
+    )
+    chosen = tuple(item for item in (preset_id, *extra_preset_ids) if item)
+    extra_tags = tuple(tag for tag in named_tags if not _covered(tag, chosen))
+    if not place_name:
+        place_name = _extract_place(
+            raw, preset_id or ("custom" if extra_tags else "")
+        )
+        request = raw if not place_name else " ".join(
+            word for word in _normalized(raw).split()
+            if word not in _normalized(place_name).split()
+        )
+    if not preset_id and extra_tags:
+        key, value, geometry = extra_tags[0]
+        return PromptIntent(
+            "custom",
+            key=key,
+            value=value,
+            geometry=geometry,
+            place_name=place_name,
+            confidence=0.9,
+            exclude_key=exclude_key,
+            exclude_value=exclude_value,
+            extra_tags=extra_tags[1:],
+        )
+    if place_name and not preset_id:
+        named_else = any(
+            word not in _COMMAND_WORDS and word not in _FILLER_WORDS
+            for word in _normalized(request).split()
+        )
+        if named_else:
+            # Something was asked for, but nothing here knows what it is:
+            # say so instead of quietly downloading place centres.
+            return PromptIntent(
+                "place_only",
+                place_name=place_name,
+                exclude_key=exclude_key,
+                exclude_value=exclude_value,
+            )
+        # A bare place name ("Bornova") asks for the place itself.
+        preset_id = "place_centres"
     if place_name:
         return PromptIntent(
             "place",
-            preset_id=preset_id or "place_centres",
+            preset_id=preset_id,
             place_name=place_name,
             confidence=max(confidence, 0.72),
             extra_preset_ids=extra_preset_ids,
             exclude_key=exclude_key,
             exclude_value=exclude_value,
+            extra_tags=extra_tags,
         )
     if not preset_id:
         return PromptIntent("none")
@@ -1042,6 +1291,7 @@ def interpret_prompt(text: object) -> PromptIntent:
         preset_id=preset_id,
         confidence=confidence,
         extra_preset_ids=extra_preset_ids,
+        extra_tags=extra_tags,
         exclude_key=exclude_key,
         exclude_value=exclude_value,
     )

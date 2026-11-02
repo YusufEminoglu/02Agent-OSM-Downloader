@@ -43,14 +43,23 @@ _DATASETS: Tuple[Tuple[Tuple[str, ...], str], ...] = (
     (("ilçe sınır", "ilce sinir"), "admin level 6"),
     (("il sınır", "il sinir"), "admin level 4"),
     (("yol ağı", "yol agi", "sokak ağı", "sokak agi"), "road network"),
+    (("oyun alan", "oyun park"), "playgrounds"),
     (("bina", "yapı", "yapi"), "buildings"),
     (("yol", "sokak", "cadde", "bulvar"), "road network"),
     (("park",), "parks"),
     (("orman",), "forest"),
     (("ağaç", "agac"), "trees"),
-    (("okul", "üniversite", "universite", "eğitim", "egitim"), "school"),
+    (("üniversite", "universite"), "universities"),
+    (("okul", "eğitim", "egitim"), "school"),
     (("hastane", "klinik", "sağlık", "saglik"), "hospital"),
     (("eczane",), "pharmacy"),
+    (("restoran", "lokanta"), "restaurants"),
+    (("kafe", "kahveci"), "cafes"),
+    (("banka",), "banks"),
+    (("süpermarket", "supermarket", "market"), "supermarkets"),
+    (("dükkan", "dukkan", "mağaza", "magaza"), "shops"),
+    (("kütüphane", "kutuphane"), "libraries"),
+    (("plaj",), "beaches"),
     (("cami",), "mosque"),
     (("kilise",), "church"),
     (("durak",), "bus stop"),
@@ -139,7 +148,7 @@ def _is_command_word(word: str) -> bool:
 
 #: Stems that are also ordinary English words, so they alone do not make a
 #: command Turkish ("parks in Kadıköy" is English with a Turkish place name).
-_SHARED_WITH_ENGLISH = {"park", "metro"}
+_SHARED_WITH_ENGLISH = {"park", "metro", "market", "supermarket"}
 _ENGLISH_START = re.compile(r"^\s*(?:download|get|fetch|load|show)\b", re.IGNORECASE)
 
 
@@ -207,6 +216,27 @@ def _split_negation(text: str) -> Tuple[str, str]:
     return text, ""
 
 
+#: Turkish words that ask for nothing by themselves (and, with, me, please).
+_FILLERS = {"ve", "ile", "bana", "lütfen", "lutfen"}
+
+
+def _unknown_words(text: str) -> str:
+    """The words of ``text`` this module cannot read, in their own spelling."""
+    unknown = []
+    for word in re.findall(r"[A-Za-zÇĞİÖŞÜçğıöşüâîû]+", text):
+        lowered = _lower(word)
+        if (
+            lowered.startswith(_VERBS)
+            or lowered in _NEGATIONS
+            or lowered in _POSTPOSITIONS
+            or lowered in _FILLERS
+            or _find_datasets(word)
+        ):
+            continue
+        unknown.append(word)
+    return " ".join(unknown)
+
+
 def translate(text: object) -> Optional[str]:
     """English rendering of a Turkish command, or ``None`` if it is not one."""
     raw = " ".join(str(text or "").split())
@@ -227,6 +257,13 @@ def translate(text: object) -> Optional[str]:
         parts.append(tag_text)
     if phrases:
         parts.append(" and ".join(phrases))
+    elif not tag_text:
+        # Words this module does not know are handed on unchanged, so the
+        # router can tell a request it cannot read ("Konak'ta yemek yerleri")
+        # from a bare place name, and say so instead of guessing.
+        unknown = _unknown_words(positive)
+        if unknown:
+            parts.append(unknown)
     if excluded:
         parts.append("without " + excluded[0])
     elif negated and re.search(r"[A-Za-z0-9_:.~-]+=", negated):

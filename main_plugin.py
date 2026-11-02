@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import html
 import os
 
 from qgis.PyQt.QtCore import Qt
@@ -100,28 +101,41 @@ class AgentOsmDownloaderPlugin:
         if visible:
             self.dock.raise_()
 
-    def _show_about(self) -> None:
-        QMessageBox.about(
-            self.iface.mainWindow(),
-            "02Agent OSM Downloader",
-            (
-                "<h3>02Agent OSM Downloader</h3>"
-                "<p><b>AI-agent-ready OpenStreetMap acquisition for QGIS 4.</b></p>"
-                f"<p>Choose from {len(GROUPS)} thematic groups and "
-                f"{len(PRESETS)} curated urban-analysis presets, combine datasets, "
-                "build a structured six-filter ANY/ALL "
-                "query, resolve named administrative places, request "
-                "a custom OSM tag, or use the English offline command "
-                "router.</p>"
-                "<p><b>Agent Protocol v1</b><br>"
-                "Provider: <code>zero2agentosm</code><br>"
-                "Endpoints: <code>download_preset</code>, "
-                "<code>download_place</code>, "
-                "<code>download_custom_tag</code> and "
-                "<code>download_advanced</code></p>"
-                "<p>02Agent Smart Modeler discovers these endpoints through the live "
-                "QGIS Processing registry, validates their signatures, and runs "
-                "them only after an explicit approval card.</p>"
-                "<p>GPL-3.0-or-later &bull; Geophilo</p>"
-            ),
+    def about_html(self) -> str:
+        """The About text: version, Manual and Report a problem first."""
+        from .dialogs.dock import MANUAL_URL, plugin_version, problem_report_url
+
+        failure = getattr(self.dock, "_last_failure_kind", "") if self.dock else ""
+        report = html.escape(problem_report_url(failure), quote=True)
+        return (
+            "<h3>02Agent OSM Downloader</h3>"
+            f"<p>Version {html.escape(plugin_version())} &bull; "
+            f'<a href="{MANUAL_URL}">Manual</a> &bull; '
+            f'<a href="{report}">Report a problem</a></p>'
+            "<p><b>Download OpenStreetMap data into QGIS 3.28 to 4.x.</b></p>"
+            f"<p>Choose from {len(GROUPS)} topics and {len(PRESETS)} "
+            "ready-made datasets, combine them, build a six-tag ANY/ALL "
+            "query, search for a named place, request any OSM tag, or type "
+            "a request in English or Turkish.</p>"
+            "<p><b>Agent Protocol v1</b><br>"
+            "Provider: <code>zero2agentosm</code><br>"
+            "Endpoints: <code>download_preset</code>, "
+            "<code>download_place</code>, "
+            "<code>download_custom_tag</code> and "
+            "<code>download_advanced</code></p>"
+            "<p>02SmartModeler finds these endpoints through the live "
+            "QGIS Processing registry, validates their signatures, and can run "
+            "three of them (all but <code>download_place</code>), each only "
+            "after an explicit approval card.</p>"
+            "<p>GPL-3.0-or-later &bull; Geophilo</p>"
         )
+
+    def _show_about(self) -> None:
+        box = QMessageBox(self.iface.mainWindow())
+        box.setWindowTitle("02Agent OSM Downloader")
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText(self.about_html())
+        # Manual and Report a problem open in the browser.
+        box.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.exec()

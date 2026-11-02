@@ -1,0 +1,211 @@
+{
+ "postpass_properties": {
+  "generator": "Postpass API 0.2",
+  "timestamp": "2026-11-02T07:47:26Z"
+ },
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [
+     [
+      [
+       [
+        27.1319559,
+        38.418238
+       ],
+       [
+        27.1323025,
+        38.4181109
+       ],
+       [
+        27.1323652,
+        38.4181101
+       ],
+       [
+        27.1323898,
+        38.4181725
+       ],
+       [
+        27.1323504,
+        38.4182243
+       ],
+       [
+        27.1324505,
+        38.4184707
+       ],
+       [
+        27.1322895,
+        38.4185454
+       ],
+       [
+        27.1319559,
+        38.418238
+       ]
+      ],
+      [
+       [
+        27.1322093,
+        38.4183131
+       ],
+       [
+        27.1323101,
+        38.4184281
+       ],
+       [
+        27.1323539,
+        38.4184092
+       ],
+       [
+        27.1322531,
+        38.4182925
+       ],
+       [
+        27.1322093,
+        38.4183131
+       ]
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 19852339,
+    "tags": {
+     "name": "Kemahlıoğlu Hanı",
+     "building": "yes",
+     "wikidata": "Q132752741",
+     "addr:city": "İzmir",
+     "addr:street": "Anafartalar Caddesi",
+     "addr:district": "Konak",
+     "addr:postcode": "35250",
+     "wikimedia_commons": "Category:Kemahlıoğlu Hanı",
+     "addr:neighbourhood": "Konak Mahallesi"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [
+     [
+      [
+       [
+        27.133342,
+        38.4184849
+       ],
+       [
+        27.1334171,
+        38.4183735
+       ],
+       [
+        27.1336075,
+        38.4184828
+       ],
+       [
+        27.133519,
+        38.4185879
+       ],
+       [
+        27.133342,
+        38.4184849
+       ]
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 304963683,
+    "tags": {
+     "name": "Başdurak Camii",
+     "amenity": "place_of_worship",
+     "building": "mosque",
+     "religion": "muslim",
+     "wikidata": "Q4875350",
+     "wikipedia": "tr:Başdurak Camii",
+     "wikimedia_commons": "Category:Başdurak Mosque"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [
+     [
+      [
+       [
+        27.1326364,
+        38.4213706
+       ],
+       [
+        27.1327304,
+        38.4211911
+       ],
+       [
+        27.132877,
+        38.4209115
+       ],
+       [
+        27.133542,
+        38.4211253
+       ],
+       [
+        27.1333014,
+        38.4215845
+       ],
+       [
+        27.1326364,
+        38.4213706
+       ]
+      ],
+      [
+       [
+        27.132833,
+        38.421289
+       ],
+       [
+        27.1331282,
+        38.4213789
+       ],
+       [
+        27.1331782,
+        38.4212782
+       ],
+       [
+        27.132883,
+        38.4211883
+       ],
+       [
+        27.132833,
+        38.421289
+       ]
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "osm_type": "R",
+    "osm_id": 15607096,
+    "tags": {
+     "name": "Kızlarağası Hanı",
+     "tourism": "attraction",
+     "building": "yes",
+     "historic": "building",
+     "wikidata": "Q6091380",
+     "addr:city": "İzmir",
+     "wikipedia": "tr:Kızlarağası Hanı",
+     "addr:district": "Konak",
+     "addr:postcode": "35250",
+     "building:levels": "3",
+     "wikimedia_commons": "Category:Kızlarağası Han",
+     "addr:neighbourhood": "Konak Mahallesi"
+    }
+   }
+  }
+ ]
+}

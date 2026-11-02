@@ -19,6 +19,9 @@ def add_osm_basemap(project=None) -> tuple[QgsRasterLayer, bool]:
     Returns the layer and a boolean indicating whether a new layer was added.
     The layer is deliberately marked so repeated button presses do not create
     duplicate tile layers.
+
+    A new basemap goes to the bottom of the layer tree: opaque tiles above
+    the downloaded layers would hide every polygon and line they hold.
     """
     target = project or QgsProject.instance()
     for layer in target.mapLayers().values():
@@ -36,5 +39,6 @@ def add_osm_basemap(project=None) -> tuple[QgsRasterLayer, bool]:
     layer.setAttribution(OSM_ATTRIBUTION)
     layer.setAttributionUrl("https://www.openstreetmap.org/copyright")
     target.addMapLayer(layer, False)
-    target.layerTreeRoot().insertLayer(0, layer)
+    root = target.layerTreeRoot()
+    root.insertLayer(len(root.children()), layer)
     return layer, True

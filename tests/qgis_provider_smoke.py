@@ -57,7 +57,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         if parent not in sys.path:
             sys.path.insert(0, parent)
 
-        from zero2agent_osm_downloader.core.catalog import PRESETS, get_preset
+        from zero2agent_osm_downloader.core.catalog import get_preset
         from zero2agent_osm_downloader.core.basemap import add_osm_basemap
         from zero2agent_osm_downloader.core.query import (
             advanced_specs,
@@ -108,6 +108,14 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             return payload
 
         osm_algorithms._fetch_json = _cache_only
+        # Tiles no longer go through _fetch_json; point every host (Overpass,
+        # Postpass, the Nominatim search and lookup) at a closed local port so
+        # an unseeded part fails here instead of reaching a public server.
+        # With no outline, the boundary checks below keep their seeded area
+        # filter.  Run from main(), the QGIS-wide guard is installed as well.
+        from zero2agent_osm_downloader.tests._offline import isolate_network
+
+        isolate_network(guard_qgis=False)
         from qgis.PyQt.QtGui import QColor, QPalette
         from qgis.PyQt.QtWidgets import QProgressBar
 
@@ -249,6 +257,8 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             dock.custom_check.setChecked(True)
             if dock.group_combo.isEnabled() or not dock.key_edit.isEnabled():
                 raise RuntimeError("Custom-tag controls did not switch modes.")
+            # The Query tab starts empty since 1.6; load the first example.
+            dock._load_query_example()
             if "wheelchair" not in dock.query_preview.toPlainText():
                 raise RuntimeError("The advanced query preview was not generated.")
             dock.tabs.setCurrentWidget(dock.query_tab)
@@ -346,11 +356,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         results = processing.run(
             "zero2agentosm:download_preset",
             {
-                "PRESET": next(
-                    index
-                    for index, preset in enumerate(PRESETS)
-                    if preset.preset_id == "urban_form"
-                ),
+                "PRESET": osm_algorithms.PRESET_ENUM_ORDER.index("urban_form"),
                 "EXTENT": QgsReferencedRectangle(
                     QgsRectangle(27.1200, 38.4100, 27.1260, 38.4160),
                     QgsCoordinateReferenceSystem.fromEpsgId(4326),
@@ -1056,7 +1062,8 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
                 "line and polygon."
             )
 
-        # A circular bus route closes up and is still a route.
+        # The wildcard reads multipolygon and boundary relations only, so a
+        # route relation is not one of its features at all.
         route = {
             "type": "relation",
             "id": 2,
@@ -1064,9 +1071,9 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
             "members": [],
         }
         kinds = [kind for kind, _matches in _kinds_for_element(route, wildcard)]
-        if kinds != ["line"]:
+        if kinds != []:
             raise RuntimeError(
-                f"A circular route relation split as {kinds}, expected ['line']."
+                f"A route relation split as {kinds} under the wildcard, expected []."
             )
         return "closed ways split by tag, not by closure"
 
@@ -1203,7 +1210,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         """A city-scale extent must tile, merge and keep multi-part lines."""
         import processing
 
-        from zero2agent_osm_downloader.core.catalog import PRESETS, get_preset
+        from zero2agent_osm_downloader.core.catalog import get_preset
         from zero2agent_osm_downloader.core.query import build_queries
         from zero2agent_osm_downloader.processing import osm_algorithms
 
@@ -1240,11 +1247,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         results = processing.run(
             "zero2agentosm:download_preset",
             {
-                "PRESET": [
-                    index
-                    for index, preset in enumerate(PRESETS)
-                    if preset.preset_id == "urban_transit"
-                ],
+                "PRESET": [osm_algorithms.PRESET_ENUM_ORDER.index("urban_transit")],
                 "EXTENT": QgsReferencedRectangle(
                     QgsRectangle(27.10, 38.40, 27.30, 38.55),
                     QgsCoordinateReferenceSystem.fromEpsgId(4326),
@@ -1300,7 +1303,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
         """A resolved place must download through an area filter, not a box."""
         import processing
 
-        from zero2agent_osm_downloader.core.catalog import PRESETS, get_preset
+        from zero2agent_osm_downloader.core.catalog import get_preset
         from zero2agent_osm_downloader.core.query import build_area_query
         from zero2agent_osm_downloader.processing import osm_algorithms
 
@@ -1341,11 +1344,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
                 "CLIP": 0,
                 # Pre-resolved, so the run must not call the geocoder at all.
                 "AREA_ID": str(area_id),
-                "PRESET": [
-                    index
-                    for index, preset in enumerate(PRESETS)
-                    if preset.preset_id == "urban_form"
-                ],
+                "PRESET": [osm_algorithms.PRESET_ENUM_ORDER.index("urban_form")],
                 "EXTENT": QgsReferencedRectangle(
                     QgsRectangle(27.1200, 38.4100, 27.1260, 38.4160),
                     QgsCoordinateReferenceSystem.fromEpsgId(4326),
@@ -1379,11 +1378,7 @@ class AgentOsmProviderSmoke(QgsProcessingAlgorithm):
                     "PLACE": "Oversized",
                     "CLIP": 0,
                     "AREA_ID": str(area_id),
-                    "PRESET": [
-                        index
-                        for index, preset in enumerate(PRESETS)
-                        if preset.preset_id == "urban_form"
-                    ],
+                    "PRESET": [osm_algorithms.PRESET_ENUM_ORDER.index("urban_form")],
                     "EXTENT": QgsReferencedRectangle(
                         QgsRectangle(20.0, 30.0, 24.0, 34.0),
                         QgsCoordinateReferenceSystem.fromEpsgId(4326),
@@ -1531,9 +1526,13 @@ def main(exit_process: bool = False) -> bool:
     Processing.initialize()
 
     from zero2agent_osm_downloader.processing.provider import AgentOsmProvider
+    from zero2agent_osm_downloader.tests._offline import isolate_network
 
     provider = AgentOsmProvider()
     QgsApplication.processingRegistry().addProvider(provider)
+    # Off every public host before anything runs; the QGIS-wide guard only
+    # in a QGIS this run started.
+    isolate_network(guard_qgis=owns_app)
 
     print("=" * 62)
     print(" 02Agent OSM Downloader - provider smoke")

@@ -34,11 +34,24 @@
         "AREA_ID": "validated_osm_area_id_or_blank",
         "EXCLUDE_KEY": "validated_osm_tag_or_blank",
         "EXCLUDE_VALUE": "validated_osm_tag_or_blank",
+        "AROUND_X": "wgs84_longitude_or_zero",
+        "AROUND_Y": "wgs84_latitude_or_zero",
+        "AROUND_METERS": "radius_metres_zero_off_or_50_to_5000",
+        "ALLOW_FALLBACK": "boolean_default_false",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
       },
-      "notes": "AREA_ID is optional and shared by all four endpoints to clip the request to a pre-resolved OSM boundary. EXCLUDE_KEY/EXCLUDE_VALUE are optional and shared by all four endpoints: when EXCLUDE_KEY is set, any fetched feature carrying that tag (any value, or the given value only) is dropped after the OSM response arrives — this is a client-side filter, not part of the Overpass query text."
+      "outputs": {
+        "OSM_TIMESTAMP": "utc_timestamp_text_or_blank",
+        "TILES_TOTAL": "number_of_parts",
+        "TILES_MISSING": "number_of_missing_parts_zero_when_complete",
+        "DATA_SOURCE": "comma_separated_hosts_or_local_cache",
+        "FEATURES_DROPPED": "number_of_matched_features_that_could_not_be_built_or_written",
+        "FEATURES_OUTSIDE": "number_of_matched_features_left_out_outside_the_chosen_area",
+        "NOTICE": "one_plain_sentence_about_the_result_or_blank"
+      },
+      "notes": "The parameters from AREA_ID to ALLOW_FALLBACK and every output are shared by all four endpoints. AREA_ID is optional and clips the result to a pre-resolved OSM boundary. EXCLUDE_KEY/EXCLUDE_VALUE are optional: when EXCLUDE_KEY is set, any fetched feature carrying that tag (any value, or the given value only) is dropped after the OSM response arrives; this is a client-side filter, not part of the query text. AROUND_METERS between 50 and 5000 turns on an around search: the bounding box of the circle around AROUND_X/AROUND_Y (WGS84) replaces EXTENT and only features that touch the circle are kept; 0 turns it off. ALLOW_FALLBACK (optional, off by default; turn it on in the dock or with ALLOW_FALLBACK=true) lets a part that every Overpass host failed or is resting for come from postpass.geofabrik.de. TILES_MISSING above 0 means the result is incomplete: running the same parameters again within 24 hours fetches only the missing parts. FEATURES_DROPPED counts matched features that could not be built or written; FEATURES_OUTSIDE counts matched features left out because they lie outside the chosen area (a mapped boundary or the around circle), which is not a failure; NOTICE is one plain sentence about the result, blank when there is nothing to say. PRESET option indexes are stable across releases: new datasets are appended. 02SmartModeler binds only PRESET and EXTENT here; every other parameter keeps its default in an agent run."
     },
     {
       "id": "zero2agentosm:download_place",
@@ -55,11 +68,24 @@
         ],
         "EXCLUDE_KEY": "validated_osm_tag_or_blank",
         "EXCLUDE_VALUE": "validated_osm_tag_or_blank",
+        "AROUND_X": "wgs84_longitude_or_zero",
+        "AROUND_Y": "wgs84_latitude_or_zero",
+        "AROUND_METERS": "radius_metres_zero_off_or_50_to_5000",
+        "ALLOW_FALLBACK": "boolean_default_false",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
       },
-      "notes": "PLACE is resolved with the OpenStreetMap Nominatim geocoder. CLIP 0 follows the mapped boundary, CLIP 1 uses the rectangular extent. AREA_ID accepts an already resolved Overpass area id so a chosen place is not geocoded a second time. EXTENT is required in every case: an area carries no size of its own, so a boundary request is filtered by the extent as well and the job area ceiling applies to it. When AREA_ID is blank the name is geocoded and EXTENT is replaced by the resolved place's rectangle. EXCLUDE_KEY/EXCLUDE_VALUE behave as on download_preset."
+      "outputs": {
+        "OSM_TIMESTAMP": "utc_timestamp_text_or_blank",
+        "TILES_TOTAL": "number_of_parts",
+        "TILES_MISSING": "number_of_missing_parts_zero_when_complete",
+        "DATA_SOURCE": "comma_separated_hosts_or_local_cache",
+        "FEATURES_DROPPED": "number_of_matched_features_that_could_not_be_built_or_written",
+        "FEATURES_OUTSIDE": "number_of_matched_features_left_out_outside_the_chosen_area",
+        "NOTICE": "one_plain_sentence_about_the_result_or_blank"
+      },
+      "notes": "PLACE is resolved with the OpenStreetMap Nominatim geocoder; only when Nominatim cannot answer does an administrative-name search on the Overpass hosts run, and a plain no-match is final. CLIP 0 keeps the result inside the place's mapped boundary, CLIP 1 uses its rectangular extent; a place with no mapped boundary falls back to its rectangle and the log says so. AREA_ID accepts an already resolved area id so a chosen place is not geocoded a second time. EXTENT is required in every case: when AREA_ID is blank the name is geocoded and EXTENT is replaced by the resolved place's rectangle; with AREA_ID the extent is the requested area, so the job area ceiling applies to it. The other parameters and the outputs behave as on download_preset. 02SmartModeler does not run this endpoint: it is not on its reviewed allowlist."
     },
     {
       "id": "zero2agentosm:download_custom_tag",
@@ -76,11 +102,24 @@
         "AREA_ID": "validated_osm_area_id_or_blank",
         "EXCLUDE_KEY": "validated_osm_tag_or_blank",
         "EXCLUDE_VALUE": "validated_osm_tag_or_blank",
+        "AROUND_X": "wgs84_longitude_or_zero",
+        "AROUND_Y": "wgs84_latitude_or_zero",
+        "AROUND_METERS": "radius_metres_zero_off_or_50_to_5000",
+        "ALLOW_FALLBACK": "boolean_default_false",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
       },
-      "notes": "AREA_ID and EXCLUDE_KEY/EXCLUDE_VALUE behave as on download_preset."
+      "outputs": {
+        "OSM_TIMESTAMP": "utc_timestamp_text_or_blank",
+        "TILES_TOTAL": "number_of_parts",
+        "TILES_MISSING": "number_of_missing_parts_zero_when_complete",
+        "DATA_SOURCE": "comma_separated_hosts_or_local_cache",
+        "FEATURES_DROPPED": "number_of_matched_features_that_could_not_be_built_or_written",
+        "FEATURES_OUTSIDE": "number_of_matched_features_left_out_outside_the_chosen_area",
+        "NOTICE": "one_plain_sentence_about_the_result_or_blank"
+      },
+      "notes": "A blank VALUE or * means any value. The shared parameters and the outputs behave as on download_preset. 02SmartModeler binds only KEY, VALUE, GEOMETRY and EXTENT here; every other parameter keeps its default in an agent run."
     },
     {
       "id": "zero2agentosm:download_advanced",
@@ -99,27 +138,51 @@
         "AREA_ID": "validated_osm_area_id_or_blank",
         "EXCLUDE_KEY": "validated_osm_tag_or_blank",
         "EXCLUDE_VALUE": "validated_osm_tag_or_blank",
+        "AROUND_X": "wgs84_longitude_or_zero",
+        "AROUND_Y": "wgs84_latitude_or_zero",
+        "AROUND_METERS": "radius_metres_zero_off_or_50_to_5000",
+        "ALLOW_FALLBACK": "boolean_default_false",
         "OUTPUT_POINTS": "temporary_output",
         "OUTPUT_LINES": "temporary_output",
         "OUTPUT_POLYGONS": "temporary_output"
       },
-      "notes": "VALUE_MODE true renders every filled VALUE_N as an Overpass regex (~) selector instead of an exact-match (=) one; regex values still cannot contain quotes, backslashes or semicolons. AREA_ID and EXCLUDE_KEY/EXCLUDE_VALUE behave as on download_preset."
+      "outputs": {
+        "OSM_TIMESTAMP": "utc_timestamp_text_or_blank",
+        "TILES_TOTAL": "number_of_parts",
+        "TILES_MISSING": "number_of_missing_parts_zero_when_complete",
+        "DATA_SOURCE": "comma_separated_hosts_or_local_cache",
+        "FEATURES_DROPPED": "number_of_matched_features_that_could_not_be_built_or_written",
+        "FEATURES_OUTSIDE": "number_of_matched_features_left_out_outside_the_chosen_area",
+        "NOTICE": "one_plain_sentence_about_the_result_or_blank"
+      },
+      "notes": "VALUE_MODE true renders every filled VALUE_N as a regular-expression (~) selector instead of an exact-match (=) one. Regex values cannot contain quotes, backslashes or semicolons. A pattern is refused before any request when the OSM servers' POSIX engine rejects it ((?...) groups, lookarounds, backreferences) or when the two sides would read it differently or it could hang: two repeat operators in a row, or a repeated group that repeats inside, such as (a+)+. POSIX classes such as [[:digit:]] are accepted, and a value of * means any value. The shared parameters and the outputs behave as on download_preset. 02SmartModeler binds only MATCH_MODE, GEOMETRY, KEY_1..KEY_4, VALUE_1..VALUE_4 and EXTENT here; every other parameter keeps its default in an agent run."
     }
   ],
   "safety": {
-    "network_access": "pinned_overpass_mirrors_and_nominatim_only",
+    "network_access": "pinned_overpass_postpass_and_nominatim_hosts_only",
     "network_hosts": [
-      "overpass-api.de",
-      "overpass.kumi.systems",
       "overpass.private.coffee",
+      "overpass-api.de",
+      "postpass.geofabrik.de",
       "nominatim.openstreetmap.org"
     ],
+    "network_host_roles": {
+      "overpass.private.coffee": "overpass_api",
+      "overpass-api.de": "overpass_api",
+      "postpass.geofabrik.de": "fallback_for_parts_no_overpass_host_could_deliver_while_allow_fallback_is_true",
+      "nominatim.openstreetmap.org": "place_search_and_boundary_lookup"
+    },
+    "optional_basemap_tile_hosts": [
+      "tile.openstreetmap.org"
+    ],
+    "optional_basemap_note": "Contacted only when a user presses Add OSM basemap in the dock. No Processing endpoint loads basemap tiles.",
     "maximum_extent_area_km2": 2500,
     "maximum_single_request_area_km2": 100,
-    "maximum_requests_per_download": 40,
+    "maximum_planned_parts_per_download": 40,
+    "maximum_requests_per_download": 64,
     "maximum_merged_features": 400000,
     "maximum_advanced_tag_filters": 6,
-    "maximum_datasets_per_request": 32,
+    "maximum_tag_selectors_per_request": 32,
     "advanced_match_modes": [
       "any",
       "all"

@@ -80,6 +80,8 @@ def main() -> bool:
                 "OUTPUT_POINTS": "TEMPORARY_OUTPUT",
                 "OUTPUT_LINES": "TEMPORARY_OUTPUT",
                 "OUTPUT_POLYGONS": "TEMPORARY_OUTPUT",
+                # Overpass alone: a part from Postpass is not an Overpass pass.
+                "ALLOW_FALLBACK": False,
             },
             context=context,
             feedback=feedback,

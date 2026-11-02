@@ -1,7 +1,7 @@
-"""Defensive, secret-safe bridge to 02Agent Smart Modeler.
+"""Defensive, secret-safe bridge to 02SmartModeler.
 
 The downloader never reads or stores AI credentials.  It only asks the loaded
-02Agent Smart Modeler plugin for display metadata and public UI entry points.  When the
+02SmartModeler plugin for display metadata and public UI entry points.  When the
 plugin package is installed but disabled, the shared Connections dialog can
 still be opened directly so the button never becomes a silent dead end.
 """
@@ -18,7 +18,7 @@ class BridgeResult:
 
 
 def loaded_plugin() -> Optional[Any]:
-    """Return a compatible loaded 02Agent Smart Modeler instance, if available."""
+    """Return a compatible loaded 02SmartModeler instance, if available."""
     try:
         from qgis.utils import plugins
     except Exception:  # noqa: BLE001 - optional plugin boundary
@@ -71,7 +71,7 @@ def connection_info() -> Dict[str, object]:
 
 
 def open_connections(parent=None) -> BridgeResult:
-    """Open 02Agent Smart Modeler's shared connection editor through the safest path."""
+    """Open 02SmartModeler's shared connection editor through the safest path."""
     plugin = loaded_plugin()
     if plugin is not None:
         try:
@@ -79,14 +79,14 @@ def open_connections(parent=None) -> BridgeResult:
         except Exception as error:  # noqa: BLE001 - optional plugin boundary
             return BridgeResult(
                 False,
-                "02Agent Smart Modeler could not open Connections: "
+                "02SmartModeler could not open Connections: "
                 f"{_safe_error(error)}",
             )
         if opened is not False:
             return BridgeResult(True)
 
     # The package can be installed but currently disabled.  Opening its
-    # secret-safe settings dialog directly still writes only to 02Agent Smart Modeler's
+    # secret-safe settings dialog directly still writes only to 02SmartModeler's
     # QGIS settings/vault namespace; no key enters this plugin.
     try:
         from zero2smartmodeler.gui.ai_settings_dialog import AiSettingsDialog
@@ -94,8 +94,8 @@ def open_connections(parent=None) -> BridgeResult:
     except Exception:  # noqa: BLE001 - optional plugin boundary
         return BridgeResult(
             False,
-            "02Agent Smart Modeler is required for AI connections. Open Plugins > "
-            "Manage and Install Plugins, search for “02Agent Smart Modeler”, "
+            "02SmartModeler is required for AI connections. Open Plugins > "
+            "Manage and Install Plugins, search for “02SmartModeler”, "
             "install it, then enable it and reopen this tab.",
         )
     try:
@@ -116,7 +116,7 @@ def open_workspace() -> BridgeResult:
     if plugin is None:
         return BridgeResult(
             False,
-            "Enable 02Agent Smart Modeler to use its supervised Agent Workspace.",
+            "Enable 02SmartModeler to use its supervised Agent Workspace.",
         )
     try:
         opened = plugin.open_agent_workspace()
@@ -128,7 +128,7 @@ def open_workspace() -> BridgeResult:
     if opened is False:
         return BridgeResult(
             False,
-            "02Agent Smart Modeler Agent Workspace is not available yet.",
+            "02SmartModeler Agent Workspace is not available yet.",
         )
     return BridgeResult(True)
 

@@ -1,5 +1,189 @@
 # Changelog
 
+## [1.6.0] - 2026-11-02
+
+A download now either works or says exactly why, and it keeps working when the
+public Overpass servers do not.
+
+### Added
+
+- **Live status while a download runs.** The dock shows the elapsed time, the
+  part of the area it is on and the server it is asking, and ends with one
+  plain sentence that says what happened, for example that the servers are
+  busy, asked this computer to slow down, refused it or could not be reached,
+  or that the area holds too much data. When the dock is hidden, the result
+  also appears in the QGIS message bar.
+- **Finished with gaps, and Continue.** When some parts of an area cannot be
+  downloaded, the result keeps what arrived and says "Finished with gaps: N of
+  M parts are missing". The Recent entry is marked incomplete and **Continue**
+  fetches only the missing parts, because the parts that arrived are kept for
+  24 hours. While the servers rest after the errors that left the gaps,
+  Continue waits and a countdown in its place says when it becomes available.
+  Processing returns `TILES_TOTAL`, `TILES_MISSING` and `DATA_SOURCE`, the
+  servers that delivered the data.
+- **Postpass fallback.** When every Overpass server has failed or is resting
+  for a part of the area, that part can come from Geofabrik's Postpass service
+  (postpass.geofabrik.de). It is optional, off by default; turn it on in the
+  dock (the option "If the OpenStreetMap servers are busy, use Geofabrik's
+  Postpass") or with the Processing parameter `ALLOW_FALLBACK`. The source is
+  named in the status, the layer metadata and `DATA_SOURCE`.
+- **Typed columns** beside the text ones: `height_m`, `levels_n`, `lanes_n`,
+  `maxspd_kmh`, `width_m` and `pop_n`, filled only when the mapped value is a
+  plain number in a known unit and NULL otherwise, plus `length_m` for lines
+  and `area_m2` for polygons, measured on the WGS84 ellipsoid. The names fit
+  the 10 characters a Shapefile export keeps; the text columns are unchanged.
+- **Dropped features are counted.** A matched feature that cannot be built
+  is counted by reason (no coordinates, an outline that does not close, an
+  invalid outline that could not be repaired, a failed projection), reported
+  in the log and returned as `FEATURES_DROPPED`. Matched features left out
+  because they lie outside the chosen area (a place's boundary or an around
+  circle) are counted apart as `FEATURES_OUTSIDE`: the status says how many
+  were left out and does not call them failures. `NOTICE` returns one plain
+  sentence about the result, such as a boundary the server may not hold, and
+  the dock shows it under the status.
+- **Everyday amenities (15-minute city)**, a 44th dataset in Urban Context:
+  supermarkets and local shops, pharmacies, doctors and clinics, schools and
+  kindergartens, parks and playgrounds, bus and tram stops, platforms and
+  stations, libraries and post offices. The Processing `PRESET` options keep
+  their numbers: new datasets are added at the end, so saved models and
+  scripts keep their datasets.
+- **Report a problem** and **Manual** links at the top of the dock. Report a
+  problem opens a GitHub issue form with the plugin, QGIS and system versions
+  and the class of the last failure filled in, never an area or a place name.
+  The About box shows the version and both links.
+- Commands understand road and street words, and everyday places in English
+  and Turkish: restaurants, cafes, pharmacies, banks, shops, supermarkets,
+  universities, libraries, playgrounds, trees and beaches.
+
+### Changed
+
+- **The network client follows the 2026 Overpass rules.** A server that
+  answers 429 rests for a minute, one that refuses (403 or 406) or fails the
+  secure connection for an hour, a busy one for 45 seconds, and one that does
+  not answer or cannot be reached for two minutes; the rest doubles while a
+  server keeps failing. Each part of the area is asked from each server at
+  most once (once more only after a dropped connection), one request at a
+  time per server and at least a second apart. A download stops at once when
+  a part fails on every server before any data arrived, stops after two lost
+  parts in a row once data is arriving, and never sends more than 64
+  requests. Queries claim 128 MiB of server memory (`[maxsize]`) instead of
+  the 512 MiB default, and an answer is abandoned as soon as it passes 64 MB.
+- **A request waits for a queued server.** It waits up to 55 seconds (less
+  when the QGIS network timeout is shorter) and gives the server 15 seconds
+  less to run the query.
+- **Dense parts are split.** A part a server proves too heavy (out of
+  memory, more than 64 MB or more than 150,000 objects) is split into four at
+  once, at most twice (100 → 25 → 6.25 km²), and the parts after it start at
+  that size. A query that runs out of time may only mean a busy server: that
+  server rests for 30 seconds and the next one is asked for the same part,
+  which is split only when every server asked ran out of time. If all four
+  smaller parts then arrive, that proves the part too heavy, and the parts
+  after it start at that size too. Inside a part split this way a further
+  timeout splits at once, and a part still too heavy at the smallest size is
+  skipped and remembered for 24 hours, so running the download again does
+  not ask for it; the lighter parts around it still arrive. When the
+  smaller parts time out as well before anything has
+  arrived, the servers are overloaded rather than the area dense: the
+  download stops with the busy message and marks nothing. A download sends
+  no more requests after 6 timeouts. A re-run of a split download reads the
+  smaller parts it already has instead of asking for the big one again. The
+  400,000-object cap is counted while parts arrive, so it stops a download
+  before more requests are sent.
+- **Error answers.** Only HTTP 400 counts as a request the server cannot
+  run; any other 4xx status (404, 405, 410 …) rests that server for two
+  minutes and the next one is asked. In a regular expression `{,n}` is read
+  as `{0,n}`, which both
+  servers accept.
+- **Servers.** Downloads use overpass.private.coffee and overpass-api.de.
+  overpass.kumi.systems is no longer used: it is the same machine as
+  overpass.private.coffee, so failing over to it asked a dead server twice.
+- **Identification.** Every Overpass and Nominatim request carries a `Referer`
+  naming the plugin's repository, because QGIS replaces a plugin's own
+  User-Agent; on QGIS 4.2 and later the plugin's name is also appended to the
+  QGIS User-Agent.
+- **The cache keeps only good answers.** Empty answers, answers the server
+  marked as incomplete and data more than seven days old are never stored.
+  Each entry expires after an hour (a day for the parts of a download with
+  gaps), expired entries are removed, the file has a size budget, and Clear
+  cache gives the disk space back.
+- **All tagged objects** reads only multipolygon and boundary relations, so
+  routes, turn restrictions and other groups no longer arrive as stray lines
+  and points.
+- **Regular expressions** that the OSM servers refuse (`(?…)` groups,
+  lookarounds, backreferences) and ones that could hang, such as `(a+)+`, are
+  refused before anything is sent. POSIX classes such as `[[:digit:]]` work,
+  and `*` means any value.
+- **Faster OSM As-Is drawing.** The building class is worked out once per
+  feature instead of twice (a full draw of 108,891 buildings: 2.8 s instead of
+  4.9 s), and point and polygon labels appear only from 1:10,000 in.
+- **The first minute.** On an empty map the dock opens at Named place with a
+  plain message instead of "The selected extent is outside WGS84 bounds".
+  Download, Cancel, progress and status sit in a footer that stays in view
+  while the rest of the dock scrolls. The Query tab starts on Match any and All
+  geometries, also after Clear filters. Save to GeoPackage refuses to start
+  without a file, and before the download the note reads "Will save to …"
+  instead of "Saved to …".
+- The dock is readable under every built-in QGIS theme: every enabled label,
+  checkbox, group title, link and button reads at 4.5:1 or more under the
+  default, Blend of Gray and Night Mapping themes, where Blend of Gray had
+  form labels at 1.4:1 and the light theme had green links and pills at 4.0 to
+  4.3:1. A disabled Download button looks disabled.
+- A named place with no mapped boundary says so above Download ("This place
+  has no mapped boundary; its rectangle is used."), and the boundary choice
+  shows Rectangular extent instead of claiming an exact boundary.
+- Recent entries store dataset ids, so a catalogue change can never run a
+  different dataset.
+
+### Fixed
+
+- **Exact place boundaries now work.** Nominatim names a result's main tag
+  `category`; the plugin read `class`, so every named-place download since
+  1.1.0 was a rectangle. The place's outline now comes from Nominatim, its
+  bounding box is requested in parts and only the features that touch the
+  outline are kept; if the outline cannot be fetched, the server's own area
+  filter is used and a line under the result says so.
+- **Open ways no longer become polygons.** A way is an area only when it
+  closes; an open way asked for as an area only is dropped and counted. Two
+  metropolitan downloads had 3,178 such invented polygons.
+- **Multipolygon holes follow the geometry.** Which ring is a hole is decided
+  by nesting, not by member roles, and invalid outlines are repaired. On the
+  3,491 area relations of Izmir and Istanbul every result matches libosmium's
+  assembly within 0.5%; reading the roles, 12 did not.
+- **A failure says why** instead of "Download failed or was canceled. Check
+  the Processing log."; Cancel ends with "Download canceled. Nothing was
+  added."
+- A 429, 406 or 400 answer is no longer retried a second later: the reply
+  status is read even when QGIS reports the request as failed.
+- A download with missing parts no longer reports a clean "Finished".
+- Add OSM basemap puts the tiles under the data instead of on top of it.
+- Opening the OSM As-Is topic no longer changes the map style or restyles
+  earlier layers.
+- Commands no longer silently become "Place centres": "download roads in
+  Berlin" downloads roads and "restaurants in Paris" restaurants; a place plus
+  something unknown says so, and a place name alone downloads its place
+  centres.
+- A failed place search no longer promises a retry that never happens, a plain
+  "no match" no longer starts a worldwide Overpass search, and Cancel stops a
+  place search. When Nominatim cannot answer, the search by OpenStreetMap
+  administrative names works again: it sent a regular-expression form
+  (`(?:…)`) that the server rejects.
+- A GeoPackage path that cannot be written keeps the data as temporary layers
+  and says why in words ("the folder … cannot be created"), not in Python's
+  error text; it used to lose the download and leave an empty group.
+- The attribution and the data date are stored inside the GeoPackage, so they
+  are still there when the file is opened elsewhere. The stored style embeds
+  the pedestrian-crossing icon instead of a path to the plugin folder on this
+  computer, and folder paths containing `#` work.
+- Field creation works on QGIS 3.28 to 3.36, which lack
+  `QgsField(name, QMetaType.Type)`.
+- A failed or canceled download releases its memory instead of holding it
+  until QGIS restarts.
+- `tracker=` points at the public GitHub issue list; the old link was a 404.
+- The documents match the code: 17 map styles, six ways to choose the area,
+  English and Turkish commands, a one-hour persistent cache, every host the
+  plugin contacts, and 02SmartModeler running three of the four Processing
+  endpoints.
+
 ## [1.5.1] - 2026-10-27
 
 - Hub listing text rewritten; author Geophilo; university affiliation removed; documentation links use the standard geophilo.com pages (manual.html, guide/); manual HTML no longer ships in the plugin package.

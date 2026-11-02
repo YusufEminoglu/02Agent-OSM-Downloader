@@ -7,13 +7,19 @@ from zero2agent_osm_downloader.core.catalog import TagSpec, get_preset
 from zero2agent_osm_downloader.core.query import (
     MAX_BBOX_AREA_KM2,
     MAX_TILE_AREA_KM2,
+    MAX_TILE_DEPTH,
     MAX_TILES,
+    MAX_TOTAL_FEATURES,
+    TOO_MANY_OBJECTS_MESSAGE,
+    ElementMerger,
     QueryError,
+    TileRequest,
     bbox_area_km2,
     build_area_query,
     build_area_queries,
     build_queries,
     merge_elements,
+    plan_requests,
     tile_bbox,
     validate_area_id,
     validate_job_bbox,
@@ -117,6 +123,116 @@ class TiledQueryTests(unittest.TestCase):
     def test_merging_rejects_an_invalid_tile_response(self) -> None:
         with self.assertRaises(QueryError):
             merge_elements(({"elements": [{"type": "node", "id": 1}]}, {}))
+
+    def test_plan_texts_are_the_cache_keys_the_download_uses(self) -> None:
+        specs = get_preset("urban_context").tags
+        plan = plan_requests(specs, CITY_BBOX)
+        self.assertEqual(
+            tuple(request.cache_key() for request in plan),
+            build_queries(specs, CITY_BBOX),
+        )
+        self.assertEqual(
+            tuple(request.bbox for request in plan), tile_bbox(CITY_BBOX)
+        )
+        self.assertTrue(all(request.depth == 0 for request in plan))
+        area_plan = plan_requests(specs, CITY_BBOX, area_id=3_600_223_474)
+        self.assertEqual(
+            tuple(request.cache_key() for request in area_plan),
+            build_area_queries(specs, 3_600_223_474, CITY_BBOX),
+        )
+
+    def test_the_merger_counts_while_tiles_arrive(self) -> None:
+        merger = ElementMerger()
+        first = {
+            "osm3s": {"timestamp_osm_base": "2026-11-02T06:58:39Z"},
+            "elements": [{"type": "way", "id": 7}, {"type": "node", "id": 1}],
+        }
+        second = {
+            "osm3s": {"timestamp_osm_base": "2026-11-02T06:04:49Z"},
+            "elements": [{"type": "way", "id": 7}, {"type": "node", "id": 2}],
+        }
+        self.assertEqual(merger.add(first), 2)
+        self.assertEqual(merger.add(second), 3)
+        self.assertFalse(merger.over_limit)
+        result = merger.result()
+        self.assertEqual(
+            sorted((item["type"], item["id"]) for item in result["elements"]),
+            [("node", 1), ("node", 2), ("way", 7)],
+        )
+        # The oldest data date is the honest one for the merged result.
+        self.assertEqual(result["osm3s"]["timestamp_osm_base"], "2026-11-02T06:04:49Z")
+
+    def test_the_object_cap_is_seen_at_the_tile_that_crosses_it(self) -> None:
+        # Three tiles of 140,000 objects each: under the per-response
+        # ceiling, over the merged cap only once the third arrives.
+        tiles = [
+            {"elements": [{"type": kind, "id": n} for n in range(140_000)]}
+            for kind in ("node", "way", "relation")
+        ]
+        merger = ElementMerger()
+        merger.add(tiles[0])
+        merger.add(tiles[1])
+        self.assertFalse(merger.over_limit)
+        merger.add(tiles[2])
+        self.assertTrue(merger.over_limit)
+        self.assertGreater(merger.count, MAX_TOTAL_FEATURES)
+        with self.assertRaises(QueryError) as raised:
+            merge_elements(tiles)
+        self.assertEqual(str(raised.exception), TOO_MANY_OBJECTS_MESSAGE)
+
+
+class AdaptiveSplitTests(unittest.TestCase):
+    """R6: a heavy part becomes four, at most twice: 100 -> 25 -> 6.25 km²."""
+
+    def setUp(self) -> None:
+        # A 10 km x 10 km tile, the size the planner produces.
+        side = 10.0 / 111.32
+        self.parent = TileRequest(
+            get_preset("buildings").tags,
+            (38.40, 27.10, 38.40 + side, 27.10 + side / 0.78),
+        )
+
+    def test_four_quarters_cover_the_parent_exactly(self) -> None:
+        children = self.parent.split()
+        self.assertEqual(len(children), 4)
+        south, west, north, east = self.parent.bbox
+        self.assertEqual(min(child.bbox[0] for child in children), south)
+        self.assertEqual(min(child.bbox[1] for child in children), west)
+        self.assertEqual(max(child.bbox[2] for child in children), north)
+        self.assertEqual(max(child.bbox[3] for child in children), east)
+        covered = sum(
+            (c.bbox[2] - c.bbox[0]) * (c.bbox[3] - c.bbox[1]) for c in children
+        )
+        self.assertAlmostEqual(covered, (north - south) * (east - west))
+        sw, se, nw, ne = children
+        # Shared edges are the same number, so no seam can open between them.
+        self.assertEqual(sw.bbox[2], nw.bbox[0])
+        self.assertEqual(sw.bbox[3], se.bbox[1])
+        self.assertEqual(ne.bbox[0], se.bbox[2])
+        self.assertEqual(ne.bbox[1], nw.bbox[3])
+        for child in children:
+            self.assertEqual(child.depth, 1)
+            self.assertEqual(child.specs, self.parent.specs)
+
+    def test_depth_is_limited_to_two_levels(self) -> None:
+        self.assertEqual(MAX_TILE_DEPTH, 2)
+        level_one = self.parent.split()[0]
+        level_two = level_one.split()[0]
+        self.assertAlmostEqual(self.parent.area_km2, 100.0, delta=2.0)
+        self.assertAlmostEqual(level_one.area_km2 / self.parent.area_km2, 0.25, delta=0.01)
+        self.assertAlmostEqual(level_two.area_km2 / self.parent.area_km2, 0.0625, delta=0.01)
+        self.assertTrue(level_one.can_split)
+        self.assertFalse(level_two.can_split)
+        with self.assertRaises(QueryError):
+            level_two.split()
+
+    def test_a_split_keeps_the_boundary_filter(self) -> None:
+        clipped = TileRequest(
+            get_preset("road_network").tags, self.parent.bbox, area_id=3_600_223_474
+        )
+        for child in clipped.split():
+            self.assertIn("area(3600223474)->.searchArea;", child.render())
+            self.assertIn("(area.searchArea)", child.render())
 
 
 class BoundaryAreaQueryTests(unittest.TestCase):

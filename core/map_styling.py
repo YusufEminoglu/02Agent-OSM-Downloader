@@ -1,6 +1,7 @@
 """Semantic native-QGIS styling for 02Agent OSM result layers."""
 from __future__ import annotations
 
+import base64
 import contextlib
 import os
 
@@ -586,6 +587,23 @@ def plugin_svg(name: str) -> str:
     return os.path.join(PLUGIN_SVG_DIR, name)
 
 
+def embedded_plugin_svg(name: str) -> str:
+    """A plugin icon as an embedded ``base64:`` SVG path, or '' if unreadable.
+
+    A symbol keeps its SVG path verbatim in every saved style. For a plugin
+    icon that path is the plugin folder, which sits under the user's profile,
+    so a GeoPackage shared onward carried its author's user name and drew a
+    broken icon on every other machine. The embedded form travels with the
+    style and renders exactly like the file.
+    """
+    try:
+        with open(plugin_svg(name), "rb") as handle:
+            content = handle.read()
+    except OSError:
+        return ""
+    return "base64:" + base64.b64encode(content).decode("ascii")
+
+
 def _svg_exists(name: str) -> bool:
     if os.path.isabs(name):
         return os.path.isfile(name)
@@ -633,8 +651,8 @@ def _icon(category: str, size: float = 3.6 * _CARTO_WIDTH_SCALE):
 
 def _crossing_marker(size: float = 2.8 * _CARTO_WIDTH_SCALE):
     """The zebra, drawn from above, or a plain tick if the icon is missing."""
-    path = plugin_svg("crossing.svg")
-    if not _svg_exists(path):
+    path = embedded_plugin_svg("crossing.svg")
+    if not path:
         return _marker("#6b6b6b", 1.4, "square")
     layer = QgsSvgMarkerSymbolLayer(path)
     layer.setSize(size)
@@ -872,6 +890,16 @@ _CARTO_LABEL_COLOR = (
     " ELSE '#4a4a4a' END"
 )
 
+#: OSM As-Is writes the names of points of interest and of areas only from
+#: 1:10,000 inwards -- about zoom 16; openstreetmap.org starts most of them
+#: at 17. Unlimited, the label engine laid out every named point and polygon
+#: of the download at every zoom. Measured on a real 6.3 km wildcard
+#: download in QGIS 3.44: Zoom to Layer drew in 79 s, 6.6 s gated; the
+#: requested view (1:30,000) in 14.3 s, 5.8 s gated; street level is
+#: unchanged. Street names and place names keep no limit: they are how a
+#: reader finds the way.
+CARTO_LABEL_MIN_SCALE = 10000.0
+
 
 def _apply_osm_labels(layer, theme: dict, carto: bool = False) -> None:
     name_index = layer.fields().indexFromName("name")
@@ -917,6 +945,15 @@ def _apply_osm_labels(layer, theme: dict, carto: bool = False) -> None:
         placement = _placement("AroundPoint")
         if placement is not None:
             settings.placement = placement
+    if carto and geometry in (
+        QgsWkbTypes.GeometryType.PointGeometry,
+        QgsWkbTypes.GeometryType.PolygonGeometry,
+    ):
+        # Places layers are not gated: a place name is what a reader needs
+        # most when zoomed out, and there are few of them.
+        settings.scaleVisibility = True
+        settings.minimumScale = CARTO_LABEL_MIN_SCALE
+        settings.maximumScale = 0.0
     point_layer = (
         carto and geometry == QgsWkbTypes.GeometryType.PointGeometry
     )

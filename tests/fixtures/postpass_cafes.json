@@ -1,0 +1,163 @@
+{
+ "postpass_properties": {
+  "generator": "Postpass API 0.2",
+  "timestamp": "2026-11-02T07:48:28Z"
+ },
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     27.1432771,
+     38.4231711
+    ]
+   },
+   "properties": {
+    "osm_type": "N",
+    "osm_id": 11054359805,
+    "tags": {
+     "name": "Marache Coffee",
+     "amenity": "cafe",
+     "cuisine": "bagel;bubble_tea;cake;coffee_shop;ice_cream;sandwich;tea",
+     "website": "https://marachecoffee.com.tr/",
+     "addr:city": "İzmir",
+     "check_date": "2024-12-03",
+     "wheelchair": "limited",
+     "addr:street": "Anafartalar Caddesi",
+     "payment:cash": "yes",
+     "addr:district": "Konak",
+     "addr:postcode": "35270",
+     "opening_hours": "Mo-Su 07:00-21:00",
+     "indoor_seating": "yes",
+     "outdoor_seating": "yes",
+     "addr:housenumber": "906A",
+     "addr:neighbourhood": "Etiler",
+     "payment:debit_cards": "yes",
+     "payment:credit_cards": "yes"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     27.1319768,
+     38.4230851
+    ]
+   },
+   "properties": {
+    "osm_type": "N",
+    "osm_id": 9981858582,
+    "tags": {
+     "name": "Peppo",
+     "amenity": "cafe"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [
+     [
+      [
+       [
+        27.1389958,
+        38.4275182
+       ],
+       [
+        27.1390394,
+        38.4274916
+       ],
+       [
+        27.1390141,
+        38.4274661
+       ],
+       [
+        27.1390414,
+        38.4274494
+       ],
+       [
+        27.1393365,
+        38.4277462
+       ],
+       [
+        27.1392655,
+        38.4277895
+       ],
+       [
+        27.1389958,
+        38.4275182
+       ]
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 872239165,
+    "tags": {
+     "amenity": "cafe",
+     "building": "yes",
+     "building:levels": "1"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [
+     [
+      [
+       [
+        27.1282507,
+        38.4175348
+       ],
+       [
+        27.1282637,
+        38.4174914
+       ],
+       [
+        27.1283181,
+        38.4174785
+       ],
+       [
+        27.1283597,
+        38.417509
+       ],
+       [
+        27.1283467,
+        38.4175524
+       ],
+       [
+        27.1282922,
+        38.4175653
+       ],
+       [
+        27.1282507,
+        38.4175348
+       ]
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 1224700905,
+    "tags": {
+     "name": "İzmirli",
+     "amenity": "cafe",
+     "cuisine": "coffee_shop",
+     "building": "yes",
+     "operator": "İzmir Büyükşehir Belediyesi",
+     "operator:type": "municipality",
+     "outdoor_seating": "no"
+    }
+   }
+  }
+ ]
+}

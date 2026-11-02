@@ -57,9 +57,9 @@ def normalize_place_name(value: object) -> str:
 
 
 def _regex_term(value: str) -> str:
-    # Overpass accepts a PCRE-style regular expression.  User text is escaped
-    # before it ever reaches the query; the input remains a place name, never
-    # an editable Overpass fragment.
+    # Overpass matches with POSIX extended regular expressions (glibc
+    # `regcomp`).  User text is escaped before it ever reaches the query; the
+    # input remains a place name, never an editable Overpass fragment.
     return re.escape(value).replace("\\ ", "\\s+")
 
 
@@ -72,7 +72,9 @@ def build_place_query(value: object) -> str:
     patterns = [f"^{_regex_term(name)}$"]
     if len(tokens) > 1:
         patterns.append(f"^{_regex_term(tokens[-1])}$")
-    pattern = "(?:" + "|".join(patterns) + ")"
+    # A plain group: POSIX has no "(?:", and the servers answer it with
+    # HTTP 400 ("Invalid preceding regular expression").
+    pattern = "(" + "|".join(patterns) + ")"
     selectors = []
     for key in ("name", "official_name", "alt_name", "name:en", "name:tr", "int_name"):
         selectors.extend(

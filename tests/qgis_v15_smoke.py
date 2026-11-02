@@ -67,7 +67,7 @@ def run_checks() -> str:
     from qgis.gui import QgsMapCanvas
 
     from zero2agent_osm_downloader.core.around import circle_bbox
-    from zero2agent_osm_downloader.core.catalog import PRESETS, get_preset
+    from zero2agent_osm_downloader.core.catalog import get_preset
     from zero2agent_osm_downloader.core.persist import (
         TIMESTAMP_PROPERTY,
         apply_provenance,
@@ -87,6 +87,9 @@ def run_checks() -> str:
         return payload
 
     osm_algorithms._fetch_json = _cache_only
+    # Tiles no longer go through _fetch_json; a closed local port keeps an
+    # unseeded part off the public servers.
+    osm_algorithms.OVERPASS_ENDPOINTS = ("http://127.0.0.1:9/api/interpreter",)
 
     # ---------------------------------------------------------- around search
     lon, lat, radius = 27.1300, 38.4200, 300.0
@@ -109,7 +112,7 @@ def run_checks() -> str:
     context = QgsProcessingContext()
     context.setProject(QgsProject.instance())
     feedback = QgsProcessingFeedback()
-    preset_index = next(i for i, p in enumerate(PRESETS) if p.preset_id == "urban_form")
+    preset_index = osm_algorithms.PRESET_ENUM_ORDER.index("urban_form")
     results = processing.run(
         "zero2agentosm:download_preset",
         {
@@ -131,6 +134,13 @@ def run_checks() -> str:
         raise RuntimeError(f"Around search kept {names}; only 'Inside' touches the circle.")
     if results.get("OSM_TIMESTAMP") != STAMP:
         raise RuntimeError(f"OSM_TIMESTAMP is {results.get('OSM_TIMESTAMP')!r}, not {STAMP}.")
+    # The corner lies outside the circle: left out and counted as outside,
+    # not as a feature that could not be built.
+    if (results.get("FEATURES_OUTSIDE"), results.get("FEATURES_DROPPED")) != (1, 0):
+        raise RuntimeError(
+            f"FEATURES_OUTSIDE {results.get('FEATURES_OUTSIDE')!r} and FEATURES_DROPPED "
+            f"{results.get('FEATURES_DROPPED')!r}; the corner is 1 feature outside the circle."
+        )
     try:
         processing.run("zero2agentosm:download_preset", {
             "PRESET": preset_index,
@@ -144,7 +154,8 @@ def run_checks() -> str:
     except Exception as error:  # noqa: BLE001 - Processing wraps the refusal
         if "9 km radius was accepted" in str(error):
             raise
-    notes.append("around search drops the circle's corner and reports the data date")
+    notes.append("around search leaves out the circle's corner, counts it as outside and "
+                 "reports the data date")
 
     # ---------------------------------------------------------- area modes
     canvas = QgsMapCanvas()
@@ -299,6 +310,11 @@ def main(exit_process: bool = False) -> bool:
     # is garbage-collected, and every algorithm then fails in createInstance().
     provider = AgentOsmProvider()
     QgsApplication.processingRegistry().addProvider(provider)
+    from zero2agent_osm_downloader.tests._offline import isolate_network
+
+    # Off every public host before anything runs; the QGIS-wide guard only
+    # in a QGIS this run started.
+    isolate_network(guard_qgis=owns_app)
     print("=" * 62)
     print(" 02Agent OSM Downloader - v1.5 feature smoke")
     print("=" * 62)

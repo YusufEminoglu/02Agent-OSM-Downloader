@@ -1,0 +1,81 @@
+{
+ "postpass_properties": {
+  "generator": "Postpass API 0.2",
+  "timestamp": "2026-11-02T07:48:28Z"
+ },
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       27.1287249,
+       38.4203438
+      ],
+      [
+       27.1285819,
+       38.4204257
+      ],
+      [
+       27.1285399,
+       38.4204786
+      ],
+      [
+       27.1285356,
+       38.4205719
+      ],
+      [
+       27.1286249,
+       38.4208006
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 153716994,
+    "tags": {
+     "name": "Mucibur Rahman Caddesi",
+     "oneway": "yes",
+     "highway": "residential",
+     "surface": "asphalt",
+     "maxspeed": "50"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       27.132709,
+       38.419199
+      ],
+      [
+       27.1323914,
+       38.4196288
+      ],
+      [
+       27.1321568,
+       38.4199933
+      ]
+     ]
+    ]
+   },
+   "properties": {
+    "osm_type": "W",
+    "osm_id": 25524335,
+    "tags": {
+     "name": "863. Sokak",
+     "oneway": "yes",
+     "highway": "living_street"
+    }
+   }
+  }
+ ]
+}
