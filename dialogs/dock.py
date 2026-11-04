@@ -313,7 +313,7 @@ class _PlaceResolveTask(QgsTask):
     """Resolve a named place without blocking the QGIS interface."""
 
     def __init__(self, place: str, callback) -> None:
-        super().__init__("02Agent: resolve named place", QgsTask.CanCancel)
+        super().__init__("02Agent: resolve named place", QgsTask.Flag.CanCancel)
         self.place = place
         self.callback = callback
         self.candidates: tuple = ()

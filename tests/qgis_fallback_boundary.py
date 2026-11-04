@@ -361,7 +361,7 @@ def check_parameter(check, _servers, _work) -> None:
     from qgis.core import Qgis, QgsProcessingParameterDefinition
 
     flags = getattr(Qgis, "ProcessingParameterFlag", None)
-    advanced = flags.Advanced if flags is not None else QgsProcessingParameterDefinition.FlagAdvanced
+    advanced = flags.Advanced if flags is not None else QgsProcessingParameterDefinition.Flag.FlagAdvanced
     registry = QgsApplication.processingRegistry()
     for name in ("download_preset", "download_place", "download_custom_tag", "download_advanced"):
         algorithm = registry.algorithmById(f"zero2agentosm:{name}")
@@ -376,7 +376,7 @@ def check_parameter(check, _servers, _work) -> None:
             f"{name}: ALLOW_FALLBACK is {definition and definition.toVariantMap()}")
         check.that(definition is not None and bool(
             definition.flags() & (flags.Optional if flags is not None
-                                  else QgsProcessingParameterDefinition.FlagOptional)),
+                                  else QgsProcessingParameterDefinition.Flag.FlagOptional)),
             f"{name}: ALLOW_FALLBACK is required, so older models would stop validating")
 
 

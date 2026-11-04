@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.6.1] - 2026-11-04
+
+### Changed
+
+- Qt6 / QGIS 4 compatibility: Qt and QGIS enum values are written in their scoped form (for example `QgsWkbTypes.GeometryType.PointGeometry`), which QGIS 3.28+ and QGIS 4 both accept; no behaviour change.
+
 ## [1.6.0] - 2026-11-02
 
 A download now either works or says exactly why, and it keeps working when the

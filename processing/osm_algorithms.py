@@ -339,7 +339,7 @@ def _status_attribute():
     enum = getattr(QNetworkRequest, "Attribute", None)
     if enum is not None:
         return enum.HttpStatusCodeAttribute
-    return QNetworkRequest.HttpStatusCodeAttribute
+    return QNetworkRequest.Attribute.HttpStatusCodeAttribute
 
 
 def _reply_status(reply) -> int:
@@ -488,7 +488,7 @@ def _post_once(
         raise _canceled()
     reply = client.reply()
     error_text = ""
-    if code != QgsBlockingNetworkRequest.NoError:
+    if code != QgsBlockingNetworkRequest.ErrorCode.NoError:
         error_text = str(client.errorMessage() or "").strip()
     return classify(
         status=_reply_status(reply),
@@ -779,7 +779,7 @@ def _nominatim_reply(url: str, feedback, limit: int = MAX_RESPONSE_BYTES) -> byt
     status = _reply_status(reply)
     if status and not 200 <= status < 300:
         raise GeocodeError(f"Nominatim answered with HTTP {status}.")
-    if code != QgsBlockingNetworkRequest.NoError:
+    if code != QgsBlockingNetworkRequest.ErrorCode.NoError:
         detail = str(client.errorMessage() or "").strip() or "network request failed"
         raise GeocodeError(f"Nominatim could not be reached ({detail}).")
     content = bytes(reply.content())
@@ -2043,7 +2043,7 @@ def _advanced_flag():
     flags = getattr(Qgis, "ProcessingParameterFlag", None)
     if flags is not None:
         return flags.Advanced
-    return QgsProcessingParameterDefinition.FlagAdvanced
+    return QgsProcessingParameterDefinition.Flag.FlagAdvanced
 
 
 class _BaseDownloadAlgorithm(QgsProcessingAlgorithm):
